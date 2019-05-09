@@ -94,13 +94,13 @@ Power the system on with the DVD inserted.  A system install will take place
 (takes approximately 2 minutes).  The system will then report an error and
 ask you if you wish to report a bug, debug, or quit.  Hit control-alt-F2 to
 switch to a terminal window.  Enter the following commands to change to the
-installed system root, and create a (wrsroot) with sudo access:
+installed system root, and create a (sysadmin) with sudo access:
 
 cd /mnt/sysimage
 chroot .
 groupadd -r wrs
-groupadd -f -g 345 wrs_protected
-useradd -m -g wrs -G root,wrs_protected,wheel -d /home/wrsroot -p cBglipPpsKwBQ -s /bin/sh wrsroot
+groupadd -f -g 345 sys_protected
+useradd -m -g wrs -G root,sys_protected,wheel -d /home/sysadmin -p cBglipPpsKwBQ -s /bin/sh sysadmin
 exit
 
 Change back to the main window with control-alt-F1.
@@ -108,5 +108,5 @@ Hit 3 <enter> (the "Quit" option).  The system will reboot (make sure you eject
 the DVD or use your BIOS to boot from hard disk rather than DVD; the installer
 will re-run if the DVD boots again).
 
-You can log into the system as user "wrsroot" with password "wrsroot".
+You can log into the system as user "sysadmin" with password "sysadmin".
 

@@ -12,12 +12,12 @@ fi
 ln -s $(ls /boot/vmlinuz-*.x86_64 | head -1) /boot/vmlinuz
 ln -s $(ls /boot/initramfs-*.x86_64.img | head -1) /boot/initramfs.img
 
-# Setup root and wrsroot users
+# Setup root and sysadmin users
 usermod -p $(openssl passwd -1 root) root
-useradd -p $(openssl passwd -1 wrsroot) wrsroot
+useradd -p $(openssl passwd -1 sysadmin) sysadmin
 
-# Enable SUDO access for wrsroot
-echo "wrsroot ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+# Enable SUDO access for sysadmin
+echo "sysadmin ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Enable remote root login to permit automated tools to run privileged commands
 sed -i 's%^#\(PermitRootLogin \)%\1%' /etc/ssh/sshd_config
