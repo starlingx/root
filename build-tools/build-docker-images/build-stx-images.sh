@@ -222,6 +222,21 @@ function post_build {
     fi
 }
 
+function cleanup_loci_failure {
+    # When loci fails, it leaves behind a stopped container and a none:none image.
+    # This function looks for those stopped containers to clean up after a failure.
+    local container
+    local image
+    local extra_fields
+
+    docker ps --no-trunc -f status=exited | grep /opt/loci/scripts/install.sh \
+    | while read container image extra_fields; do
+        echo "Cleaning loci build container and image: ${container} ${image}"
+        docker rm ${container}
+        docker image rm ${image}
+    done
+}
+
 function build_image_loci {
     local image_build_file=$1
 
@@ -292,6 +307,7 @@ function build_image_loci {
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
         RESULTS_FAILED+=(${LABEL})
+        cleanup_loci_failure
         return 1
     fi
 
