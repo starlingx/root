@@ -86,49 +86,77 @@ function is_empty {
     test $# -eq 0
 }
 
-function get_loci {
-    # Use a specific HEAD of loci, to provide a stable builder
-    local LOCI_REF="432503259f5e624afdabd9dacc9d9b367dd95e96"
+#
+# get_git: Clones a git into a subdirectory of ${WORKDIR}, and
+#          leaves you in that directory.  On error the directory
+#          is undefined.
+#
+function get_git {
+    local git_repo=${1}
+    local git_ref=${2:-master}
 
-    ORIGWD=${PWD}
+    local git_name
+    git_name=$(basename ${git_repo} | sed 's/[.]git$//')
 
-    if [ ! -d ${WORKDIR}/loci ]; then
+    if [ -z ${git_name} ] || \
+       [ "${git_name}" == "." ] || \
+       [ "${git_name}" == ".." ] || \
+       [ "${git_name}" == "*" ]; then
+        echo "git repo appears to be invalid: ${git_repo}. Aborting..." >&2
+        return 1
+    fi
+
+    if [ ! -d ${WORKDIR}/${git_name} ]; then
         cd ${WORKDIR}
-        git clone --recursive https://github.com/openstack/loci.git
+
+        git clone --recursive ${git_repo}
         if [ $? -ne 0 ]; then
-            echo "Failed to clone loci. Aborting..." >&2
+            echo "Failed to clone ${git_repo}. Aborting..." >&2
             return 1
         fi
 
-        cd loci
-        git checkout ${LOCI_REF}
+        cd $git_name
+        git checkout ${git_ref}
         if [ $? -ne 0 ]; then
-            echo "Failed to checkout loci base ref: ${LOCI_REF}" >&2
+            echo "Failed to checkout '${git_name}' base ref: ${git_ref}" >&2
             echo "Aborting..." >&2
             return 1
         fi
     else
-        cd ${WORKDIR}/loci
-        local cur_head
-        cur_head=$(git rev-parse HEAD)
+        cd ${WORKDIR}/${git_name}
 
-        if [ "${cur_head}" != "${LOCI_REF}" ]; then
-            git fetch
-            if [ $? -ne 0 ]; then
-                echo "Failed to fetch loci. Aborting..." >&2
-                return 1
-            fi
+        git fetch
+        if [ $? -ne 0 ]; then
+            echo "Failed to fetch '${git_name}'. Aborting..." >&2
+            return 1
+        fi
 
-            git checkout ${LOCI_REF}
-            if [ $? -ne 0 ]; then
-                echo "Failed to checkout loci base ref: ${LOCI_REF}" >&2
-                echo "Aborting..." >&2
-                return 1
-            fi
+        git checkout ${git_ref}
+        if [ $? -ne 0 ]; then
+            echo "Failed to checkout '${git_name}' base ref: ${git_ref}" >&2
+            echo "Aborting..." >&2
+            return 1
         fi
     fi
 
-    cd ${ORIGPWD}
+    return 0
+}
+
+function get_loci {
+    # Use a specific HEAD of loci, to provide a stable builder
+    local LOCI_REF="432503259f5e624afdabd9dacc9d9b367dd95e96"
+    local LOCI_REPO="https://github.com/openstack/loci.git"
+
+    local ORIGWD=${PWD}
+
+    get_git ${LOCI_REPO} ${LOCI_REF}
+    if [ $? -ne 0 ]; then
+        echo "Failed to clone or update loci. Aborting..." >&2
+        cd ${ORIGWD}
+        return 1
+    fi
+
+    cd ${ORIGWD}
 
     return 0
 }
@@ -353,6 +381,10 @@ function build_image_docker {
     #
     local LABEL
     LABEL=$(source ${image_build_file} && echo ${LABEL})
+    local DOCKER_REPO
+    DOCKER_REPO=$(source ${image_build_file} && echo ${DOCKER_REPO})
+    local DOCKER_REF
+    DOCKER_REF=$(source ${image_build_file} && echo ${DOCKER_REF})
 
     if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
         echo "Skipping ${LABEL}"
@@ -367,7 +399,26 @@ function build_image_docker {
     echo "Building ${LABEL}"
 
     local docker_src
-    docker_src=$(dirname ${image_build_file})/docker
+    if [ -z "DOCKER_REPO" ]; then
+        docker_src=$(dirname ${image_build_file})/docker
+    else
+        local ORIGWD=${PWD}
+
+        echo "get_git '${DOCKER_REPO}' '${DOCKER_REF}'"
+        get_git "${DOCKER_REPO}" "${DOCKER_REF}"
+        if [ $? -ne 0 ]; then
+            echo "Failed to clone or update ${DOCKER_REPO}. Aborting..." >&2
+            cd ${ORIGWD}
+            return 1
+        fi
+
+        local DOCKER_FILE="${PWD}/Dockerfile"
+        if [ ! -f ${DOCKER_FILE} ]; then
+            DOCKER_FILE=$(find ${PWD} -type f -name Dockerfile | head -n 1)
+        fi
+        docker_src=$(dirname ${DOCKER_FILE})
+        cd ${ORIGWD}
+    fi
 
     # Check for a Dockerfile
     if [ ! -f ${docker_src}/Dockerfile ]; then
