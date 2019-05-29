@@ -22,17 +22,22 @@ APP_NAME="stx-openstack"
 APP_VERSION=""
 declare -a IMAGE_RECORDS
 declare -a PATCH_DEPENDENCIES
+declare -a APP_HELM_FILES
+declare -a APP_RPMS
 
 function usage {
     cat >&2 <<EOF
 Usage:
-$(basename $0) [ --os <os> ] [-a, --app <app-name>] [-i, --image-record <image-record>] [--label <label>] [-p, --patch-dependency <patch-dependency>] [ --verbose ]
+$(basename $0) [ --os <os> ] [-a, --app <app-name>] [-r, --rpm <rpm-name>] [-i, --image-record <image-record>] [--label <label>] [-p, --patch-dependency <patch-dependency>] [ --verbose ]
 Options:
     --os:
             Specify base OS (eg. centos)
 
     -a, --app:
             Specify the application name
+
+    -r, --rpm:
+            Specify the application rpms
 
     -i, --image-record:
             Specify the path to image record file(s) or url(s).
@@ -174,7 +179,8 @@ function extract_chartfile {
 
 # Extract the helm charts and information from the application rpm
 function extract_application_rpm {
-    extract_chartfile ${APP_RPM}
+    local helm_rpm=$1
+    extract_chartfile ${helm_rpm}
 
     APP_VERSION=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' ${chartfile} | sed 's/\.tis//')
     if [ -z "${APP_VERSION}" ]; then
@@ -184,16 +190,113 @@ function extract_application_rpm {
 
     helm_files=$(rpm -qpR ${chartfile})
     if [ $? -ne 0 ]; then
-        echo "Failed to get the helm rpm dependencies for ${APP_RPM}" >&2
+        echo "Failed to get the helm rpm dependencies for ${helm_rpm}" >&2
         exit 1
     fi
 
     # Get rid of the rpmlib dependencies
-    APP_HELM_FILES=($(echo ${helm_files} | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g'))
+    APP_HELM_FILES+=($(echo ${helm_files} | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g'))
 }
 
+function extract_application_rpms {
+if [ ${#APP_RPMS[@]} -gt 0 ]; then
+    for app_rpm in ${APP_RPMS[@]}; do
+        extract_application_rpm ${app_rpm}
+    done
+else
+    extract_application_rpm "${APP_NAME}-helm"
+fi
+}
+
+function build_application_tarball {
+    local manifest=$1
+    manifest_file=$(basename ${manifest})
+    manifest_name=${manifest_file%.yaml}
+    deprecated_tarball_name="helm-charts-${manifest_name}"
+    build_image_versions_to_manifest ${manifest}
+
+    cp ${manifest} staging/.
+    if [ $? -ne 0 ]; then
+        echo "Failed to copy the manifests to ${BUILD_OUTPUT_PATH}/staging" >&2
+        exit 1
+    fi
+
+    cd staging
+    # Add metadata file
+    touch metadata.yaml
+    if [ -n "${LABEL}" ]; then
+        APP_VERSION=${APP_VERSION}-${LABEL}
+        deprecated_tarball_name=${deprecated_tarball_name}-${LABEL}
+    fi
+    echo "app_name: ${APP_NAME}" >> metadata.yaml
+    echo "app_version: ${APP_VERSION}" >> metadata.yaml
+    if [ -n "${PATCH_DEPENDENCIES}" ]; then
+        echo "patch_dependencies:" >> metadata.yaml
+        for patch in ${PATCH_DEPENDENCIES[@]}; do
+            echo "  - ${patch}" >> metadata.yaml
+        done
+    fi
+
+    # Add an md5
+    find . -type f ! -name '*.md5' -print0 | xargs -0 md5sum > checksum.md5
+
+    cd ..
+    tarball_name="${APP_NAME}-${APP_VERSION}.tgz"
+    tar ${TAR_FLAGS} ${tarball_name} -C staging/ .
+    if [ $? -ne 0 ]; then
+        echo "Failed to create the tarball" >&2
+        exit 1
+    fi
+
+    rm staging/${manifest_file}
+    rm staging/checksum.md5
+    echo "    ${BUILD_OUTPUT_PATH}/${tarball_name}"
+
+    # Create a symbolic link to point to the generated tarball
+    # TODO: Remove the symboblic link once the community has an
+    # opportunity to adapt to the changes in filenames
+    if [ "${APP_NAME}" = "stx-openstack" ]; then
+        ln -s ${BUILD_OUTPUT_PATH}/${tarball_name} ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz
+        echo "    ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz"
+        echo "Warning: The tarball ${deprecated_tarball_name}.tgz is a symbolic link for ${tarball_name}. It's deprecated and will be removed shortly."
+    fi
+}
+
+
+function parse_yaml {
+    # Create a new yaml file based on sequentially merging a list of given yaml files
+    local yaml_script="
+import sys
+import yaml
+
+yaml_files = sys.argv[2:]
+yaml_output = sys.argv[1]
+
+def merge_yaml(yaml_old, yaml_new):
+    merged_dict = {}
+    merged_dict = yaml_old.copy()
+    for k in yaml_new.keys():
+        if not isinstance(yaml_new[k], dict):
+            merged_dict[k] = yaml_new[k]
+        elif k not in yaml_old:
+            merged_dict[k] = merge_yaml({}, yaml_new[k])
+        else:
+            merged_dict[k] = merge_yaml(yaml_old[k], yaml_new[k])
+    return merged_dict
+
+yaml_out = {}
+for yaml_file in yaml_files:
+    for document in yaml.load_all(open(yaml_file)):
+        document_name = (document['schema'], document['metadata']['schema'], document['metadata']['name'])
+        yaml_out[document_name] = merge_yaml(yaml_out.get(document_name, {}), document)
+yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), default_flow_style=False)
+    "
+    python -c "${yaml_script}" ${@}
+}
+
+
 # TODO(awang): remove the deprecated image-file option
-OPTS=$(getopt -o h,a:,i:,l:,p: -l help,os:,app:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
+OPTS=$(getopt -o h,a:,r:,i:,l:,p: -l help,os:,app:,rpm:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -214,6 +317,10 @@ while true; do
             ;;
         -a | --app)
             APP_NAME=$2
+            shift 2
+            ;;
+        -r | --rpm)
+            APP_RPMS+=(${2//,/ })
             shift 2
             ;;
         -i | --image-record | --image-file)
@@ -310,10 +417,9 @@ if [ ${#IMAGE_RECORDS[@]} -ne 0 ]; then
 fi
 
 # Extract helm charts and app version from the application rpm
-APP_RPM=${APP_NAME}-helm
 RPMS_DIR=${MY_WORKSPACE}/std/rpmbuild/RPMS
 GREP_GLOB="-[^-]*-[^-]*.tis.noarch.rpm"
-extract_application_rpm
+extract_application_rpms
 # Extract helm charts from the application dependent rpms
 if [ ${#APP_HELM_FILES[@]} -gt 0 ]; then
     for helm_rpm in ${APP_HELM_FILES[@]}; do
@@ -342,61 +448,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Build tarballs for each armada yaml file
+# Merge yaml files:
+APP_YAML=${APP_NAME}.yaml
+parse_yaml $APP_YAML `ls -rt usr/lib/armada/*.yaml`
+
 echo "Results:"
-for manifest in usr/lib/armada/*.yaml; do
-    manifest_file=$(basename ${manifest})
-    manifest_name=${manifest_file%.yaml}
-    deprecated_tarball_name="helm-charts-${manifest_name}"
-    build_image_versions_to_manifest ${manifest}
-
-    cp ${manifest} staging/.
-    if [ $? -ne 0 ]; then
-        echo "Failed to copy the manifests to ${BUILD_OUTPUT_PATH}/staging" >&2
-        exit 1
-    fi
-
-    cd staging
-    # Add metadata file
-    touch metadata.yaml
-    if [ -n "${LABEL}" ]; then
-        APP_VERSION=${APP_VERSION}-${LABEL}
-        deprecated_tarball_name=${deprecated_tarball_name}-${LABEL}
-    fi
-    echo "app_name: ${APP_NAME}" >> metadata.yaml
-    echo "app_version: ${APP_VERSION}" >> metadata.yaml
-    if [ -n "${PATCH_DEPENDENCIES}" ]; then
-        echo "patch_dependencies:" >> metadata.yaml
-        for patch in ${PATCH_DEPENDENCIES[@]}; do
-            echo "  - ${patch}" >> metadata.yaml
-        done
-    fi
-
-    # Add an md5
-    find . -type f ! -name '*.md5' -print0 | xargs -0 md5sum > checksum.md5
-
-    cd ..
-    tarball_name="${APP_NAME}-${APP_VERSION}.tgz"
-    tar ${TAR_FLAGS} ${tarball_name} -C staging/ .
-    if [ $? -ne 0 ]; then
-        echo "Failed to create the tarball" >&2
-        exit 1
-    fi
-
-    rm staging/${manifest_file}
-    rm staging/checksum.md5
-    echo "    ${BUILD_OUTPUT_PATH}/${tarball_name}"
-
-    # Create a symbolic link to point to the generated tarball
-    # TODO: Remove the symboblic link once the community has an
-    # opportunity to adapt to the changes in filenames
-    if [ "${APP_NAME}" = "stx-openstack" ]; then
-        ln -s ${BUILD_OUTPUT_PATH}/${tarball_name} ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz
-        echo "    ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz"
-        echo "Warning: The tarball ${deprecated_tarball_name}.tgz is a symbolic link for ${tarball_name}. It's deprecated and will be removed shortly."
-    fi
-
-done
+# Build tarballs for merged yaml
+build_application_tarball $APP_YAML
 
 exit 0
 
