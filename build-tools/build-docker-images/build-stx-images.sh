@@ -399,7 +399,7 @@ function build_image_docker {
     echo "Building ${LABEL}"
 
     local docker_src
-    if [ -z "DOCKER_REPO" ]; then
+    if [ -z "${DOCKER_REPO}" ]; then
         docker_src=$(dirname ${image_build_file})/docker
     else
         local ORIGWD=${PWD}
