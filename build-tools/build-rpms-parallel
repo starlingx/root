@@ -616,7 +616,7 @@ kill_descendents ()
 
     local relevant_recursive_children="$ME"
     local relevant_recursive_promote_children="mock"
-    local relevant_other_children="mockchain-parallel"
+    local relevant_other_children="mockchain-parallel mockchain-parallel-1.3.4 mockchain-parallel-1.4.16"
 
     local recursive_promote_children=$(for relevant_child in $relevant_recursive_promote_children; do pgrep -P $kill_pid $relevant_child; done)
     local recursive_children=$(for relevant_child in $relevant_recursive_children; do pgrep -P $kill_pid $relevant_child; done)
@@ -2281,6 +2281,7 @@ echo "CMD_OPTIONS=$CMD_OPTIONS"
 
 echo "MAX_WORKERS=$MAX_WORKERS"
 echo "MOCKCHAIN_RESOURCE_ALLOCATION=$MOCKCHAIN_RESOURCE_ALLOCATION"
+
 
 CMD="$CMD_PREFIX mockchain-parallel -r $BUILD_CFG -l $BUILD_BASE --recurse --workers=$MAX_WORKERS --worker-resources=$MOCKCHAIN_RESOURCE_ALLOCATION --basedir=$MY_WORKSPACE --log=$MOCKCHAIN_LOG --tmp_prefix=$USER --addrepo=$LOCAL_URL --addrepo=$LOCAL_SRC_URL $CMD_OPTIONS -m --rebuild $SRPMS_LIST"
 echo ""
