@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2019 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -286,7 +286,7 @@ function init_output_dir {
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/pxeboot
 
    echo "  Preparing package lists"
-   image_inc_list iso std centos > "${PKGLIST_TI}"
+   image_inc_list iso std centos > "${PKGLIST_STX}"
    image_inc_list iso dev centos > "${PKGLIST_DEV}"
 
    echo "  Copying base files"
@@ -327,7 +327,7 @@ function init_output_dir {
    \cp -L "$BSP_FILES_PATH/pxeboot_grub.cfg" "$OUTPUT_DIST_DIR/isolinux/pxeboot/pxeboot_grub.cfg"
 
    # Update the efiboot.img (See https://wiki.archlinux.org/index.php/Remastering_the_Install_ISO)
-   # We need to mount the image file, replace the grub.cfg file with the Titanium Cloud one, and unmount.
+   # We need to mount the image file, replace the grub.cfg file with the StarlingX one, and unmount.
    # Script update-efiboot-image will do this. If there is not loop device on the build machine
    # then this script must be executed manually prior.
 
@@ -427,9 +427,16 @@ function final_touches {
       \cp $OUTPUT_DIST_DIR/comps.xml $OUTPUT_DIST_DIR/comps.xml.bak
    fi
 
+   local EXTRA_ARGS=""
+   if [ "x${RELEASE_BUILD}" == "x" ]; then
+      EXTRA_ARGS="--pkglist '${PKGLIST_DEV}'"
+   fi
+
    python "$BSP_FILES_PATH/platform_comps.py" \
-      --pkgdir "$OUTPUT_DIST_DIR/isolinux/Packages" \
-      --groups "$OUTPUT_DIST_DIR/comps.xml"
+      --groups "$OUTPUT_DIST_DIR/comps.xml" \
+      --pkglist "${PKGLIST_MINIMAL}" \
+      --pkglist "${PKGLIST_STX}" \
+      ${EXTRA_ARGS}
    if [ $? -ne 0 ]; then
       echo "Failed to update comps.xml"
       exit 1
@@ -674,14 +681,14 @@ fi
 
 (
 printf "\n*************************\n"
-printf   "Create Titanium Cloud/CentOS Boot CD\n"
+printf   "Create StarlingX/CentOS Boot CD\n"
 printf   "*************************\n\n"
 
 # Init variables
 init_vars
 check_vars
 PKGLIST_MINIMAL="${INTERNAL_REPO_ROOT}/build-tools/build_iso/minimal_rpm_list.txt"
-PKGLIST_TI="${OUTPUT_DIR}/image.inc"
+PKGLIST_STX="${OUTPUT_DIR}/image.inc"
 PKGLIST_DEV="${OUTPUT_DIR}/image-dev.inc"
 
 # Create skeleton build dir
@@ -693,13 +700,13 @@ install_pkg_list "${PKGLIST_MINIMAL}"
 
 # Find all CGCS packages
 # SAL exit 0
-echo "Installing Titanium Cloud packages"
-install_pkg_list "${PKGLIST_TI}"
+echo "Installing StarlingX packages"
+install_pkg_list "${PKGLIST_STX}"
 if [ $? -eq 2 ]; then
 	exit 1
 fi
 if [ "x${RELEASE_BUILD}" == "x" ]; then
-    echo "Installing Titanium Cloud developer packages"
+    echo "Installing StarlingX developer packages"
     install_pkg_list "${PKGLIST_DEV}"
     if [ $? -eq 2 ]; then
         exit 1
@@ -730,7 +737,7 @@ final_touches
 # Sign the ISO
 sign_iso
 
-make_report "${PKGLIST_MINIMAL}" "${PKGLIST_TI}"
+make_report "${PKGLIST_MINIMAL}" "${PKGLIST_STX}"
 
 # Check sanity
 FILESIZE=$(wc -c <"$OUTPUT_FILE")
