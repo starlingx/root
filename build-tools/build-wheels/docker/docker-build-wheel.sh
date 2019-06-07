@@ -165,9 +165,16 @@ function from_git {
             continue
         fi
 
-        git checkout $branch
+        git fetch $gitrepo $branch
         if [ $? -ne 0 ]; then
-            echo "Failure running: git checkout $branch"
+            echo "Failure running: git fetch $gitrepo $branch"
+            echo $wheelname >> $FAILED_LOG
+            continue
+        fi
+
+        git checkout FETCH_HEAD
+        if [ $? -ne 0 ]; then
+            echo "Failure running: git checkout FETCH_HEAD"
             echo $wheelname >> $FAILED_LOG
             continue
         fi
