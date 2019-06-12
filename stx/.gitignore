@@ -8,6 +8,7 @@
 /downloads
 /git
 installer-prebuilt
+/stx-ansible-playbooks
 /stx-clients
 /stx-config
 /stx-fault
