@@ -19,7 +19,7 @@ fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
 
-SUPPORTED_OS_ARGS=('centos')
+SUPPORTED_OS_ARGS=('centos' 'distroless')
 OS=centos
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
@@ -449,6 +449,87 @@ function build_image_docker {
     post_build ${image_build_file} ${LABEL} ${build_image_name}
 }
 
+function build_image_script {
+    local image_build_file=$1
+
+    # Get the supported args
+    #
+    local LABEL
+    LABEL=$(source ${image_build_file} && echo ${LABEL})
+    local SOURCE_REPO
+    SOURCE_REPO=$(source ${image_build_file} && echo ${SOURCE_REPO})
+    local SOURCE_REF
+    SOURCE_REF=$(source ${image_build_file} && echo ${SOURCE_REF})
+    local COMMAND
+    COMMAND=$(source ${image_build_file} && echo ${COMMAND})
+    local SCRIPT
+    SCRIPT=$(source ${image_build_file} && echo ${SCRIPT})
+    local ARGS
+    ARGS=$(source ${image_build_file} && echo ${ARGS})
+
+    if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
+        echo "Skipping ${LABEL}"
+        return 0
+    fi
+
+    if ! is_empty ${ONLY[@]} && ! is_in ${PROJECT} ${ONLY[@]} && ! is_in ${LABEL} ${ONLY[@]}; then
+        echo "Skipping ${LABEL}"
+        return 0
+    fi
+
+    # Validate the COMMAND option
+    SUPPORTED_COMMAND_ARGS=('bash')
+    local VALID_COMMAND=1
+    for supported_command in ${SUPPORTED_COMMAND_ARGS[@]}; do
+        if [ "$COMMAND" = "${supported_command}" ]; then
+            VALID_COMMAND=0
+            break
+        fi
+    done
+    if [ ${VALID_COMMAND} -ne 0 ]; then
+        echo "Unsupported build command specified: ${COMMAND}" >&2
+        echo "Supported command options: ${SUPPORTED_COMMAND_ARGS[@]}" >&2
+        RESULTS_FAILED+=(${LABEL})
+        return 1
+    fi
+
+    # Validate the SCRIPT file existed
+    if [ ! -f $(dirname ${image_build_file})/${SCRIPT} ]; then
+        echo "${SCRIPT} not found" >&2
+        RESULTS_FAILED+=(${LABEL})
+        return 1
+    fi
+
+    echo "Building ${LABEL}"
+
+    local ORIGWD=${PWD}
+
+    echo "get_git '${SOURCE_REPO}' '${SOURCE_REF}'"
+    get_git "${SOURCE_REPO}" "${SOURCE_REF}"
+    if [ $? -ne 0 ]; then
+        echo "Failed to clone or update ${SOURCE_REPO}. Aborting..." >&2
+        cd ${ORIGWD}
+        return 1
+    fi
+
+    cp $(dirname ${image_build_file})/${SCRIPT} ${SCRIPT}
+    local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
+
+    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
+
+    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "Failed to build ${LABEL}... Aborting"
+        RESULTS_FAILED+=(${LABEL})
+        return 1
+    fi
+
+    # check docker image
+
+    cd ${ORIGWD}
+
+    post_build ${image_build_file} ${LABEL} ${build_image_name}
+}
+
 function build_image {
     local image_build_file=$1
 
@@ -463,6 +544,10 @@ function build_image {
             ;;
         docker)
             build_image_docker ${image_build_file}
+            return $?
+            ;;
+        script)
+            build_image_script ${image_build_file}
             return $?
             ;;
         *)
