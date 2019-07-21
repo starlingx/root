@@ -448,6 +448,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Stage metadata file, if present
+if [ -e usr/lib/application/metadata.yaml ]; then
+    cp usr/lib/application/metadata.yaml staging/.
+fi
+
 # Merge yaml files:
 APP_YAML=${APP_NAME}.yaml
 parse_yaml $APP_YAML `ls -rt usr/lib/armada/*.yaml`
