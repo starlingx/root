@@ -3,6 +3,8 @@
 # Utility for adding patches to an unpatched ISO
 #
 
+source "${BUILD_ISO_DIR}/image-utils.sh"
+
 if [ -z "${MY_REPO}" ]; then
     echo "Required environment variable MY_REPO is not set"
     exit 1
@@ -16,7 +18,13 @@ if [ ! -x ${SETUP_PATCH_REPO} ]; then
 fi
 
 REPO_UPGRADES_DIR=${STX_DIR}/common-bsp/files/upgrades
-RELEASE_INFO=${STX_DIR}/stx-integ/utilities/build-info/release-info.inc
+RELEASE_INFO="$(get_release_info)"
+
+if [ $? -ne 0 ]; then
+   echo "ERROR: failed to find a release info file."
+   exit 1
+fi
+
 PLATFORM_RELEASE=$(source $RELEASE_INFO && echo $PLATFORM_RELEASE)
 
 function usage() {

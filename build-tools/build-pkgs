@@ -80,7 +80,7 @@ if [ ! -d $DEP_CACHE ]; then
 else
     DEP_TMP=$(mktemp)
     make_cache_current_rpms $DEP_TMP
-    if diff $DEP_DELTAS $DEP_TMP; then
+    if diff $DEP_DELTAS $DEP_TMP > /dev/null; then
         echo "No changes for stx projects"
         rm $DEP_TMP
     else

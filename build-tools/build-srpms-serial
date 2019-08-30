@@ -15,7 +15,7 @@
 #
 # The location of packages to be build are identified by
 # <distro>_pkg_dirs[_<opt-build-type>] files located at the root of
-# any git tree (e.g. stx/stx-integ/centos_pkg_dirs).
+# any git tree (e.g. stx/integ/centos_pkg_dirs).
 #
 # The build of an individul package is driven by it's build_srpm.data
 # file plus a <pkg-name>.spec file or an srpm_path file.
@@ -31,6 +31,7 @@ source $BUILD_SRPMS_SERIAL_DIR/spec-utils
 source $BUILD_SRPMS_SERIAL_DIR/srpm-utils
 source $BUILD_SRPMS_SERIAL_DIR/classify
 source $BUILD_SRPMS_SERIAL_DIR/build-srpms-common.sh
+source $BUILD_SRPMS_SERIAL_DIR/image-utils.sh
 
 
 INITIAL_DIR=$(pwd)
@@ -281,9 +282,10 @@ if [ ! -d $BUILD_BASE ]; then
    exit 1
 fi
 
-RELEASE_INFO_FILE=$STX_BASE/stx-integ/utilities/build-info/release-info.inc
-if [ -f $RELEASE_INFO_FILE ]; then
-   source $RELEASE_INFO_FILE
+RELEASE_INFO_FILE="$(get_release_info)"
+
+if [ -f "$RELEASE_INFO_FILE" ]; then
+   source "$RELEASE_INFO_FILE"
 else
    echo "ERROR: $FUNCNAME (${LINENO}): failed to find RELEASE_INFO_FILE=$RELEASE_INFO_FILE"
    exit 1
@@ -401,7 +403,7 @@ build_dir () {
              echo "ERROR: $FUNCNAME (${LINENO}): Invalid srpm path '$p', evaluated as '$ORIG_SRPM_PATH', found in '$PKG_BASE/$SRPM_LIST_PATH'"
              ORIG_SRPM_PATH=""
              return 3
-         fi 
+         fi
       done
    fi
 

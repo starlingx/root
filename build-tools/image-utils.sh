@@ -12,6 +12,38 @@ IMAGE_UTILS_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 
 source "${IMAGE_UTILS_DIR}/git-utils.sh"
 
+get_release_info () {
+    local dir=""
+    local path=""
+
+    for dir in utilities integ stx-utilities stx-integ; do
+        path="$MY_REPO/stx/$dir/utilities/build-info/release-info.inc"
+        if [ -f "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+
+    echo "/invalid-path-to-release-info.inc"
+    return 1
+}
+
+get_bsp_dir () {
+    local dir=""
+    local path=""
+
+    for dir in stx-metal metal; do
+        path="$MY_REPO/stx/$dir/bsp-files"
+        if [ -d "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+
+    echo "/invalid-path-to-bsp-files"
+    return 1
+}
+
 #
 # image_inc_list <build_target> <build_type> <distro>
 #
@@ -48,7 +80,7 @@ image_inc_list () {
         grep '^[^#]' ${root_file}
     fi
     for d in $GIT_LIST; do
-        find $d -maxdepth 1 -name "${search_target}" -exec grep '^[^#]' {} +
+        find $d/ -maxdepth 1 -name "${search_target}" -exec grep '^[^#]' {} +
     done
     ) | sort --unique
 }

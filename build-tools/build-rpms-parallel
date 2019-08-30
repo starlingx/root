@@ -1515,17 +1515,17 @@ else
     RPM_BUILD_ROOT=$BUILD_BASE/rpmbuild
 fi
 
-RELEASE_INFO_FILE=$STX_BASE/stx-integ/utilities/build-info/release-info.inc
-if [ -f $RELEASE_INFO_FILE ]; then
-   source $RELEASE_INFO_FILE
+RELEASE_INFO_FILE="$(get_release_info)"
+
+if [ -f "$RELEASE_INFO_FILE" ]; then
+   source "$RELEASE_INFO_FILE"
 else
-   echo "ERROR: failed to find RELEASE_INFO_FILE=$RELEASE_INFO_FILE"
-   exit 1
+   echo "Warning: failed to find RELEASE_INFO_FILE=$RELEASE_INFO_FILE"
 fi
 
 if [ "x$PLATFORM_RELEASE" == "x" ]; then
-   echo "ERROR: PLATFORM_RELEASE is not defined in $RELEASE_INFO_FILE"
-   exit 1
+   echo "Warning: PLATFORM_RELEASE is not defined in $RELEASE_INFO_FILE"
+   PLATFORM_RELEASE="00.00"
 fi
 
 export RPM_BUILD_BASE="$RPM_BUILD_ROOT"

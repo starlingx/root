@@ -1283,9 +1283,10 @@ else
     RPM_BUILD_ROOT=$BUILD_BASE/rpmbuild
 fi
 
-RELEASE_INFO_FILE=$STX_BASE/stx-integ/utilities/build-info/release-info.inc
-if [ -f $RELEASE_INFO_FILE ]; then
-   source $RELEASE_INFO_FILE
+RELEASE_INFO_FILE="$(get_release_info)"
+
+if [ -f "$RELEASE_INFO_FILE" ]; then
+   source "$RELEASE_INFO_FILE"
 else
    echo "ERROR: failed to find RELEASE_INFO_FILE=$RELEASE_INFO_FILE"
    exit 1

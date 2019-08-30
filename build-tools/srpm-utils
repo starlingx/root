@@ -3081,7 +3081,7 @@ srpm_match_target_list () {
                fi
            fi
        done
-   fi 
+   fi
 
    SERVICE=$(srpm_find_tag Service "$SRPM_FILE")
    if [ $? -eq 0 ]; then

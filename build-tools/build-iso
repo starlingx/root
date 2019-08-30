@@ -16,6 +16,7 @@
 
 BUILD_ISO_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${BUILD_ISO_DIR}/image-utils.sh"
+source "${BUILD_ISO_DIR}/git-utils.sh"
 
 usage () {
     echo ""
@@ -39,6 +40,7 @@ usage () {
 MY_YUM_CONF=""
 STD_REPO_ID="local-std"
 RT_REPO_ID="local-rt"
+DISTRO_LAYER_REPO_ID="StxCentos7Distro"
 
 NPROCS=$(nproc)
 
@@ -263,12 +265,16 @@ function check_vars {
       exit 1
    fi
 
-   RELEASE_INFO=$STX_DIR/stx-integ/utilities/build-info/release-info.inc
-   export PLATFORM_RELEASE=$(source $RELEASE_INFO && echo $PLATFORM_RELEASE)
+   RELEASE_INFO="$(get_release_info)"
+   if [ $? -ne 0 ]; then
+      echo "ERROR: failed to find a release info file."
+      exit 1
+   fi
+
+   export PLATFORM_RELEASE=$(source "$RELEASE_INFO" && echo $PLATFORM_RELEASE)
 
    # Where BSP files live
-   export BSP_FILES_PATH="$STX_DIR/stx-metal/bsp-files"
-
+   export BSP_FILES_PATH="$(get_bsp_dir)"
    echo "  Done"
    echo ""
 }
@@ -467,13 +473,20 @@ function final_touches {
 }
 
 function extract_pkg_from_local_repo {
-   local yum_conf=$1
-   local repoid=$2
-   local pkgname=$3
+   local pkgname=$1
+   local yum_conf=$2
+   shift 2
 
-   local pkgfile=$(repoquery --config=${yum_conf} --repoid=${repoid} --location -q ${pkgname})
+   local repoid=""
+   local repoid_arg=""
+
+   for repoid in $@; do
+      repoid_arg+=" --repoid=${repoid}"
+   done
+
+   local pkgfile=$(repoquery --config=${yum_conf} ${repoid_arg} --location -q ${pkgname})
    if [ -z "${pkgfile}" ]; then
-      echo "Could not find package $pkgname in $repodir"
+      echo "Could not find package $pkgname in $@"
       exit 1
    fi
 
@@ -498,9 +511,9 @@ function extract_installer_files {
 
    \cd kickstart.work
 
-   extract_pkg_from_local_repo ${MY_YUM_CONF} ${STD_REPO_ID} platform-kickstarts
-   extract_pkg_from_local_repo ${MY_YUM_CONF} ${STD_REPO_ID} platform-kickstarts-pxeboot
-   extract_pkg_from_local_repo ${MY_YUM_CONF} ${STD_REPO_ID} platform-kickstarts-extracfgs
+   extract_pkg_from_local_repo platform-kickstarts ${MY_YUM_CONF} ${STD_REPO_ID}
+   extract_pkg_from_local_repo platform-kickstarts-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID}
+   extract_pkg_from_local_repo platform-kickstarts-extracfgs ${MY_YUM_CONF} ${STD_REPO_ID}
 
    \cp --preserve=all www/pages/feed/rel-*/*.cfg pxeboot/*.cfg ../kickstarts/ &&
    \cp --preserve=all extra_cfgs/*.cfg ../extra_cfgs/
@@ -556,9 +569,9 @@ EOM
    \mkdir $WORKDIR
    \cd $WORKDIR
 
-   extract_pkg_from_local_repo ${MY_YUM_CONF} ${STD_REPO_ID} pxe-network-installer
-   extract_pkg_from_local_repo ${MY_YUM_CONF} ${STD_REPO_ID} grub2-efi-x64-pxeboot
-   extract_pkg_from_local_repo ${MY_YUM_CONF} ${STD_REPO_ID} grub2-efi-x64-modules
+   extract_pkg_from_local_repo pxe-network-installer ${MY_YUM_CONF} ${STD_REPO_ID}
+   extract_pkg_from_local_repo grub2-efi-x64-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID} ${DISTRO_LAYER_REPO_ID}
+   extract_pkg_from_local_repo grub2-efi-x64-modules ${MY_YUM_CONF} ${STD_REPO_ID} ${DISTRO_LAYER_REPO_ID}
 
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/centos/x86_64-efi
 
@@ -690,6 +703,7 @@ check_vars
 PKGLIST_MINIMAL="${INTERNAL_REPO_ROOT}/build-tools/build_iso/minimal_rpm_list.txt"
 PKGLIST_STX="${OUTPUT_DIR}/image.inc"
 PKGLIST_DEV="${OUTPUT_DIR}/image-dev.inc"
+DISTRO="centos"
 
 # Create skeleton build dir
 init_output_dir
@@ -697,21 +711,48 @@ init_output_dir
 # Create the vanilla DVD
 echo "Copying vanilla CentOS RPMs"
 install_pkg_list "${PKGLIST_MINIMAL}"
+if [ $? -eq 2 ]; then
+    echo "Error: Failed to install packages from ${PKGLIST_MINIMAL}"
+    exit 1
+fi
 
-# Find all CGCS packages
-# SAL exit 0
+# Find all StarlingX packages built locally
 echo "Installing StarlingX packages"
 install_pkg_list "${PKGLIST_STX}"
 if [ $? -eq 2 ]; then
-	exit 1
+    echo "Error: Failed to install packages from ${PKGLIST_STX}"
+    exit 1
 fi
+
 if [ "x${RELEASE_BUILD}" == "x" ]; then
     echo "Installing StarlingX developer packages"
     install_pkg_list "${PKGLIST_DEV}"
     if [ $? -eq 2 ]; then
+        echo "Error: Failed to install packages from ${PKGLIST_DEV}"
         exit 1
     fi
 fi
+
+
+required_layer_cfg_name="${DISTRO}_required_build_layer.cfg"
+layer_cfg_name="${DISTRO}_build_layer.cfg"
+layer_cfgs=$(find $(for x in $GIT_LIST; do echo $x/; done) -maxdepth 1 -name ${layer_cfg_name})
+for line in $(grep -v '^#' ${BUILD_ISO_DIR}/build_iso/${required_layer_cfg_name}); do
+    layer=${line%%,*}
+    url=${line##*,}
+    cat $layer_cfgs | grep -q "^${layer}$"
+    if [ $? -ne 0 ]; then
+        echo "need ${layer} from ${url}"
+        # layer_inc=${MY_REPO}/cgcs-centos-repo/$(basename ${url})
+        layer_inc=${MY_WORKSPACE}/export/$(basename ${url})
+        curl -s ${url} > ${layer_inc}
+        install_pkg_list ${layer_inc}
+        if [ $? -eq 2 ]; then
+            echo "Error: Failed to install packages from ${layer_inc}"
+            exit 1
+        fi
+    fi
+done
 
 \cd $OUTPUT_DIST_DIR
 chmod -R 644 isolinux/Packages/*

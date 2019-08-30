@@ -103,7 +103,9 @@ function sign_packages {
     _MOCK_CFG=$MY_BUILD_DIR/${MY_BUILD_ENVIRONMENT}-sign.cfg
 
     # recreate configuration file 
-    rm $_MOCK_CFG
+    if [ -f $_MOCK_CFG ]; then
+        rm $_MOCK_CFG
+    fi
     export BUILD_TYPE=std
     export MY_BUILD_DIR_TOP=$MY_BUILD_DIR
     modify-build-cfg $_MOCK_CFG

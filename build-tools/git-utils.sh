@@ -20,7 +20,7 @@ git_ctx_root_dir () {
 git_list () {
     local DIR=${1}
 
-    find "${DIR}" -type d -name '.git' -exec dirname {} \; | sort -V
+    find -L "${DIR}" -maxdepth 5 -type d -name '.git' -exec dirname {} \; | sort -V
 }
 
 

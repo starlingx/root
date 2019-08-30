@@ -112,8 +112,14 @@ function check_vars {
        exit 1
    fi
 
-   RELEASE_INFO=$STX_DIR/stx-integ/utilities/build-info/release-info.inc
-   export PLATFORM_RELEASE=$(source $RELEASE_INFO && echo $PLATFORM_RELEASE)
+   RELEASE_INFO="$(get_release_info)"
+   if [ $? -ne 0 ]; then
+      echo "ERROR: failed to find a release info file."
+      exit 1
+   fi
+
+
+   export PLATFORM_RELEASE=$(source "$RELEASE_INFO" && echo $PLATFORM_RELEASE)
 }
 
 

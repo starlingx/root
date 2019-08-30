@@ -373,21 +373,24 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
-# Validate application
-APP_REPO=${MY_REPO}/stx/stx-config/kubernetes/applications/
-if [ ! -d ${APP_REPO} ];then
-    echo "Unable to find the applications directory: ${APP_REPO}" >&2
-    exit 1
-fi
-AVALIABLE_APPS=($(ls ${APP_REPO}))
-if [ ${#AVALIABLE_APPS[@]} -eq 0 ]; then
-    echo "No application found" >&2
-    exit 1
-fi
-if ! is_in ${APP_NAME} ${AVALIABLE_APPS[@]}; then
-    echo "Invalid application: ${APP_NAME}" >&2
-    exit 1
-fi
+# Commenting out this code that attempts to validate the APP_NAME.
+# It makes too many assumptions about the location and naming of apps.
+#
+# # Validate application
+# APP_REPO=${MY_REPO}/stx/stx-config/kubernetes/applications/
+# if [ ! -d ${APP_REPO} ];then
+#     echo "Unable to find the applications directory: ${APP_REPO}" >&2
+#     exit 1
+# fi
+# AVAILABLE_APPS=($(ls ${APP_REPO}))
+# if [ ${#AVAILABLE_APPS[@]} -eq 0 ]; then
+#     echo "No application found" >&2
+#     exit 1
+# fi
+# if ! is_in ${APP_NAME} ${AVAILABLE_APPS[@]}; then
+#     echo "Invalid application: ${APP_NAME}" >&2
+#     exit 1
+# fi
 
 # Cleanup the previous chart build workspace
 BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-helm/stx
