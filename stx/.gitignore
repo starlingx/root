@@ -13,6 +13,7 @@ installer-prebuilt
 /config-files
 /containers
 /distcloud-client
+/docs
 /downloads
 /fault
 /git
@@ -27,6 +28,8 @@ installer-prebuilt
 /openstack-armada-app
 /platform-armada-app
 /stx-puppet
+/test
 /update
 /upstream
 /utilities
+/zuul-jobs
