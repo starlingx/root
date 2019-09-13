@@ -19,7 +19,7 @@ IMAGE_TAG="master-centos-stable-latest"
 OUTPUT_FILE="stx-remote-cli"
 VERSION="1.0"
 
-CLIENTS_REPO="${MY_REPO}/stx/stx-clients"
+CLIENTS_REPO="${MY_REPO}/stx/clients"
 REMOTE_CLI_FOLDER="remote_cli"
 BUILD_OUTPUT_PATH="${MY_WORKSPACE}/std/build-remote-cli"
 TAG_FILE="docker_image_version.sh"
