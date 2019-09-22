@@ -451,6 +451,15 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Stage all the plugin wheels, if present
+if [ -d "plugins" ]; then
+    cp -R plugins staging/plugins
+    if [ $? -ne 0 ]; then
+        echo "Failed to copy the wheels from ${BUILD_OUTPUT_PATH}/wheels to ${BUILD_OUTPUT_PATH}/staging/plugins" >&2
+        exit 1
+    fi
+fi
+
 # Stage metadata file, if present
 if [ -e usr/lib/application/metadata.yaml ]; then
     cp usr/lib/application/metadata.yaml staging/.
