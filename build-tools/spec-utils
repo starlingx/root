@@ -4,6 +4,7 @@ spec_query_with_macros () {
    local SPEC_FILE=$1; shift
    local BUILD_DIR=$1; shift
    local TIS_PATCH_VER=$1; shift
+   local PBR_VERSION=$1; shift
    local rc
 
    TMPSPEC=$(mktemp /tmp/spec-utils-XXXXXX)
@@ -13,6 +14,7 @@ spec_query_with_macros () {
       --define="_tis_build_type ${BUILD_TYPE:-std}" \
       --define="_tis_dist .tis" \
       --define="tis_patch_ver ${TIS_PATCH_VER:-0}" \
+      --define="pbr_version ${PBR_VERSION:-0}" \
       --define="platform_release ${PLATFORM_RELEASE:-00.00}" \
       --define="%_topdir $BUILD_DIR" \
       "${@}" \
@@ -78,6 +80,7 @@ spec_evaluate () {
                      _tis_build_type)    MACRO_VALUE="${BUILD_TYPE}" ;;
                      _tis_dist)          MACRO_VALUE=".tis" ;;
                      tis_patch_ver)      MACRO_VALUE="{TIS_PATCH_VER:-0}" ;;
+                     pbr_version)        MACRO_VALUE="{PBR_VERSION:-0}" ;;
                      platform_release)   MACRO_VALUE="$PLATFORM_RELEASE" ;;
                      _topdir)            MACRO_VALUE="$BUILD_DIR" ;;
                      *) ;;
@@ -148,9 +151,9 @@ spec_find_macro_via_rpm () {
    # >&2 echo "spec_find_macro_via_rpm: TARGET=$TARGET"
 
    case "$TARGET" in
-      name|_name)       (spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{NAME}\n' | head -n 1 ; exit ${PIPESTATUS[0]} ); RC=$? ;;
-      version|_version) (spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{VERSION}\n' | head -n 1 ; exit ${PIPESTATUS[0]} ); RC=$? ;;
-      release|_release) (spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{RELEASE}\n' | head -n 1 ; exit ${PIPESTATUS[0]} ); RC=$? ;;
+      name|_name)       (spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{NAME}\n' | head -n 1 ; exit ${PIPESTATUS[0]} ); RC=$? ;;
+      version|_version) (spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{VERSION}\n' | head -n 1 ; exit ${PIPESTATUS[0]} ); RC=$? ;;
+      release|_release) (spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{RELEASE}\n' | head -n 1 ; exit ${PIPESTATUS[0]} ); RC=$? ;;
       *) ;;
    esac
 
@@ -199,6 +202,7 @@ spec_find_tag () {
    local SPEC_FILE=$2
    local RPMBUILD_DIR=$3
    local TIS_PATCH_VER=$4
+   local PBR_VERSION=$5
    local LINE=""
 
    if [ "x$RPMBUILD_DIR" == "x" ];then
@@ -209,7 +213,7 @@ spec_find_tag () {
 
    # Note: ${VAR:-val} is bash syntax for providing a default value.
    #       ie. if $VAR is not set, use 'val' as default value
-   spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} > $SPEC_FILE2
+   spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} > $SPEC_FILE2
    if [ $? != 0 ]; then
       #  spec_query_with_macros can fail on grub2 if it's just a spec file without SOURCES
       \cp $SPEC_FILE $SPEC_FILE2
@@ -326,14 +330,14 @@ spec_list_packages () {
 
    if [ "$bd" == "SPECS" ]; then
        local dd=$(dirname $d)
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}\n' --define="%_topdir $dd" 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}\n' --define="%_topdir $dd" 2>> /dev/null 
    else
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}\n' 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}\n' 2>> /dev/null 
    fi
 
    if [ $? -ne 0 ]; then
       #  spec_query_with_macros can fail on grub2 if it's just a spec file without SOURCES
-      local NAME=$(spec_find_tag Name "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+      local NAME=$(spec_find_tag Name "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
       if [ $? -ne 0 ]; then
          >&2 echo "ERROR: failed to evaluate 'Name'"
          return 1
@@ -353,7 +357,7 @@ spec_list_packages () {
           fi
           # >&2 echo "spec_list_packages: PKG_NAME_TEMP=$PKG_NAME_TEMP"
    
-          PKG_NAME=$(spec_evaluate "$PKG_NAME_TEMP" "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+          PKG_NAME=$(spec_evaluate "$PKG_NAME_TEMP" "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
           if [ $? -ne 0 ]; then
               >&2 echo "ERROR: failed to evaluate package '$PACKAGE_LINE'"
               return 1
@@ -378,20 +382,20 @@ spec_list_versioned_packages () {
 
    if [ "$bd" == "SPECS" ]; then
        local dd=$(dirname $d)
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}-%{version}\n' --define="%_topdir $dd" 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}-%{version}\n' --define="%_topdir $dd" 2>> /dev/null 
    else
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}-%{version}\n' 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}-%{version}\n' 2>> /dev/null 
    fi
 
    if [ $? -ne 0 ]; then
       #  spec_query_with_macros can fail on grub2 if it's just a spec file without SOURCES
-      local NAME=$(spec_find_tag Name "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+      local NAME=$(spec_find_tag Name "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
       if [ $? -ne 0 ]; then
          >&2 echo "ERROR: failed to evaluate 'Name'"
          return 1
       fi
 
-      local VERSION=$(spec_find_tag Version "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+      local VERSION=$(spec_find_tag Version "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
       echo "$NAME-$VERSION"
    
       grep "^%package" $SPEC_FILE | while read PACKAGE_LINE; do
@@ -407,7 +411,7 @@ spec_list_versioned_packages () {
           fi
           # >&2 echo "spec_list_packages: PKG_NAME_TEMP=$PKG_NAME_TEMP"
    
-          PKG_NAME=$(spec_evaluate "$PKG_NAME_TEMP" "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+          PKG_NAME=$(spec_evaluate "$PKG_NAME_TEMP" "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
           if [ $? -ne 0 ]; then
               >&2 echo "ERROR: failed to evaluate package '$PACKAGE_LINE'"
               return 1
@@ -431,9 +435,9 @@ spec_name_ver_rel () {
       RPMBUILD_DIR=$(dirname $(dirname $SPEC_FILE))
    fi
 
-   NAME=$(spec_find_tag Name $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
-   VERSION=$(spec_find_tag Version $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
-   RELEASE=$(spec_find_tag Release $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+   NAME=$(spec_find_tag Name $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
+   VERSION=$(spec_find_tag Version $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
+   RELEASE=$(spec_find_tag Release $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
    echo "$NAME-$VERSION-$RELEASE"
 }
 
@@ -450,21 +454,21 @@ spec_list_ver_rel_packages () {
 
    if [ "$bd" == "SPECS" ]; then
        local dd=$(dirname $d)
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}-%{version}-%{release}\n' --define="%_topdir $dd" 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}-%{version}-%{release}\n' --define="%_topdir $dd" 2>> /dev/null 
    else
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}-%{version}-%{release}\n' 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}-%{version}-%{release}\n' 2>> /dev/null 
    fi
 
    if [ $? -ne 0 ]; then
       #  spec_query_with_macros can fail on grub2 if it's just a spec file without SOURCES
-      local NAME=$(spec_find_tag Name "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+      local NAME=$(spec_find_tag Name "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
       if [ $? -ne 0 ]; then
          >&2 echo "ERROR: failed to evaluate 'Name'"
          return 1
       fi
 
-      local VERSION=$(spec_find_tag Version "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
-      local RELEASE=$(spec_find_tag Release "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+      local VERSION=$(spec_find_tag Version "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
+      local RELEASE=$(spec_find_tag Release "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0})
       echo "$NAME-$VERSION-$RELEASE"
    
       grep "^%package" $SPEC_FILE | while read PACKAGE_LINE; do
@@ -480,7 +484,7 @@ spec_list_ver_rel_packages () {
           fi
           # >&2 echo "spec_list_packages: PKG_NAME_TEMP=$PKG_NAME_TEMP"
    
-          PKG_NAME=$(spec_evaluate "$PKG_NAME_TEMP" "$SPEC_FILE" $RPMBUILD_DIR ${TIS_PATCH_VER:-0})
+          PKG_NAME=$(spec_evaluate "$PKG_NAME_TEMP" "$SPEC_FILE" $RPMBUILD_DIR)
           if [ $? -ne 0 ]; then
               >&2 echo "ERROR: failed to evaluate package '$PACKAGE_LINE'"
               return 1
@@ -505,9 +509,9 @@ spec_list_ver_rel_arch_packages () {
 
    if [ "$bd" == "SPECS" ]; then
        local dd=$(dirname $d)
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}-%{version}-%{release}.%{arch}\n' --define="%_topdir $dd" 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}-%{version}-%{release}.%{arch}\n' --define="%_topdir $dd" 2>> /dev/null 
    else
-       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} -q --qf '%{name}-%{version}-%{release}.%{arch}\n' 2>> /dev/null 
+       spec_query_with_macros $SPEC_FILE $RPMBUILD_DIR ${TIS_PATCH_VER:-0} ${PBR_VERSION:-0} -q --qf '%{name}-%{version}-%{release}.%{arch}\n' 2>> /dev/null 
    fi
 }
 
@@ -690,6 +694,10 @@ spec_untar_path () {
 
 spec_validate_tis_release () {
    local SPEC_FILE=$1
+
+   if rpmspec --define='_tis_dist .tis' -P $SPEC_FILE 2>/dev/null | grep '^Version:' | grep '%{pbr_version}'; then
+      return 0
+   fi
 
    # TIS Release value must include either %{?_tis_dist}.%{tis_patch_ver} or %{tis_patch_ver}%{?_tis_dist}
    # Because spec_query_with_macros defines tis_patch_ver, we're using rpmspec directly here

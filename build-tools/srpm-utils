@@ -155,8 +155,9 @@ srpm_create_raw_extract_script () {
    local TIS_PATCH_VER=$5
    local RAW_SCRIPT=$6
    local TAR_DIR=$7
+   local PBR_VERSION=${8:-0}
 
-   echo "SPEC_FILE=$SPEC_FILE  ROOT_DIR=$ROOT_DIR  RPMBUILD_DIR=$RPMBUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  RAW_SCRIPT=$RAW_SCRIPT  TAR_DIR=$TAR_DIR"
+   echo "SPEC_FILE=$SPEC_FILE  ROOT_DIR=$ROOT_DIR  RPMBUILD_DIR=$RPMBUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  RAW_SCRIPT=$RAW_SCRIPT  TAR_DIR=$TAR_DIR PBR_VERSION=$PBR_VERSION"
    local BUILD_DIR="$RPMBUILD_DIR/BUILD"
    local ApplyPatchCount=0
 
@@ -184,11 +185,12 @@ srpm_create_raw_extract_script () {
    local SAME=0
 
    # Build the srpm as though for std build, for naming consistency
-   echo "stdbuf -oL -eL rpmbuild -bp $SPEC_FILE --root $ROOT_DIR --define='%_topdir $RPMBUILD_DIR' --define='_tis_dist .tis' --define='tis_patch_ver $TIS_PATCH_VER' --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG"
+   echo "stdbuf -oL -eL rpmbuild -bp $SPEC_FILE --root $ROOT_DIR --define='%_topdir $RPMBUILD_DIR' --define='_tis_dist .tis' --define='tis_patch_ver $TIS_PATCH_VER' --define='pbr_version $PBR_VERSION' --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG"
    stdbuf -oL -eL rpmbuild -bp $SPEC_FILE --root $ROOT_DIR \
       --define="%_topdir $RPMBUILD_DIR" \
       --define='_tis_dist .tis' \
       --define="tis_patch_ver $TIS_PATCH_VER" \
+      --define="pbr_version $PBR_VERSION" \
       --define="_tis_build_type $BUILD_TYPE" \
       --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG
    if [ $? -ne 0 ]; then
@@ -212,6 +214,7 @@ srpm_create_raw_extract_script () {
          --define="%_topdir $RPMBUILD_DIR" \
          --define='_tis_dist .tis' \
          --define="tis_patch_ver $TIS_PATCH_VER" \
+         --define="pbr_version $PBR_VERSION" \
          --define="_tis_build_type $BUILD_TYPE" \
          --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG
       if [ $? -ne 0 ]; then
@@ -1230,6 +1233,7 @@ srpm_build_std_dictionary () {
 srpm_assemble () {
    local FULL_BUILD_DIR=$1
    local TIS_PATCH_VER=$2
+   local PBR_VERSION=$3
 
    local SPEC_PATH
    local SPEC
@@ -1257,7 +1261,7 @@ srpm_assemble () {
           fi
       fi
 
-      RELEASE=$(spec_find_tag Release "$SPEC_PATH" "$(dirname $(dirname $SPEC_PATH))" "$TIS_PATCH_VER" 2>> /dev/null)
+      RELEASE=$(spec_find_tag Release "$SPEC_PATH" "$(dirname $(dirname $SPEC_PATH))" "$TIS_PATCH_VER" "$PBR_VERSION" 2>> /dev/null)
       if [ $? -ne 0 ]; then
           echo "ERROR: $FUNCNAME (${LINENO}): 'Release' not found in '$SPEC_PATH'"
           RELEASE="0"
@@ -1286,9 +1290,11 @@ srpm_assemble () {
           echo "SPEC file: $SPEC_PATH"
           echo "SRPM build directory: $FULL_BUILD_DIR"
           echo "TIS_PATCH_VER: $TIS_PATCH_VER"
+          echo "PBR_VERSION: $PBR_VERSION"
 
           sed -i -e "1 i%define _tis_build_type $BUILD_TYPE" $SPEC_PATH
           sed -i -e "1 i%define tis_patch_ver $TIS_PATCH_VER" $SPEC_PATH
+          sed -i -e "1 i%define pbr_version $PBR_VERSION" $SPEC_PATH
 
           # Build the srpm as though for std build, for naming consistency
           if [ "x$PLATFORM_RELEASE" == "x" ]; then
@@ -1647,9 +1653,10 @@ tarball_extract () {
    local TIS_PATCH_VER="${12}"
    local OUTPUT_FILE="${13}"
    local NO_META_PATCH=${14}
+   local PBR_VERSION=${15}
    # BUILD_TYPE exported from higher layers 
 
-   echo "tarball_extract  SPEC_DIR=$SPEC_DIR  SPEC=$SPEC  SPEC_GIT=$SPEC_GIT  SOURCE_DIR=$SOURCE_DIR  BRANCH=$BRANCH  ORIG_BRANCH=$ORIG_BRANCH  TAR_DIR=$TAR_DIR  ROOT_DIR=$ROOT_DIR  PKG_DIR=$PKG_DIR  BUILD_DIR=$BUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  OUTPUT_FILE=$OUTPUT_FILE  NO_META_PATCH=$NO_META_PATCH"
+   echo "tarball_extract  SPEC_DIR=$SPEC_DIR  SPEC=$SPEC  SPEC_GIT=$SPEC_GIT  SOURCE_DIR=$SOURCE_DIR  BRANCH=$BRANCH  ORIG_BRANCH=$ORIG_BRANCH  TAR_DIR=$TAR_DIR  ROOT_DIR=$ROOT_DIR  PKG_DIR=$PKG_DIR  BUILD_DIR=$BUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  OUTPUT_FILE=$OUTPUT_FILE  NO_META_PATCH=$NO_META_PATCH PBR_VERSION=$PBR_VERSION"
 
    if [ -f $OUTPUT_FILE ]; then
       \rm -f $OUTPUT_FILE
@@ -1706,8 +1713,8 @@ tarball_extract () {
 
        RAW_SCRIPT=$ROOT_DIR/$PKG_DIR/raw_script
        EXTRACT_SCRIPT=$ROOT_DIR/$PKG_DIR/extract_script
-       echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT' '$TAR_DIR'"
-       srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR" "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT" "$TAR_DIR"
+       echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT' '$TAR_DIR' '$PBR_VERSION'"
+       srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR" "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT" "$TAR_DIR" "$PBR_VERSION"
        if [ $? -ne 0 ]; then
            echo "ERROR: $FUNCNAME (${LINENO}): srpm_create_raw_extract_script failed"
            cd $ORIG_DIR
@@ -2194,6 +2201,7 @@ tar_and_spec_extract_to_git () {
    local BRANCH=$5
    local NO_META_PATCH=$6
    local TIS_PATCH_VER=$7
+   local PBR_VERSION=$8
    local USE_GIT=1
    local TARGET_ARCH=x86_64
 
@@ -2344,7 +2352,7 @@ tar_and_spec_extract_to_git () {
       local RPMBUILD_BUILD_DIR=""
       local OUTPUT_FILE="$ROOT_DIR/$PKG_DIR/tarball_extract_result"
 
-      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER"  "$OUTPUT_FILE"
+      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER"  "$OUTPUT_FILE" "$NO_META_PATCH" "$PBR_VERSION"
       if [ $? -ne 0 ]; then
          echo "ERROR: $FUNCNAME (${LINENO}): tarball_extract failed while extracting '$SPEC_PATH'"
          cd $ORIG_DIR
@@ -2375,7 +2383,8 @@ srpm_extract_to_git () {
    local BUILD_DIR=$4
    local BRANCH=$5
    local NO_META_PATCH=$6
-   local TIS_PATCH_VER=$7
+   local TIS_PATCH_VER=${7:-0}
+   local PBR_VERSION=${8:-0}
    local USE_GIT=1
    local TARGET_ARCH=x86_64
 
@@ -2491,7 +2500,7 @@ srpm_extract_to_git () {
       local RPMBUILD_BUILD_DIR=""
       local OUTPUT_FILE="$ROOT_DIR/$PKG_DIR/tarball_extract_result"
 
-      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER" "$OUTPUT_FILE" "$NO_META_PATCH"
+      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER" "$OUTPUT_FILE" "$NO_META_PATCH" "$PBR_VERSION"
       if [ $? -ne 0 ]; then
          echo "ERROR: $FUNCNAME (${LINENO}): tarball_extract failed while extracting '$ORIG_SRPM_PATH'"
          cd $ORIG_DIR
@@ -2580,8 +2589,8 @@ srpm_extract_to_git () {
             fi
             mkdir -p $RPMBUILD_BUILD_DIR2
 
-            echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT'  '$TAR_DIR'"
-            srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR"  "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT"  "$TAR_DIR"
+            echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT'  '$TAR_DIR' '$PBR_VERSION'"
+            srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR"  "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT"  "$TAR_DIR" "$PBR_VERSION"
             if [ $? -ne 0 ]; then
                echo "ERROR: $FUNCNAME (${LINENO}): srpm_create_raw_extract_script post meta-patches failed"
                cd $ORIG_DIR
@@ -3197,6 +3206,21 @@ srpm_git_revision_count_pkg () {
     return 0
 }
 
+srpm_pbr_version () {
+    local SRC_DIR=$1
+    local VER
+
+    pushd $SRC_DIR > /dev/null
+    VER=$(python setup.py -q rpm_version)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+    popd > /dev/null
+
+    echo $VER
+    return 0
+}
+
 srpm_source_build_data () {
     local DATA_FILE=$1
     if [ ! -f $DATA_FILE ]; then
@@ -3206,9 +3230,20 @@ srpm_source_build_data () {
     source $DATA_FILE
 
     # TIS_PATCH_VER is mandatory
-    if [ -z "$TIS_PATCH_VER" ]; then
-        >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_PATCH_VER must be set in $DATA_FILE"
+    if [ -z "$TIS_PATCH_VER" ] && [ -z "$PBR_VERSION" ]; then
+        >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_PATCH_VER or PBR_VERSION must be set in $DATA_FILE"
         return 1
+    elif [[ "$PBR_VERSION" == "auto" ]]; then
+       TIS_PATCH_VER="0"
+       if [ ! -d "$SRC_DIR" ]; then
+          >&2 echo "ERROR: $FUNCNAME (${LINENO}): SRC_DIR must specify a subgit root path"
+          return 1
+       fi
+       PBR_VERSION=$(srpm_pbr_version $SRC_DIR)
+       if [ $? -ne 0 ] || [ "$PBR_VERSION" == "" ]; then
+          >&2 echo "ERROR: $FUNCNAME (${LINENO}): Invalid PBR_VERSION '$PBR_VERSION'"
+          return 1
+       fi
     elif [[ "${TIS_PATCH_VER}" =~ [^0-9] ]]; then
         # Expand TIS_PATCH_VER with supported variables
         local -i PKG_GITREVCOUNT=0
@@ -3251,6 +3286,9 @@ srpm_source_build_data () {
         #
         TIS_PATCH_VER=$((TIS_PATCH_VER))
     fi
+
+     # to avoid mockbuild error
+     PBR_VERSION=${PBR_VERSION:=NA}
 
     return 0
 }

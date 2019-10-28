@@ -654,6 +654,7 @@ build_dir_srpm () {
       local COPY_LIST_TO_TAR
       local SRC_DIR
       local TIS_PATCH_VER
+      local PBR_VERSION
       local BUILD_IS_BIG=0
       local BUILD_IS_SLOW=0
 
@@ -751,8 +752,8 @@ build_dir_srpm () {
             return 1
          fi
 
-         echo "srpm_extract_to_git '$ORIG_SRPM_PATH' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER'"
-         srpm_extract_to_git $ORIG_SRPM_PATH $PKG_BASE $ROOT_DIR $BUILD_DIR $PKG_NAME_VER $NO_META_PATCH_FLAG $TIS_PATCH_VER
+         echo "srpm_extract_to_git '$ORIG_SRPM_PATH' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER' '$PBR_VERSION'"
+         srpm_extract_to_git $ORIG_SRPM_PATH $PKG_BASE $ROOT_DIR $BUILD_DIR $PKG_NAME_VER $NO_META_PATCH_FLAG $TIS_PATCH_VER $PBR_VERSION
          RC=$?
          if [ $RC -ne 0 ]; then
             if [ $RC -eq 1 ]; then
@@ -819,7 +820,7 @@ build_dir_srpm () {
          done
       fi
 
-      srpm_assemble $FULL_BUILD_DIR $TIS_PATCH_VER
+      srpm_assemble $FULL_BUILD_DIR $TIS_PATCH_VER $PBR_VERSION
       if [ $? -ne 0 ]; then
          echo "ERROR: $FUNCNAME (${LINENO}): failed to assemble srpm for '$PKG_NAME_VER'"
 
@@ -973,6 +974,7 @@ build_dir_spec () {
          local SRC_DIR
          local OPT_DEP_LIST
          local TIS_PATCH_VER
+         local PBR_VERSION
          local BUILD_IS_BIG=0
          local BUILD_IS_SLOW=0
 
@@ -1057,8 +1059,8 @@ build_dir_spec () {
                return 1
             fi
 
-            echo "tar_and_spec_extract_to_git '$SPEC' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER'"
-            tar_and_spec_extract_to_git "$SPEC" "$PKG_BASE" "$ROOT_DIR" "$BUILD_DIR" "$PKG_NAME_VER" "$NO_META_PATCH_FLAG" "$TIS_PATCH_VER"
+            echo "tar_and_spec_extract_to_git '$SPEC' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER' '$PBR_VERSION'"
+            tar_and_spec_extract_to_git "$SPEC" "$PKG_BASE" "$ROOT_DIR" "$BUILD_DIR" "$PKG_NAME_VER" "$NO_META_PATCH_FLAG" "$TIS_PATCH_VER" "$PBR_VERSION"
             RC=$?
             if [ $RC -ne 0 ]; then
                if [ $RC -eq 1 ]; then
