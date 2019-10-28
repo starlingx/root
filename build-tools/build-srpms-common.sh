@@ -119,7 +119,7 @@ md5sums_from_input_vars () {
         if [ "x$COPY_LIST" != "x" ]; then
             ABS_COPY_LIST=$(readlink -f $COPY_LIST)
             if [ $? -ne 0 ]; then
-                >&2  echo "ERROR: $FUNCNAME (${LINENO}): readlink -f '$COPY_LIST' -type f"
+                >&2  echo "ERROR: $FUNCNAME (${LINENO}): readlink -f '$COPY_LIST'"
                 return 1
             fi
 
