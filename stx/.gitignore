@@ -12,7 +12,8 @@ installer-prebuilt
 /config
 /config-files
 /containers
-/distcloud-client
+/distributedcloud
+/distributedcloud-client
 /docs
 /downloads
 /fault
