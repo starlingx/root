@@ -13,7 +13,7 @@ RUN set -ex ;\
                    python python-devel python-pip python-wheel \
                    wget openldap-devel mariadb mariadb-devel \
                    libvirt libvirt-devel liberasurecode-devel nss-devel \
-                   systemd-devel ;\
+                   systemd-devel postgresql-devel ;\
     pip install --upgrade pip setuptools
 
 COPY docker-build-wheel.sh /
