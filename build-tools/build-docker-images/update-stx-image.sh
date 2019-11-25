@@ -426,22 +426,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Get the existing CMD and ENTRYPOINT
+ORIG_CMD=$(docker inspect --format='{{.Config.Cmd}}' ${FROM} | sed -e 's/^\[//' -e 's/\]$//')
+ORIG_ENTRYPOINT=$(docker inspect --format='{{.Config.Entrypoint}}' ${FROM} | sed -e 's/^\[//' -e 's/\]$//')
+
 # Get the OS NAME from /etc/os-release
-OS_NAME=$(docker run --rm ${FROM} bash -c 'source /etc/os-release && echo ${NAME}')
+OS_NAME=$(docker run --entrypoint /bin/bash --rm ${FROM} -c 'source /etc/os-release && echo ${NAME}')
 
 # Run a container to install updates
 UPDATE_CONTAINER=${USER}_${LABEL}_updater_$$
-docker run --name ${UPDATE_CONTAINER} \
+docker run --entrypoint /bin/bash --name ${UPDATE_CONTAINER} \
     -v "${WORKDIR}":/image-update \
     ${FROM} \
-    bash -x -c ' bash -x /image-update/internal-update-stx-image.sh '
+    -x -c ' bash -x /image-update/internal-update-stx-image.sh '
 if [ $? -ne 0 ]; then
     echo "Failed to update image: ${FROM}" >&2
     exit 1
 fi
 
 # Commit the updated image
-docker commit --change='CMD ["bash"]' ${UPDATE_CONTAINER} ${UPDATED_IMAGE}
+docker commit --change="CMD ${ORIG_CMD}" --change="ENTRYPOINT ${ORIG_ENTRYPOINT}" ${UPDATE_CONTAINER} ${UPDATED_IMAGE}
 if [ $? -ne 0 ]; then
     echo "Failed to commit updated image: ${UPDATE_CONTAINER}" >&2
     docker rm ${UPDATE_CONTAINER} >/dev/null
@@ -453,14 +457,14 @@ docker rm ${UPDATE_CONTAINER} >/dev/null
 
 if [ "${OS_NAME}" = "CentOS Linux" ]; then
     # Record python modules and packages
-    docker run --rm ${UPDATED_IMAGE} bash -c 'rpm -qa' \
+    docker run --entrypoint /bin/bash --rm ${UPDATED_IMAGE} -c 'rpm -qa' \
         | sort > ${UPDATE_DIR}/${LABEL}-${UPDATED_IMAGE_TAG}.rpmlst
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to query RPMs from: ${UPDATED_IMAGE}" >&2
         exit 1
     fi
 
-    docker run --rm ${UPDATED_IMAGE} bash -c 'pip freeze 2>/dev/null' \
+    docker run --entrypoint /bin/bash --rm ${UPDATED_IMAGE} -c 'pip freeze 2>/dev/null' \
         | sort > ${UPDATE_DIR}/${LABEL}-${UPDATED_IMAGE_TAG}.piplst
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to query python modules from: ${UPDATED_IMAGE}" >&2

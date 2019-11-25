@@ -202,7 +202,7 @@ function post_build {
 
 
     if [ -n "${CUSTOMIZATION}" ]; then
-        docker run --name ${USER}_update_img ${build_image_name} bash -c "${CUSTOMIZATION}"
+        docker run --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
         if [ $? -ne 0 ]; then
             echo "Failed to add customization for ${LABEL}... Aborting"
             RESULTS_FAILED+=(${LABEL})
@@ -223,9 +223,9 @@ function post_build {
 
     if [ "${OS}" = "centos" ]; then
         # Record python modules and packages
-        docker run --rm ${build_image_name} bash -c 'rpm -qa | sort' \
+        docker run --entrypoint /bin/bash --rm ${build_image_name} -c 'rpm -qa | sort' \
             > ${WORKDIR}/${LABEL}-${OS}-${BUILD_STREAM}.rpmlst
-        docker run --rm ${build_image_name} bash -c 'pip freeze 2>/dev/null | sort' \
+        docker run --entrypoint /bin/bash --rm ${build_image_name} -c 'pip freeze 2>/dev/null | sort' \
             > ${WORKDIR}/${LABEL}-${OS}-${BUILD_STREAM}.piplst
     fi
 
@@ -343,7 +343,7 @@ function build_image_loci {
         # For images with apache, we need a workaround for paths
         echo "${PROFILES}" | grep -q apache
         if [ $? -eq 0 ]; then
-            docker run --name ${USER}_update_img ${build_image_name} bash -c '\
+            docker run --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c '\
                 ln -s /var/log/httpd /var/log/apache2 && \
                 ln -s /var/run/httpd /var/run/apache2 && \
                 ln -s /etc/httpd /etc/apache2 && \
