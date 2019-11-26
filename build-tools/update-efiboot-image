@@ -72,7 +72,7 @@ MOUNT_LOG_FILE=$OUTPUT_DIR/mounts_used.log
 # Clear old image file
 printf "  Delete old efiboot.img file\n"
 rm -f $OUTPUT_DIR/efiboot.img
-yum clean all -c $MY_YUM_CONF
+dnf clean all -c $MY_YUM_CONF
 
 # Copy Vanilla Centos image file
 cp -L -u $DISTRO_REPO_DIR/images/efiboot.img $OUTPUT_DIR/

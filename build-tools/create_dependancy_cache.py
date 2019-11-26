@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 #
 # Copyright (c) 2018 Wind River Systems, Inc.
@@ -219,7 +219,7 @@ def get_repo_filelists_data_list(rpm_type='RPM', arch_list=default_arch_list):
                 sub_list = file_search(d, 'repodata', 5)
                 rpm_repodata_roots.extend(sub_list)
     else:
-        print "invalid rpm_type '%s', valid types are %s" % (rpm_type, str(rpm_types))
+        print( "invalid rpm_type '%s', valid types are %s" % (rpm_type, str(rpm_types)))
         return repodata_list
 
     for d in rpm_repodata_roots:
@@ -335,7 +335,7 @@ def read_data_from_primary_xml_gz(repodata_path, rpm_type='RPM', arch=default_ar
                 for rr in r.findall('rpm:entry', ns):
                     required_name=rr.get('name')
                     # SAL print "    %s" % required_name
-                    print "    %s" % required_name
+                    print("    %s" % required_name)
                     pkg_data[rpm_type]['requires'][name].append(required_name)
             else:
                 print("%s: %s.%s has no 'rpm:requires'" % (repodata_path, name, pkg_arch))

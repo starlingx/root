@@ -191,13 +191,13 @@ fi
 
 if [ $TAR_NEEDED -gt 0 ]; then
     echo "Creating tar file: $TAR_PATH ..."
-    tar czf  $TAR_PATH $SRC_DIR --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' --transform "s,^$TRANSFORM,$TAR_NAME-$VERSION,"
+    tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' $SRC_DIR --transform "s,^$TRANSFORM,$TAR_NAME-$VERSION,"
     if [ $? -ne 0 ]; then
 		if [ "x$STAGING" != "x" ]; then
 			popd
 		fi
     
-        echo "ERROR: default_build_srpm (${LINENO}): failed to create tar file, cmd: tar czf  $TAR_PATH $SRC_DIR --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' --transform \"s,^$TRANSFORM,$TAR_NAME-$VERSION,\""
+        echo "ERROR: default_build_srpm (${LINENO}): failed to create tar file, cmd: tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' $SRC_DIR --transform \"s,^$TRANSFORM,$TAR_NAME-$VERSION,\""
         exit 1
     fi
     echo "Created tar file: $TAR_PATH"

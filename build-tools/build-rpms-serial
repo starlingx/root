@@ -106,7 +106,7 @@ create-no-clean-list () {
        local g
     
        for g in $install_groups; do
-           tmp_list=$(yum -c $MY_YUM_CONF groupinfo $g 2>> /dev/null | awk 'f;/Mandatory Packages:/{f=1}' | cut -c 5-)
+           tmp_list=$(dnf -c $MY_YUM_CONF groupinfo $g 2>> /dev/null | awk 'f;/Mandatory Packages:/{f=1}' | cut -c 5-)
            noclean_list=$(join_by ' ' $noclean_list $tmp_list)
        done
     
@@ -116,7 +116,7 @@ create-no-clean-list () {
     
        while [ $noclean_list_len -gt $noclean_last_list_len ]; do
            noclean_last_list_len=$noclean_list_len
-           noclean_list=$( (yum -c $MY_YUM_CONF deplist $noclean_list 2>> /dev/null | grep provider: | awk '{ print $2 }' | awk -F . '{ print $1 }'; for p in $noclean_list; do echo $p; done) | sort --uniq)
+           noclean_list=$( (dnf -c $MY_YUM_CONF deplist $noclean_list 2>> /dev/null | grep provider: | awk '{ print $2 }' | awk -F . '{ print $1 }'; for p in $noclean_list; do echo $p; done) | sort --uniq)
            noclean_list_len=$(echo $noclean_list | wc -w)
        done
    
