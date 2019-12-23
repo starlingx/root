@@ -4,7 +4,7 @@ acpid
 audit
 audit-libs
 audit-libs-python
-authconfig
+authselect-compat
 basesystem
 bash
 bind-libs-lite

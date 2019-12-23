@@ -2,7 +2,7 @@ acl
 alsa-lib
 audit
 audit-libs
-authconfig
+authselect-compat
 basesystem
 bind-libs-lite
 bind-license
