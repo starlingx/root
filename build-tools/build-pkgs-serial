@@ -62,7 +62,7 @@ export BUILD_AVOIDANCE_URL=""
 
 
 # read the options
-TEMP=$(getopt -o h --long serial,rt,std,installer,containers,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,append-log -n 'build-pkgs-serial' -- "$@")
+TEMP=$(getopt -o h --long serial,rt,std,installer,containers,layer:,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,append-log -n 'build-pkgs-serial' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -91,6 +91,7 @@ while true ; do
         --no-descendants) EXTRA_ARGS_COMMON+=" --no-descendants" ; shift ;;
         --formal)         EXTRA_ARGS_COMMON+=" --formal" ; shift ;;
         --careful)        EXTRA_ARGS_RPM+=" --careful" ; shift ;;
+        --layer)          EXTRA_ARGS_COMMON+=" --layer=$2"; shift 2 ;;
         --no-required)    EXTRA_ARGS_RPM+=" --no-required" ; shift ;;
         --no-build-info)  EXTRA_ARGS_COMMON+=" --no-build-info" ; shift ;;
         --no-autoclean)   EXTRA_ARGS_RPM+=" --no-autoclean" ; shift ;;

@@ -28,7 +28,7 @@ usage () {
     echo "   after a clone/pull, nor the final build prior to creating an iso or patch,"
     echo "   but can be used for intermediate builds."
     echo "   i.e. while debugging compilation failures."
-    echo "      build-pkgs-parallel [--build-avoidance | --no-build-avoidance] [--no-descendants] [--no-required] [--no-build-info] [--no-autoclean] [--careful] [--formal] [ list of package names ]"
+    echo "      build-pkgs-parallel [--layer] [--build-avoidance | --no-build-avoidance] [--no-descendants] [--no-required] [--no-build-info] [--no-autoclean] [--careful] [--formal] [ list of package names ]"
     echo ""
     echo "   Delete source rpms, and the directories associated with it's creation:"
     echo "   Note: does not clean an edit environment"
@@ -62,7 +62,7 @@ export BUILD_AVOIDANCE_URL=""
 
 
 # read the options
-TEMP=$(getopt -o h --long parallel,rt,std,installer,containers,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,append-log -n 'build-pkgs-parallel' -- "$@")
+TEMP=$(getopt -o h --long parallel,rt,std,installer,containers,layer:,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,append-log -n 'build-pkgs-parallel' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -91,6 +91,7 @@ while true ; do
         --no-descendants) EXTRA_ARGS_COMMON+=" --no-descendants" ; shift ;;
         --formal)         EXTRA_ARGS_COMMON+=" --formal" ; shift ;;
         --careful)        EXTRA_ARGS_RPM+=" --careful" ; shift ;;
+        --layer)          EXTRA_ARGS_COMMON+=" --layer=$2"; shift 2 ;;
         --no-required)    EXTRA_ARGS_RPM+=" --no-required" ; shift ;;
         --no-build-info)  EXTRA_ARGS_COMMON+=" --no-build-info" ; shift ;;
         --no-autoclean)   EXTRA_ARGS_RPM+=" --no-autoclean" ; shift ;;

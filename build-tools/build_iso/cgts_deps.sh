@@ -202,6 +202,8 @@ function check_all_explicit_deps_installed {
         fi
     done < $TMPFILE
 
+    # Strip leading spaces.  Don't want isomething like ' ' to trigger a failure
+    PKGS_TO_CHECK=`echo $PKGS_TO_CHECK | sed "s/^[ ]*//"`
     if [ -z "$PKGS_TO_CHECK" ]; then
         >&2 echo "All explicitly specified packages resolved!"
     else
