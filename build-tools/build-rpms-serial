@@ -106,7 +106,7 @@ create-no-clean-list () {
        local g
     
        for g in $install_groups; do
-           tmp_list=$(dnf -c $MY_YUM_CONF groupinfo $g 2>> /dev/null | awk 'f;/Mandatory Packages:/{f=1}' | cut -c 5-)
+           tmp_list=$(dnf -c $MY_YUM_CONF groupinfo $g 2>> /dev/null | awk 'f;/Mandatory Packages:/{f=1}' | cut -c 4-)
            noclean_list=$(join_by ' ' $noclean_list $tmp_list)
        done
     
