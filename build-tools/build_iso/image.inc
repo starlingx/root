@@ -74,5 +74,3 @@ traceroute
 # support for persistent sessions
 screen
 
-# For kata container
-kata-runtime
