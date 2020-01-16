@@ -228,7 +228,9 @@ function build_application_tarball {
         APP_VERSION=${APP_VERSION}-${LABEL}
         deprecated_tarball_name=${deprecated_tarball_name}-${LABEL}
     fi
-    echo "app_name: ${APP_NAME}" >> metadata.yaml
+    if ! grep -q "^app_name:" metadata.yaml ; then
+        echo "app_name: ${APP_NAME}" >> metadata.yaml
+    fi
     echo "app_version: ${APP_VERSION}" >> metadata.yaml
     if [ -n "${PATCH_DEPENDENCIES}" ]; then
         echo "patch_dependencies:" >> metadata.yaml
