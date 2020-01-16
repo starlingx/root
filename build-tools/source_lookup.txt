@@ -53,7 +53,6 @@ https://github.com/puppetlabs/puppetlabs-xinetd.git puppet-xinetd 1.5.0
 https://github.com/dmsimard/python-cephclient python-cephclient 0.1.0.5
 https://github.com/jaraco/keyring python-keyring 5.3
 http://vincentbernat.github.com/lldpd/ lldpd 0.9.0
-http://launchpad.net/smart/trunk/1.4.1/+download/smart-1.4.1.tar.bz2 python-smartpm 1.4.1
 https://launchpad.net/tempest tempest 4
 https://toolbelt.readthedocs.org/ requests-toolbelt 0.5.1
 https://pypi.python.org/pypi/WSME python-wsme 0.6.4
