@@ -93,7 +93,8 @@ function is_empty {
 #
 function get_git {
     local git_repo=${1}
-    local git_ref=${2:-master}
+    local git_ref=${2}
+    local git_patches=${@:3} # Take remaining args as patch list
 
     local git_name
     git_name=$(basename ${git_repo} | sed 's/[.]git$//')
@@ -122,6 +123,16 @@ function get_git {
             echo "Aborting..." >&2
             return 1
         fi
+
+        # Apply any patches
+        for p in ${git_patches}; do
+            git am ${p}
+            if [ $? -ne 0 ]; then
+                echo "Failed to apply ${p} in ${git_name}" >&2
+                echo "Aborting..." >&2
+                return 1
+            fi
+        done
     else
         cd ${WORKDIR}/${git_name}
 
@@ -137,6 +148,16 @@ function get_git {
             echo "Aborting..." >&2
             return 1
         fi
+
+        # Apply any patches
+        for p in ${git_patches}; do
+            git am ${p}
+            if [ $? -ne 0 ]; then
+                echo "Failed to apply ${p} in ${git_name}" >&2
+                echo "Aborting..." >&2
+                return 1
+            fi
+        done
     fi
 
     return 0
@@ -384,7 +405,11 @@ function build_image_docker {
     local DOCKER_REPO
     DOCKER_REPO=$(source ${image_build_file} && echo ${DOCKER_REPO})
     local DOCKER_REF
-    DOCKER_REF=$(source ${image_build_file} && echo ${DOCKER_REF})
+    DOCKER_REF=$(source ${image_build_file} && echo ${DOCKER_REF:-master})
+
+    # DOCKER_PATCHES is a list of patch files, relative to the local dir
+    local DOCKER_PATCHES
+    DOCKER_PATCHES=$(source ${image_build_file} && for p in ${DOCKER_PATCHES}; do echo $(dirname ${image_build_file})/${p}; done)
 
     if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
         echo "Skipping ${LABEL}"
@@ -404,8 +429,8 @@ function build_image_docker {
     else
         local ORIGWD=${PWD}
 
-        echo "get_git '${DOCKER_REPO}' '${DOCKER_REF}'"
-        get_git "${DOCKER_REPO}" "${DOCKER_REF}"
+        echo "get_git '${DOCKER_REPO}' '${DOCKER_REF}' '${DOCKER_PATCHES}'"
+        get_git "${DOCKER_REPO}" "${DOCKER_REF}" "${DOCKER_PATCHES}"
         if [ $? -ne 0 ]; then
             echo "Failed to clone or update ${DOCKER_REPO}. Aborting..." >&2
             cd ${ORIGWD}
@@ -459,13 +484,17 @@ function build_image_script {
     local SOURCE_REPO
     SOURCE_REPO=$(source ${image_build_file} && echo ${SOURCE_REPO})
     local SOURCE_REF
-    SOURCE_REF=$(source ${image_build_file} && echo ${SOURCE_REF})
+    SOURCE_REF=$(source ${image_build_file} && echo ${SOURCE_REF:-master})
     local COMMAND
     COMMAND=$(source ${image_build_file} && echo ${COMMAND})
     local SCRIPT
     SCRIPT=$(source ${image_build_file} && echo ${SCRIPT})
     local ARGS
     ARGS=$(source ${image_build_file} && echo ${ARGS})
+
+    # SOURCE_PATCHES is a list of patch files, relative to the local dir
+    local SOURCE_PATCHES
+    SOURCE_PATCHES=$(source ${image_build_file} && for p in ${SOURCE_PATCHES}; do echo $(dirname ${image_build_file})/${p}; done)
 
     if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
         echo "Skipping ${LABEL}"
@@ -504,8 +533,8 @@ function build_image_script {
 
     local ORIGWD=${PWD}
 
-    echo "get_git '${SOURCE_REPO}' '${SOURCE_REF}'"
-    get_git "${SOURCE_REPO}" "${SOURCE_REF}"
+    echo "get_git '${SOURCE_REPO}' '${SOURCE_REF}' '${SOURCE_PATCHES}'"
+    get_git "${SOURCE_REPO}" "${SOURCE_REF}" "${SOURCE_PATCHES}"
     if [ $? -ne 0 ]; then
         echo "Failed to clone or update ${SOURCE_REPO}. Aborting..." >&2
         cd ${ORIGWD}
