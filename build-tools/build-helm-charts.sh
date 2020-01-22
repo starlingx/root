@@ -138,7 +138,7 @@ function build_image_versions_to_manifest {
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
         for image_reference in $(cat ${image_record}); do
             image_name=$(echo ${image_reference} | sed -n 's/.*\/\(.*\):.*$/\1/p')
-            old_image_reference="\([a-zA-Z0-9.]*\|[0-9.:]*\)\/.*${image_name}:.*"
+            old_image_reference="\([a-zA-Z0-9.:-]*\|[0-9.:]*\)\/.*${image_name}:.*"
 
             sed -i "s#${old_image_reference}#${image_reference}#" ${manifest_file}
             if [ $? -ne 0 ]; then
