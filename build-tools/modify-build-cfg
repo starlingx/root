@@ -100,8 +100,8 @@ fi
 #grep -q "config_opts\['chroot_setup_cmd'\] = 'install @buildsys-build pigz lbzip2 yum $NETWORK_PKGS'" $FILE || \
 #    echo "config_opts['chroot_setup_cmd'] = 'install @buildsys-build pigz lbzip2 yum $NETWORK_PKGS'" >> $FILE
 
-grep -q "config_opts\['chroot_setup_cmd'\] = 'install @buildsys-build pigz bash python3 $NETWORK_PKGS'" $FILE || \
-    echo "config_opts['chroot_setup_cmd'] = 'install @buildsys-build pigz bash python3 $NETWORK_PKGS'" >> $FILE
+grep -q "config_opts\['chroot_setup_cmd'\] = 'install @buildsys-build pigz bzip2 bash python3 $NETWORK_PKGS'" $FILE || \
+    echo "config_opts['chroot_setup_cmd'] = 'install @buildsys-build pigz bzip2 bash python3 $NETWORK_PKGS'" >> $FILE
 
 # Special case for containers.
 # rpmbuild_networking is required for invoking helm commands within mock
