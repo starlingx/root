@@ -26,6 +26,7 @@ installer-prebuilt
 /monitor-armada-app
 /monitoring
 /nfv
+/oidc-auth-armada-app
 /openstack-armada-app
 /platform-armada-app
 /stx-puppet
