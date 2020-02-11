@@ -12,6 +12,21 @@ SRC_BUILD_TYPE_SRPM="srpm"
 SRC_BUILD_TYPE_SPEC="spec"
 SRC_BUILD_TYPES="$SRC_BUILD_TYPE_SRPM $SRC_BUILD_TYPE_SPEC"
 
+set_build_info () {
+    local info_file="$MY_WORKSPACE/BUILD_INFO"
+    local layer_prefix="${LAYER^^}_"
+    if [ "${LAYER}" == "" ]; then
+        layer_prefix=""
+    fi
+    mkdir -p "$(dirname ${info_file})"
+    echo "${layer_prefix}OS=\"centos\"" > "${info_file}"
+    echo "${layer_prefix}JOB=\"n/a\"" >> "${info_file}"
+    echo "${layer_prefix}BUILD_BY=\"${USER}\"" >> "${info_file}"
+    echo "${layer_prefix}BUILD_NUMBER=\"n/a\"" >> "${info_file}"
+    echo "${layer_prefix}BUILD_HOST=\"$(hostname)\"" >> "${info_file}"
+    echo "${layer_prefix}BUILD_DATE=\"$(date '+%Y-%m-%d %H:%M:%S %z')\"" >> "${info_file}"
+}
+
 
 str_lst_contains() {
     TARGET="$1"

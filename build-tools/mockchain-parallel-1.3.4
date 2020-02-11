@@ -329,6 +329,19 @@ def do_build(opts, cfg, pkg):
                    '--resultdir', resdir,
                    '--uniqueext', opts.uniqueext,
                    '-r', cfg, ]
+
+    # Ensure repo is up-to-date.
+    # Note: Merely adding --update to mockcmd failed to update
+    mockcmd_update=mockcmd
+    mockcmd_update.append('--update')
+    cmd = subprocess.Popen(
+        mockcmd_update, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = cmd.communicate()
+    if cmd.returncode != 0:
+        if (isinstance(err, bytes)):
+            err = err.decode("utf-8")
+        sys.stderr.write(err)
+
     # heuristic here, if user pass for mock "-d foo", but we must be care to leave
     # "-d'foo bar'" or "--define='foo bar'" as is
     compiled_re_1 = re.compile(r'^(-\S)\s+(.+)')

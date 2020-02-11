@@ -8,10 +8,20 @@
 # passed through to the mock environment, so this scripts sets the variables
 # to literal values.
 #
-# usage: modify-build-cfg [file.cfg]
+# usage: modify-build-cfg [file.cfg] [<layer>]
 #
 
-MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.proto"
+LAYER=${2:-$LAYER}
+
+# Try to find a layer specific mock.cfg.proto
+MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.${LAYER}.proto"
+echo "==== Try MOCK_CFG_PROTO=$MOCK_CFG_PROTO ===="
+if [ ! -f "$MOCK_CFG_PROTO" ]; then
+    # Not present, Use default mock.cfg.proto
+    MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.proto"
+fi
+
+echo "==== Use MOCK_CFG_PROTO=$MOCK_CFG_PROTO ===="
 if [ ! -f "$MOCK_CFG_PROTO" ]; then
    echo "ERROR: Couldn't find mock config prototype at '$MOCK_CFG_PROTO'"
    exit 1
@@ -56,6 +66,7 @@ if [ ! -f $FILE ]; then
       if [ "$bt" != "$BUILD_TYPE" ]; then
          # Use the range of lines starting with pattern [local-$bt] until the next line starting with []
          sed -i "/^\[local-$bt\]/,/^\[/ s/enabled=1/enabled=0/" $FILE
+         sed -i "/^\[StxCentos7Distro-$bt\]/,/^\[/ s/enabled=1/enabled=0/" $FILE
       fi
    done
 fi

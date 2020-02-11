@@ -47,6 +47,7 @@ name=Stx-Centos-7-Distro
 enabled=1
 baseurl=LOCAL_BASE/MY_REPO_DIR/cgcs-centos-repo/Binary
 failovermethod=priority
+exclude=kernel-devel libvirt-devel
 
 [StxCentos7Distro-rt]
 name=Stx-Centos-7-Distro-rt

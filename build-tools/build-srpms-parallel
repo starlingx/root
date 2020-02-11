@@ -71,11 +71,26 @@ if [ $? -ne 0 ]; then
    CREATEREPO="createrepo"
 fi
 
+#
+# Create a list of rpms in the directory
+#
+create_lst () {
+   local DIR=${1}
+
+       (cd $DIR
+        [ -f rpm.lst ] && \rm -rf rpm.lst
+        [ -f srpm.lst ] && \rm -rf srpm.lst
+        find . -name '*.rpm' -and -not -name '*.src.rpm' | sed 's#^[.][/]##' | sort > rpm.lst
+        find . -name '*.src.rpm' | sed 's#^[.][/]##' | sort > srpm.lst
+       )
+}
+
+
 usage () {
     echo ""
     echo "Usage: "
     echo "   Create source rpms:"
-    echo "      $ME [--rt | --std | --installer | --containers] [--no-descendants] [--formal] [ list of package names ]"
+    echo "      $ME [--rt | --std | --installer | --containers] [--layer=<layer>] [--no-descendants] [--formal] [ list of package names ]"
     echo ""
     echo "   Delete source rpms, and the directories associated with it's creation:"
     echo "   Note: does not clean an edit environment"
@@ -161,7 +176,7 @@ EDIT_FLAG=0
 NO_META_PATCH_FLAG=0
 
 # read the options
-TEMP=$(getopt -o ha::bc: --long parallel,std,rt,installer,containers,no-descendants,no-meta-patch,no-build-info,help,formal,clean,edit,arga::,argb,argc: -n "$ME" -- "$@")
+TEMP=$(getopt -o h --long parallel,std,rt,installer,containers,no-descendants,no-meta-patch,no-build-info,help,formal,clean,edit,layer: -n "$ME" -- "$@")
 
 if [ $? -ne 0 ]; then
     usage
@@ -175,20 +190,9 @@ export BUILD_TYPE=std
 # extract options and their arguments into variables.
 while true ; do
     case "$1" in
-        -a|--arga)
-            case "$2" in
-                "") ARG_A='some default value' ; shift 2 ;;
-                *) ARG_A=$2 ; shift 2 ;;
-            esac ;;
-        -b|--argb) ARG_B=1 ; shift ;;
         --no-descendants) NO_DESCENDANTS=1 ; shift ;;
         --no-build-info) NO_BUILD_INFO=1 ; shift ;;
         -h|--help) HELP=1 ; shift ;;
-        -c|--argc)
-            case "$2" in
-                "") shift 2 ;;
-                *) ARG_C=$2 ; shift 2 ;;
-            esac ;;
         --clean) CLEAN_FLAG=1 ; shift ;;
         --formal) FORMAL_FLAG=1 ; shift ;;
         --std) BUILD_TYPE_FLAG=1; BUILD_TYPE=std; shift ;;
@@ -198,6 +202,7 @@ while true ; do
         --edit) EDIT_FLAG=1 ; shift ;;
         --no-meta-patch) NO_META_PATCH_FLAG=1 ; shift ;;
         --parallel) shift ;;
+        --layer) export LAYER=$2 ; shift ; shift ;;
         --) shift ; break ;;
         *) echo "Internal error!" ; exit 1 ;;
     esac
@@ -292,6 +297,9 @@ if [ ! -d $CGCS_BASE ]; then
 fi
 
 if [ ! -d $BUILD_BASE ]; then
+   if [ $CLEAN_FLAG -eq 1 ]; then
+       exit 0
+   fi
    echo "ERROR: $FUNCNAME (${LINENO}): expected to find directory at '$BUILD_BASE'"
    exit 1
 fi
@@ -1340,6 +1348,11 @@ for i in $(seq 0 $((max_workers-1))); do
    \cp $MY_WORKSPACE/tmp/UNRESOLVED_TARGETS $MY_WORKSPACE/tmp/UNRESOLVED_TARGETS_$i
 done
 
+# create a build info
+if [ $CLEAN_FLAG -eq 0 ] && [ $EDIT_FLAG -eq 0 ] && [ $NO_BUILD_INFO -eq 0 ]; then
+    set_build_info
+fi
+
 # Build src.rpm's
 LOG_DIR=$(mktemp -d $MY_WORKSPACE/tmp/$USER-$ME-log-XXXXXX)
 if [ "x$LOG_DIR" == "x" ]; then
@@ -1352,6 +1365,11 @@ for GIT_ROOT in $GIT_LIST; do
    if [ $STOP_SCHEDULING -eq 1 ]; then
        break;
    fi
+
+   if echo "$GIT_ROOT" | grep do-not-build; then
+       continue
+   fi
+
    for p in $(cat $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
       if [ $STOP_SCHEDULING -eq 1 ]; then
           break;
@@ -1442,6 +1460,10 @@ if [ $ALL -eq 1 ]; then
     AUDIT_DIR=$(mktemp -d $MY_WORKSPACE/tmp/$USER-$ME-audit-XXXXXX)
     if [ $? -eq 0 ] && [ "x$AUDIT_DIR" != "x" ]; then
     for GIT_ROOT in $GIT_LIST; do
+        if echo "$GIT_ROOT" | grep -q do-not-build; then
+            continue
+        fi
+
         for p in $(cat $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
             (
             src_dir="$GIT_ROOT/$p"
@@ -1546,6 +1568,7 @@ if [ $EDIT_FLAG -ne 1 ]; then
       (cd $d/..
        \rm -rf repodata
        $CREATEREPO $(pwd)
+       create_lst $(pwd)
       )
    done
    echo "==== Update repodata complete ====="
