@@ -1,0 +1,48 @@
+# yamllint disable rule:line-length
+---
+images:
+  - name: docker.io/starlingx/k8s-cni-sriov
+    src_build_tag: master-centos-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/dac417bd31ed36d455e94db4aabe5916367654d4
+    # Tag determined based on release tag associated with upstream commit
+    tag: stx.4.0-v2.2
+  - name: docker.io/starlingx/k8s-plugins-sriov-network-device
+    src_build_tag: master-centos-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/dac417bd31ed36d455e94db4aabe5916367654d4
+    # Tag determined based on release tag associated with upstream commit
+    tag: stx.4.0-v3.1
+  - name: docker.io/starlingx/intel-fpga-admissionwebhook
+    src_build_tag: master-distroless-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.4.0-v0.11.0-103-g4f28657
+  - name: docker.io/starlingx/intel-fpga-initcontainer
+    src_build_tag: master-distroless-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.4.0-v0.11.0-103-g4f28657
+  - name: docker.io/starlingx/intel-fpga-plugin
+    src_build_tag: master-distroless-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.4.0-v0.11.0-103-g4f28657
+  - name: docker.io/starlingx/intel-gpu-plugin
+    src_build_tag: master-distroless-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.4.0-v0.11.0-103-g4f28657
+  - name: docker.io/starlingx/intel-qat-plugin
+    src_build_tag: master-distroless-stable-20191203T153530Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/d9d92a6997f939cb1ec41813dbf2d72d0b80d79c
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.4.0-v0.11.0-109-gc48c502
+  - name: docker.io/starlingx/stx-oidc-client
+    src_build_tag: master-centos-stable-20200204T162546Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/a63597fc038deac9fa20e35af61cbed73d39fd10
+    # StarlingX app. Setting version to v1.0.0
+    tag: stx.4.0-v1.0.0
+  - name: docker.io/starlingx/dex
+    src_build_tag: master-centos-stable-20200204T162546Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/5d6701bdf214e77f460f2e3dd2b6f7d3186830c8
+    # Tag determined based on release tag associated with upstream commit
+    tag: stx.4.0-v2.14.0-1
