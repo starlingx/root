@@ -1,9 +1,13 @@
 #!/bin/bash
 #
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
 # Utility for adding patches to an unpatched ISO
 #
 
-source "${BUILD_ISO_DIR}/image-utils.sh"
+source "$(dirname $0)/image-utils.sh"
 
 if [ -z "${MY_REPO}" ]; then
     echo "Required environment variable MY_REPO is not set"
@@ -11,13 +15,13 @@ if [ -z "${MY_REPO}" ]; then
 fi
 
 STX_DIR=${MY_REPO}/stx
-SETUP_PATCH_REPO=${STX_DIR}/extras.ND/scripts/setup_patch_repo.sh
+SETUP_PATCH_REPO=${STX_DIR}/update/extras/scripts/setup_patch_repo.sh
 if [ ! -x ${SETUP_PATCH_REPO} ]; then
     echo "Cannot find or execute ${SETUP_PATCH_REPO}"
     exit 1
 fi
 
-REPO_UPGRADES_DIR=${STX_DIR}/common-bsp/files/upgrades
+REPO_UPGRADES_DIR=${STX_DIR}/metal/bsp-files/upgrades
 RELEASE_INFO="$(get_release_info)"
 
 if [ $? -ne 0 ]; then
@@ -114,10 +118,75 @@ declare MNTDIR=
 declare BUILDDIR=
 declare WORKDIR=
 
+function check_requirements {
+    local -a required_utils=(
+        rsync
+        mkisofs
+        isohybrid
+        implantisomd5
+    )
+    if [ $UID -ne 0 ]; then
+        # If running as non-root user, additional utils are required
+        required_utils+=(
+            guestmount
+            guestunmount
+        )
+    fi
+
+    local -i missing=0
+
+    for req in ${required_utils[@]}; do
+        which ${req} >&/dev/null
+        if [ $? -ne 0 ]; then
+            echo "Unable to find required utility: ${req}" >&2
+            let -i missing++
+        fi
+    done
+
+    if [ ${missing} -gt 0 ]; then
+        echo "One or more required utilities are missing. Aborting..." >&2
+        exit 1
+    fi
+}
+
+function mount_iso {
+    if [ $UID -eq 0 ]; then
+        # Mount the ISO
+        mount -o loop ${INPUT_ISO} ${MNTDIR}
+        if [ $? -ne 0 ]; then
+            echo "Failed to mount ${INPUT_ISO}" >&2
+            exit 1
+        fi
+    else
+        # As non-root user, mount the ISO using guestmount
+        guestmount -a ${INPUT_ISO} -m /dev/sda1 --ro ${MNTDIR}
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            # Add a retry
+            echo "Call to guestmount failed with rc=$rc. Retrying once..."
+
+            guestmount -a ${INPUT_ISO} -m /dev/sda1 --ro ${MNTDIR}
+            rc=$?
+            if [ $rc -ne 0 ]; then
+                echo "Call to guestmount failed with rc=$rc. Aborting..."
+                exit $rc
+            fi
+        fi
+    fi
+}
+
+function unmount_iso {
+    if [ $UID -eq 0 ]; then
+        umount ${MNTDIR}
+    else
+        guestunmount ${MNTDIR}
+    fi
+    rmdir ${MNTDIR}
+}
+
 function cleanup() {
     if [ -n "$MNTDIR" -a -d "$MNTDIR" ]; then
-        guestunmount $MNTDIR
-        \rmdir $MNTDIR
+        unmount_iso
     fi
 
     if [ -n "$BUILDDIR" -a -d "$BUILDDIR" ]; then
@@ -144,12 +213,7 @@ if [ -z "${BUILDDIR}" -o ! -d ${BUILDDIR} ]; then
 fi
 
 # Mount the ISO
-guestmount -a ${INPUT_ISO} -m /dev/sda1 --ro ${MNTDIR}
-rc=$?
-if [ $rc -ne 0 ]; then
-    echo "Call to guestmount failed with rc=$rc. Aborting..."
-    exit $rc
-fi
+mount_iso
 
 rsync -a ${MNTDIR}/ ${BUILDDIR}/
 rc=$?
@@ -158,8 +222,7 @@ if [ $rc -ne 0 ]; then
     exit $rc
 fi
 
-guestunmount ${MNTDIR}
-\rmdir ${MNTDIR}
+unmount_iso
 
 # Setup the patch repo
 ${SETUP_PATCH_REPO} -o ${BUILDDIR}/patches $@
