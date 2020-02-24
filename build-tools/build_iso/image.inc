@@ -4,27 +4,27 @@
 acpid
 gdb
 influxdb
-python2-influxdb
-python2-gunicorn
+#python3-influxdb
+#python3-gunicorn
 iperf3
 isomd5sum
-python2-aodhclient
-python2-oslo-log
-python2-six
-python-d2to1
-hiera
-python2-pecan
-python-configobj
-python-pep8
-python2-rsa
-ruby-shadow
+#python3-aodhclient
+#python2-oslo-log
+python3-six
+#python3-d2to1
+#hiera
+#python3-pecan
+#python3-configobj
+#python3-pep8
+#python2-rsa
+#ruby-shadow
 swig
 syslinux
 iotop
 linuxptp
 procps-ng
-python-daemon
-python-pyudev
+#python-daemon
+python3-pyudev
 curl
 lvm2
 time
@@ -36,35 +36,36 @@ strace
 wget
 bind-utils
 selinux-policy
-pm-utils
+#pm-utils
 tcpdump
 sysstat
 smartmontools
-collectd
-puppet-collectd
+#collectd
+#puppet-collectd
 socat
 attr
 
 # for realtime kernel
-rtctl
-rt-setup
+#rtctl
+#rt-setup
 
 # For low-latency compute
-OVMF
+#OVMF
+edk2-ovmf
 
 # neutron bgp
-python2-pankoclient
+#python2-pankoclient
 
 # ima plugin for RPM
 ntfs-3g
 ntfsprogs
-python-memcached
-python2-coverage
+#python-memcached
+python3-coverage
 
 # kubernetes packages
-docker-ce
-etcd
-docker-forward-journald
+#docker-ce
+#etcd
+#docker-forward-journald
 
 # Add debugging tools
 zip
@@ -72,7 +73,7 @@ unzip
 traceroute
 
 # support for persistent sessions
-screen
+#screen
 
 # For kata container
-kata-runtime
+#kata-runtime
