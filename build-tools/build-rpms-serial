@@ -1598,6 +1598,7 @@ update_spec_cache () {
 
 echo "Find the list of packages we must compile"
 
+mkdir -p $MY_WORKSPACE/tmp/
 NEED_BUILD_DIR=$(mktemp -d $MY_WORKSPACE/tmp/$USER-$ME-need-build-XXXXXX)
 if [ $? -ne 0 ] || [ "x$NEED_BUILD_DIR" == "x" ]; then
     echo "Failed to create temp directory under $MY_WORKSPACE/tmp"

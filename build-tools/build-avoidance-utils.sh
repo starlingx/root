@@ -35,6 +35,10 @@
 # BUILD_AVOIDANCE_FILE_TRANSFER="my-supported-prototcol"
 #
 
+BUILD_AVOIDANCE_UTILS_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
+
+source "${BUILD_AVOIDANCE_UTILS_DIR}/git-utils.sh"
+
 BUILD_AVOIDANCE_USR=""
 BUILD_AVOIDANCE_HOST=""
 BUILD_AVOIDANCE_DIR=""
@@ -776,6 +780,22 @@ build_avoidance () {
     if [ "$BUILD_TYPE" == "containers" ]; then
         >&2 echo "build_avoidance: BUILD_TYPE==containers not supported"
         return 1
+    fi
+
+    if [ ! -d $MY_WORKSPACE/$BUILD_TYPE ]; then
+        mkdir -p $MY_WORKSPACE/$BUILD_TYPE
+        if [ $? -ne 0 ]; then
+            >&2 echo "Error: $FUNCNAME (${LINENO}): Failed to create directory $MY_WORKSPACE/$BUILD_TYPE"
+            return 1
+        fi
+    fi
+
+    if [ ! -L $MY_WORKSPACE/$BUILD_TYPE ]; then
+        ln -s $MY_REPO $MY_WORKSPACE/$BUILD_TYPE/repo
+        if [ $? -ne 0 ]; then
+            >&2 echo "Error: $FUNCNAME (${LINENO}): Failed to create symlink $MY_WORKSPACE/$BUILD_TYPE/repo -> $MY_REPO"
+            return 1
+        fi
     fi
 
     build_avoidance_pre_clean $BUILD_TYPE
