@@ -50,3 +50,7 @@ images:
     src_build_tag: master-centos-stable-20200221T221248Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/f466dc94e721311ac922474a3bd0080776e3cf9a
     tag: stx.4.0-v1.0.0
+  - name: docker.io/starlingx/rvmc
+    src_build_tag: master-centos-stable-20200303T000005Z.0
+    src_ref: https://opendev.org/starlingx/metal/commit/4609dacc5f2ffa54012eaffc60196488a6c589b6
+    tag: stx.4.0-v1.0.0
