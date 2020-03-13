@@ -165,7 +165,7 @@ function get_git {
 
 function get_loci {
     # Use a specific HEAD of loci, to provide a stable builder
-    local LOCI_REF="432503259f5e624afdabd9dacc9d9b367dd95e96"
+    local LOCI_REF="f022ecba553903df3df72d3668e143e9eb9ceded"
     local LOCI_REPO="https://github.com/openstack/loci.git"
 
     local ORIGWD=${PWD}
@@ -310,6 +310,8 @@ function build_image_loci {
     DIST_PACKAGES=$(source ${image_build_file} && echo ${DIST_PACKAGES})
     local PROFILES
     PROFILES=$(source ${image_build_file} && echo ${PROFILES})
+    local PYTHON3
+    PYTHON3=$(source ${image_build_file} && echo ${PYTHON3})
 
     if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
         echo "Skipping ${LABEL}"
@@ -346,6 +348,10 @@ function build_image_loci {
 
     if [ -n "${PROFILES}" ]; then
         BUILD_ARGS+=(--build-arg PROFILES="${PROFILES}")
+    fi
+
+    if [ -n "${PYTHON3}" ]; then
+        BUILD_ARGS+=(--build-arg PYTHON3="${PYTHON3}")
     fi
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
@@ -758,6 +764,13 @@ get_loci
 if [ $? -ne 0 ]; then
     # Error is reported by the function already
     exit 1
+fi
+
+# Replace mod_wsgi dependency and add rh_python36_mod_wsgi in loci/bindep.txt for python3 package
+# refer to patch https://review.opendev.org/#/c/718603/
+sed -i 's/mod_wsgi                    \[platform\:rpm apache\]/mod_wsgi                    \[platform\:rpm apache \!python3\]/g'  ${WORKDIR}/loci/bindep.txt
+if ! (grep -q rh-python36-mod_wsgi ${WORKDIR}/loci/bindep.txt); then
+    echo 'rh-python36-mod_wsgi        [platform:rpm !platform:suse (apache python3)]' >>  ${WORKDIR}/loci/bindep.txt
 fi
 
 # Find the directives files

@@ -10,12 +10,13 @@ RUN set -ex ;\
     sed -i '/\[main\]/ atimeout=120' /etc/yum.conf ;\
     yum install -y epel-release centos-release-openstack-queens ;\
     yum install -y git gcc zip bzip2 unzip \
-                   python python-devel python-pip python-wheel \
+                   python3 python3-pip python3-wheel python3-devel \
                    wget openldap-devel mariadb mariadb-devel \
                    libvirt libvirt-devel liberasurecode-devel nss-devel \
                    systemd-devel postgresql-devel ;\
-    pip install --upgrade pip 'setuptools<46.0.0'
-
+# while setuptools is larger than 45.3, it no longer support "Features" in setup.py
+    python3 -m pip install --user setuptools==45.3 ;\
+    python3 -m pip install --user --upgrade wheel
 COPY docker-build-wheel.sh /
 COPY ${BUILD_STREAM}-wheels.cfg /wheels.cfg
 

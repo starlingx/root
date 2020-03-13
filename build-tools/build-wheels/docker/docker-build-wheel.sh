@@ -184,7 +184,7 @@ function from_git {
         fi
 
         # Build the wheel
-        python setup.py bdist_wheel
+        python3 setup.py bdist_wheel
         if [ -f dist/$wheelname ]; then
             cp dist/$wheelname $OUTPUTDIR || echo $wheelname >> $FAILED_LOG
         else
@@ -244,7 +244,7 @@ function from_tar {
         fi
 
         # Build the wheel
-        python setup.py bdist_wheel
+        python3 setup.py bdist_wheel
         if [ -f dist/$wheelname ]; then
             cp dist/$wheelname $OUTPUTDIR || echo $wheelname >> $FAILED_LOG
         else
@@ -295,7 +295,7 @@ function from_zip {
         fi
 
         # Build the wheel
-        python setup.py bdist_wheel
+        python3 setup.py bdist_wheel
         if [ -f dist/$wheelname ]; then
             cp dist/$wheelname $OUTPUTDIR || echo $wheelname >> $FAILED_LOG
         else
