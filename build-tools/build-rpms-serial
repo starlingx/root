@@ -1362,6 +1362,10 @@ if [ ! -f $BUILD_CFG ]; then
    exit 1
 fi
 
+# create temp dir
+export TMPDIR="$MY_WORKSPACE/tmp"
+mkdir -p $TMPDIR
+
 # Create symlinks from /var/... to /localdisk/loadbuild/... if on a build server
 
 set_mock_symlinks $MY_BUILD_CFG

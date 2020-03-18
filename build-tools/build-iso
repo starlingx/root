@@ -492,7 +492,7 @@ function extract_pkg_from_local_repo {
       repoid_arg+=" --repoid=${repoid}"
    done
 
-   local pkgfile=$(repoquery --config=${yum_conf} ${repoid_arg} --location -q ${pkgname})
+   local pkgfile=$(TMPDIR=$TMP_DIR repoquery --config=${yum_conf} ${repoid_arg} --location -q ${pkgname})
    if [ -z "${pkgfile}" ]; then
       echo "Could not find package $pkgname in $@"
       exit 1

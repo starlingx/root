@@ -14,12 +14,21 @@ if [ -z "${MY_REPO}" ]; then
     exit 1
 fi
 
+if [ -z "${MY_WORKSPACE}" ]; then
+    echo "Required environment variable MY_WORKSPACE is not set"
+    exit 1
+fi
+
 STX_DIR=${MY_REPO}/stx
 SETUP_PATCH_REPO=${STX_DIR}/update/extras/scripts/setup_patch_repo.sh
 if [ ! -x ${SETUP_PATCH_REPO} ]; then
     echo "Cannot find or execute ${SETUP_PATCH_REPO}"
     exit 1
 fi
+
+# Create temp dir if necessary
+export TMPDIR="$MY_WORKSPACE/tmp"
+mkdir -p $TMPDIR
 
 REPO_UPGRADES_DIR=${STX_DIR}/metal/bsp-files/upgrades
 RELEASE_INFO="$(get_release_info)"
