@@ -252,11 +252,6 @@ echo "BUILD_AVOIDANCE_FLAG=$BUILD_AVOIDANCE_FLAG"
 echo "CLEAN_FLAG=$CLEAN_FLAG"
 echo "EDIT_FLAG=$EDIT_FLAG"
 
-if [ $BUILD_AVOIDANCE_FLAG -eq 1 ]; then
-    # Build Avoidance requested. Get URL of a usable context, if any.
-    export BUILD_AVOIDANCE_URL=$(get_build_avoidance_context)
-fi
-
 if [ "$TARGETS" != "$EMPTY_TARGETS" ]; then
    TARGETS_STD="$(find_targets centos_pkg_dirs)"
 
@@ -406,6 +401,11 @@ function launch_build()
    fi
 
    echo -e "\n######## $(date): Launching build-srpms-serial --$build_type $EXTRA_ARGS $@\n" | tee --append $logfile
+
+   if [ $BUILD_AVOIDANCE_FLAG -eq 1 ]; then
+      # Build Avoidance requested. Get URL of a usable context, if any.
+      export BUILD_AVOIDANCE_URL=$(get_build_avoidance_context $build_type)
+   fi
 
    echo "BUILD_AVOIDANCE_URL=$BUILD_AVOIDANCE_URL" | tee --append $logfile
    if [ "x$BUILD_AVOIDANCE_URL" != "x" ]; then
