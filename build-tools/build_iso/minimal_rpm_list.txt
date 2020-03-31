@@ -220,7 +220,6 @@ python-slip-dbus
 python-urlgrabber
 pyxattr
 qrencode-libs
-rdma
 readline
 rootfiles
 rpm
