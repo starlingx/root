@@ -185,13 +185,17 @@ else
     OPENSTACK_BRANCH=stable/${CURRENT_STABLE_OPENSTACK}
 fi
 
-with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/global-requirements.txt
+# Locking down requirements as a temporary fix for build issues, until images move to python3 - LP: 1863957
+#with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/global-requirements.txt
+with_retries ${MAX_ATTEMPTS} wget https://opendev.org/openstack/requirements/raw/commit/2da5c5045118b0e36fb14427872e4b9b37335071/global-requirements.txt
 if [ $? -ne 0 ]; then
     echo "Failed to download global-requirements.txt" >&2
     exit 1
 fi
 
-with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/upper-constraints.txt
+# Locking down constraints as a temporary fix for build issues, until images move to python3 - LP: 1863957
+#with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/upper-constraints.txt
+with_retries ${MAX_ATTEMPTS} wget https://opendev.org/openstack/requirements/raw/commit/2da5c5045118b0e36fb14427872e4b9b37335071/upper-constraints.txt
 if [ $? -ne 0 ]; then
     echo "Failed to download upper-constraints.txt" >&2
     exit 1

@@ -14,7 +14,7 @@ RUN set -ex ;\
                    wget openldap-devel mariadb mariadb-devel \
                    libvirt libvirt-devel liberasurecode-devel nss-devel \
                    systemd-devel postgresql-devel ;\
-    pip install --upgrade pip setuptools
+    pip install --upgrade pip 'setuptools<46.0.0'
 
 COPY docker-build-wheel.sh /
 COPY ${BUILD_STREAM}-wheels.cfg /wheels.cfg

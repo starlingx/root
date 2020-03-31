@@ -40,7 +40,8 @@ usage () {
 MY_YUM_CONF=""
 STD_REPO_ID="local-std"
 RT_REPO_ID="local-rt"
-DISTRO_LAYER_REPO_ID="StxCentos7Distro"
+LOWER_LAYER_STD_REPO_ID="StxCentos7Distro"
+LOWER_LAYER_RT_REPO_ID="StxCentos7Distro-rt"
 
 NPROCS=$(nproc)
 
@@ -294,6 +295,7 @@ function init_output_dir {
    echo "  Preparing package lists"
    image_inc_list iso std centos > "${PKGLIST_STX}"
    image_inc_list iso dev centos > "${PKGLIST_DEV}"
+   image_inc_list iso layer centos ${LAYER} > "${PKGLIST_THIS_LAYER}"
 
    echo "  Copying base files"
 
@@ -345,6 +347,7 @@ function init_output_dir {
            export MY_BUILD_DIR=$MY_BUILD_DIR; \
            export MY_WORKSPACE=$MY_WORKSPACE; \
            export MY_REPO=$MY_REPO; \
+           export LAYER=$LAYER; \
            export MY_BUILD_CFG=$MY_BUILD_CFG; \
            export MY_MOCK_ROOT=$MY_MOCK_ROOT; \
            export PATH=$MY_REPO/build-tools:\$PATH; \
@@ -438,10 +441,15 @@ function final_touches {
       EXTRA_ARGS="--pkglist '${PKGLIST_DEV}'"
    fi
 
+   for PKGLIST_LOWER_LAYER in ${PKGLIST_LOWER_LAYER_LIST}; do
+       EXTRA_ARGS+=" --pkglist ${PKGLIST_LOWER_LAYER}"
+   done
+
    python "$BSP_FILES_PATH/platform_comps.py" \
       --groups "$OUTPUT_DIST_DIR/comps.xml" \
       --pkglist "${PKGLIST_MINIMAL}" \
       --pkglist "${PKGLIST_STX}" \
+      --pkglist "${PKGLIST_THIS_LAYER}" \
       ${EXTRA_ARGS}
    if [ $? -ne 0 ]; then
       echo "Failed to update comps.xml"
@@ -484,7 +492,7 @@ function extract_pkg_from_local_repo {
       repoid_arg+=" --repoid=${repoid}"
    done
 
-   local pkgfile=$(repoquery --config=${yum_conf} ${repoid_arg} --location -q ${pkgname})
+   local pkgfile=$(TMPDIR=$TMP_DIR repoquery --config=${yum_conf} ${repoid_arg} --location -q ${pkgname})
    if [ -z "${pkgfile}" ]; then
       echo "Could not find package $pkgname in $@"
       exit 1
@@ -511,9 +519,11 @@ function extract_installer_files {
 
    \cd kickstart.work
 
-   extract_pkg_from_local_repo platform-kickstarts ${MY_YUM_CONF} ${STD_REPO_ID}
-   extract_pkg_from_local_repo platform-kickstarts-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID}
-   extract_pkg_from_local_repo platform-kickstarts-extracfgs ${MY_YUM_CONF} ${STD_REPO_ID}
+   echo "MY_YUM_CONF=${MY_YUM_CONF}"
+   cat ${MY_YUM_CONF}
+   extract_pkg_from_local_repo platform-kickstarts ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
+   extract_pkg_from_local_repo platform-kickstarts-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
+   extract_pkg_from_local_repo platform-kickstarts-extracfgs ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
 
    \cp --preserve=all www/pages/feed/rel-*/*.cfg pxeboot/*.cfg ../kickstarts/ &&
    \cp --preserve=all extra_cfgs/*.cfg ../extra_cfgs/
@@ -569,9 +579,9 @@ EOM
    \mkdir $WORKDIR
    \cd $WORKDIR
 
-   extract_pkg_from_local_repo pxe-network-installer ${MY_YUM_CONF} ${STD_REPO_ID}
-   extract_pkg_from_local_repo grub2-efi-x64-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID} ${DISTRO_LAYER_REPO_ID}
-   extract_pkg_from_local_repo grub2-efi-x64-modules ${MY_YUM_CONF} ${STD_REPO_ID} ${DISTRO_LAYER_REPO_ID}
+   extract_pkg_from_local_repo pxe-network-installer ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
+   extract_pkg_from_local_repo grub2-efi-x64-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
+   extract_pkg_from_local_repo grub2-efi-x64-modules ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
 
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/centos/x86_64-efi
 
@@ -700,10 +710,17 @@ printf   "*************************\n\n"
 # Init variables
 init_vars
 check_vars
+DISTRO="centos"
 PKGLIST_MINIMAL="${INTERNAL_REPO_ROOT}/build-tools/build_iso/minimal_rpm_list.txt"
 PKGLIST_STX="${OUTPUT_DIR}/image.inc"
 PKGLIST_DEV="${OUTPUT_DIR}/image-dev.inc"
-DISTRO="centos"
+PKGLIST_THIS_LAYER="${OUTPUT_DIR}/image-layer.inc"
+PKGLIST_LOWER_LAYER_DIR="${MY_REPO}/cgcs-centos-repo/layer_image_inc"
+
+PKGLIST_LOWER_LAYER_LIST=""
+if [ -d ${PKGLIST_LOWER_LAYER_DIR} ]; then
+    PKGLIST_LOWER_LAYER_LIST="$(find ${PKGLIST_LOWER_LAYER_DIR} -name '*image.inc')"
+fi
 
 # Create skeleton build dir
 init_output_dir
@@ -724,6 +741,15 @@ if [ $? -eq 2 ]; then
     exit 1
 fi
 
+
+for PKGLIST_LOWER_LAYER in $PKGLIST_LOWER_LAYER_LIST; do
+    install_pkg_list "${PKGLIST_LOWER_LAYER}"
+    if [ $? -eq 2 ]; then
+        echo "Error: Failed to install packages from ${PKGLIST_LOWER_LAYER}"
+        exit 1
+    fi
+done
+
 if [ "x${RELEASE_BUILD}" == "x" ]; then
     echo "Installing StarlingX developer packages"
     install_pkg_list "${PKGLIST_DEV}"
@@ -731,28 +757,15 @@ if [ "x${RELEASE_BUILD}" == "x" ]; then
         echo "Error: Failed to install packages from ${PKGLIST_DEV}"
         exit 1
     fi
-fi
 
-
-required_layer_cfg_name="${DISTRO}_required_build_layer.cfg"
-layer_cfg_name="${DISTRO}_build_layer.cfg"
-layer_cfgs=$(find $(for x in $GIT_LIST; do echo $x/; done) -maxdepth 1 -name ${layer_cfg_name})
-for line in $(grep -v '^#' ${BUILD_ISO_DIR}/build_iso/${required_layer_cfg_name}); do
-    layer=${line%%,*}
-    url=${line##*,}
-    cat $layer_cfgs | grep -q "^${layer}$"
-    if [ $? -ne 0 ]; then
-        echo "need ${layer} from ${url}"
-        # layer_inc=${MY_REPO}/cgcs-centos-repo/$(basename ${url})
-        layer_inc=${MY_WORKSPACE}/export/$(basename ${url})
-        curl -s ${url} > ${layer_inc}
-        install_pkg_list ${layer_inc}
+    for PKGLIST_LOWER_LAYER in $PKGLIST_LOWER_LAYER_LIST; do
+        install_pkg_list "${PKGLIST_LOWER_LAYER}"
         if [ $? -eq 2 ]; then
-            echo "Error: Failed to install packages from ${layer_inc}"
+            echo "Error: Failed to install packages from ${PKGLIST_LOWER_LAYER}"
             exit 1
         fi
-    fi
-done
+    done
+fi
 
 \cd $OUTPUT_DIST_DIR
 chmod -R 644 isolinux/Packages/*
@@ -778,7 +791,7 @@ final_touches
 # Sign the ISO
 sign_iso
 
-make_report "${PKGLIST_MINIMAL}" "${PKGLIST_STX}"
+make_report "${PKGLIST_MINIMAL}" "${PKGLIST_STX}" "${PKGLIST_THIS_LAYER}" ${PKGLIST_LOWER_LAYER_LIST}
 
 # Check sanity
 FILESIZE=$(wc -c <"$OUTPUT_FILE")

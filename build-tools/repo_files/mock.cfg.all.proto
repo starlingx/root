@@ -2,9 +2,8 @@ config_opts['root'] = 'BUILD_ENV/mock'
 config_opts['target_arch'] = 'x86_64'
 config_opts['legal_host_arches'] = ('x86_64',)
 config_opts['chroot_setup_cmd'] = 'install @buildsys-build'
-config_opts['dist'] = 'el8'  # only useful for --resultdir variable subst
-config_opts['releasever'] = '8'
-config_opts['package_manager'] = 'dnf'
+config_opts['dist'] = 'el7'  # only useful for --resultdir variable subst
+config_opts['releasever'] = '7'
 config_opts['rpmbuild_networking'] = False
 
 
@@ -43,11 +42,12 @@ enabled=1
 skip_if_unavailable=1
 metadata_expire=0
 
-[TisCentos8Distro]
-name=Tis-Centos-8-Distro
+[StxCentos7Distro]
+name=Stx-Centos-7-Distro
 enabled=1
 baseurl=LOCAL_BASE/MY_REPO_DIR/cgcs-centos-repo/Binary
 failovermethod=priority
+exclude=kernel-devel libvirt-devel
 
 [StxCentos7Distro-rt]
 name=Stx-Centos-7-Distro-rt

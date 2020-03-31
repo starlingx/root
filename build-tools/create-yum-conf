@@ -1,5 +1,11 @@
 #!/bin/bash
 
+#
+# usage: create-yum-conf [<layer>]
+#
+
+LAYER=${1:-$LAYER}
+
 if [ "$MY_WORKSPACE" == "" ]; then
    echo "ERROR: MY_WORKSPACE not defined"
    exit 1;
@@ -21,9 +27,16 @@ if [ "$MY_BUILD_DIR" == "" ]; then
 fi
 
 MY_YUM_CONF="$MY_WORKSPACE/yum.conf"
-MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.proto"
 YUM_DIR="$MY_WORKSPACE/yum"
 YUM_CACHE="$YUM_DIR/cache"
+
+# Try to find a layer specific mock.cfg.proto
+MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.${LAYER}.proto"
+if [ ! -f "$MOCK_CFG_PROTO" ]; then
+    # Not present, Use default mock.cfg.proto
+    MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.proto"
+fi
+
 
 if [ -f "$MOCK_CFG_PROTO" ]; then
     if [ -f "$MY_YUM_CONF" ]; then

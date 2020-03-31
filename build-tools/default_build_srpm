@@ -164,7 +164,7 @@ if [ "x$STAGING" != "x" ]; then
    
 fi
 
-TRANSFORM=`echo "$SRC_DIR" | sed 's/^\./\\./' | sed 's:^/::'`
+TRANSFORM=`echo "$SRC_DIR" | sed 's/^\./\\./' | sed 's:^/::' | sed 's#^.*/\.\./##'`
 
 if [ "x$STAGING" != "x" ]; then
 	pushd $STAGING
@@ -191,6 +191,7 @@ fi
 
 if [ $TAR_NEEDED -gt 0 ]; then
     echo "Creating tar file: $TAR_PATH ..."
+    echo "tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude='$SRC_DIR/$DISTRO' --exclude='pbr-*.egg' $SRC_DIR --transform 's,^$TRANSFORM,$TAR_NAME-$VERSION,'"
     tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' $SRC_DIR --transform "s,^$TRANSFORM,$TAR_NAME-$VERSION,"
     if [ $? -ne 0 ]; then
 		if [ "x$STAGING" != "x" ]; then

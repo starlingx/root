@@ -1,4 +1,5 @@
 *.swp
+.tox
 /cgcs-centos-repo
 /cgcs-tis-repo
 /cgcs-3rd-party-repo

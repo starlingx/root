@@ -36,6 +36,9 @@ if [ $? -ne 0 ]; then
     SERIAL_FLAG=1
 fi
 
+export TMPDIR=$MY_WORKSPACE/tmp
+mkdir -p $TMPDIR
+
 # Make sure we have a dependency cache
 DEP_CACHE="$MY_REPO/cgcs-tis-repo/dependancy-cache"
 

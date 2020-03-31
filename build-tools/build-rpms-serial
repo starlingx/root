@@ -138,6 +138,20 @@ str_lst_contains() {
 
 
 #
+# Create a list of rpms in the directory
+#
+create_lst () {
+   local DIR=${1}
+
+       (cd $DIR
+        [ -f rpm.lst ] && \rm -rf rpm.lst
+        [ -f srpm.lst ] && \rm -rf srpm.lst
+        find . -name '*.rpm' -and -not -name '*.src.rpm' | sed 's#^[.][/]##' | sort > rpm.lst
+        find . -name '*.src.rpm' | sed 's#^[.][/]##' | sort > srpm.lst
+       )
+}
+
+#
 # Delete old repodata and reate a new one
 #
 recreate_repodata () {
@@ -990,11 +1004,14 @@ update_cgcs_repo () {
           echo ""
           echo "Need to recreate $REPO_NAME/$d/repodata"
           mkdir -p $d
+
           if [ -d $d/repodata ]; then
              update_repodata "$d"
           else
              recreate_repodata "$d"
           fi
+
+          create_lst "$d"
        fi
     done
     echo "$CURR_HEAD" > $LAST_HEAD_FILE
@@ -1175,7 +1192,7 @@ FORMAL_FLAG=0
 CAREFUL=0
    
 # read the options
-TEMP=$(getopt -o ha::bc: --long serial,std,rt,installer,containers,no-required,no-descendants,no-autoclean,no-build-info,clean,formal,careful,help,arga::,argb,argc: -n "$ME" -- "$@")
+TEMP=$(getopt -o h --long serial,std,rt,installer,containers,no-required,no-descendants,no-autoclean,no-build-info,clean,formal,careful,help,layer: -n "$ME" -- "$@")
 
 if [ $? -ne 0 ]; then
     usage
@@ -1190,12 +1207,6 @@ trap my_exit EXIT
 # extract options and their arguments into variables.
 while true ; do
     case "$1" in
-        -a|--arga)
-            case "$2" in
-                "") ARG_A='some default value' ; shift 2 ;;
-                *) ARG_A=$2 ; shift 2 ;;
-            esac ;;
-        -b|--argb) ARG_B=1 ; shift ;;
         --careful) CAREFUL=1 ; shift ;;
         --no-descendants) NO_DESCENDANTS=1 ; shift ;;
         --no-required) NO_REQUIRED=1 ; shift ;;
@@ -1208,12 +1219,8 @@ while true ; do
         --containers) BUILD_TYPE=containers; shift ;;
         -h|--help) HELP=1 ; shift ;;
         --clean) CLEAN_FLAG=1 ; shift ;;
-        -c|--argc)
-            case "$2" in
-                "") shift 2 ;;
-                *) ARG_C=$2 ; shift 2 ;;
-            esac ;;
         --serial) shift ;;
+        --layer) export LAYER=$2 ; shift ; shift ;;
         --) shift ; break ;;
         *) echo "Internal error!" ; exit 1 ;;
     esac
@@ -1241,7 +1248,10 @@ export MY_BUILD_CFG=$MY_WORKSPACE/$MY_BUILD_ENVIRONMENT_FILE
 export MY_MOCK_ROOT=$MY_WORKSPACE/mock/root
 
 IMAGE_INC_FILE="${MY_WORKSPACE}/image.inc"
-image_inc_list iso ${BUILD_TYPE} ${DISTRO} > "${IMAGE_INC_FILE}"
+image_inc_list iso std ${DISTRO} > "${IMAGE_INC_FILE}"
+
+DEV_IMAGE_INC_FILE="${MY_WORKSPACE}/image-dev.inc"
+image_inc_list iso dev ${DISTRO} > "${DEV_IMAGE_INC_FILE}"
 
 LAST_PLATFORM_RELEASE_FILE="$MY_BUILD_DIR/.platform_release"
 
@@ -1305,6 +1315,9 @@ export SOURCES_DIR="$RPM_BUILD_BASE/SOURCES"
 export PLATFORM_RELEASE
 
 if [ ! -d $BUILD_BASE ]; then
+   if [ $CLEAN_FLAG -eq 1 ]; then
+       exit 0
+   fi
    echo "ERROR: expected to find directory at '$BUILD_BASE'"
    exit 1
 fi
@@ -1348,6 +1361,10 @@ if [ ! -f $BUILD_CFG ]; then
    echo "ERROR: Mock config file not found at '$BUILD_CFG'"
    exit 1
 fi
+
+# create temp dir
+export TMPDIR="$MY_WORKSPACE/tmp"
+mkdir -p $TMPDIR
 
 # Create symlinks from /var/... to /localdisk/loadbuild/... if on a build server
 
@@ -1481,6 +1498,7 @@ clean_list () {
    echo "Cleaning repodata"
    for d in $(find -L  $MY_WORKSPACE/rpmbuild $MY_WORKSPACE/results   -type d -name repodata); do
       recreate_repodata $(dirname $d)
+      create_lst $(dirname $d)
    done
 
    echo ""
@@ -1584,6 +1602,7 @@ update_spec_cache () {
 
 echo "Find the list of packages we must compile"
 
+mkdir -p $MY_WORKSPACE/tmp/
 NEED_BUILD_DIR=$(mktemp -d $MY_WORKSPACE/tmp/$USER-$ME-need-build-XXXXXX)
 if [ $? -ne 0 ] || [ "x$NEED_BUILD_DIR" == "x" ]; then
     echo "Failed to create temp directory under $MY_WORKSPACE/tmp"
@@ -2060,6 +2079,7 @@ fi
 echo "Recreate repodata"
 for d in $(find -L $MY_WORKSPACE/rpmbuild $MY_WORKSPACE/results  -type d -name repodata); do
    update_repodata $(dirname "$d")
+   create_lst $(dirname "$d")
 done
 
 
