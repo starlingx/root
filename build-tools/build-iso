@@ -40,8 +40,8 @@ usage () {
 MY_YUM_CONF=""
 STD_REPO_ID="local-std"
 RT_REPO_ID="local-rt"
-LOWER_LAYER_STD_REPO_ID="StxCentos7Distro"
-LOWER_LAYER_RT_REPO_ID="StxCentos7Distro-rt"
+LOWER_LAYER_STD_REPO_ID="StxCentos8Distro"
+LOWER_LAYER_RT_REPO_ID="StxCentos8Distro-rt"
 
 NPROCS=$(nproc)
 
@@ -284,7 +284,6 @@ function init_output_dir {
    echo "Creating base output directory in $OUTPUT_DIST_DIR"
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/images
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/ks
-   \mkdir -p $OUTPUT_DIST_DIR/isolinux/LiveOS
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/Packages
    \mkdir -p $OUTPUT_DIST_DIR/utils
 
@@ -445,7 +444,7 @@ function final_touches {
        EXTRA_ARGS+=" --pkglist ${PKGLIST_LOWER_LAYER}"
    done
 
-   python "$BSP_FILES_PATH/platform_comps.py" \
+   python3 "$BSP_FILES_PATH/platform_comps.py" \
       --groups "$OUTPUT_DIST_DIR/comps.xml" \
       --pkglist "${PKGLIST_MINIMAL}" \
       --pkglist "${PKGLIST_STX}" \
@@ -492,7 +491,7 @@ function extract_pkg_from_local_repo {
       repoid_arg+=" --repoid=${repoid}"
    done
 
-   local pkgfile=$(TMPDIR=$TMP_DIR repoquery --config=${yum_conf} ${repoid_arg} --location -q ${pkgname})
+   local pkgfile=$(TMPDIR=$TMP_DIR repoquery --config=${yum_conf} --arch=x86_64,noarch ${repoid_arg} --location -q ${pkgname})
    if [ -z "${pkgfile}" ]; then
       echo "Could not find package $pkgname in $@"
       exit 1
@@ -586,16 +585,17 @@ EOM
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/centos/x86_64-efi
 
    \cp --preserve=all pxeboot/pxelinux.0 pxeboot/menu.c32 pxeboot/chain.c32 $OUTPUT_DIST_DIR/isolinux/pxeboot &&
+   \cp --preserve=all pxeboot/pxelinux.0 pxeboot/ldlinux.c32 pxeboot/libcom32.c32 pxeboot/libutil.c32 $OUTPUT_DIST_DIR/isolinux/ &&
    \cp --preserve=all usr/lib/grub/x86_64-efi/* $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/centos/x86_64-efi/ &&
    \cp --preserve=all pxeboot/EFI/grubx64.efi $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/
    if [ $? -ne 0 ]; then
       echo "Error: Could not copy all files from installer"
       exit 1
    fi
-   
-   \cp --preserve=all www/pages/feed/rel-*/LiveOS/squashfs.img $OUTPUT_DIST_DIR/isolinux/LiveOS
+
+   \cp --preserve=all www/pages/feed/rel-*/images/install.img $OUTPUT_DIST_DIR/isolinux/images
    if [ $? -ne 0 ]; then
-      echo "Error: Could not copy squashfs from LiveOS"
+      echo "Error: Could not copy install from images"
       exit 1
    fi
 

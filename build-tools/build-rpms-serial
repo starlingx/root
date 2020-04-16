@@ -944,7 +944,7 @@ mock_clean_metadata_cfg () {
       return 1
    fi
 
-   CMD=$((cat $CFG; grep config_opts\\[\'yum.conf\'\\\] $CFG | sed 's#\\n#\n#g') | grep '^[[]' | grep -v main | sed 's/[][]//g' | sed 's#^#yum --enablerepo=#' | sed 's#$# clean metadata#' | sort -u | tr '\n' ';')
+   CMD=$((cat $CFG; grep config_opts\\[\'yum.conf\'\\\] $CFG | sed 's#\\n#\n#g') | grep '^[[]' | grep -v main | sed 's/[][]//g' | sed 's#^#dnf --enablerepo=#' | sed 's#$# clean metadata#' | sort -u | tr '\n' ';')
    echo "$MOCK -r $CFG --configdir $(dirname $CFG) --chroot bash -c $CMD" &> $TMP
    trapwrap_n $CFG $MOCK -r $CFG --configdir $(dirname $CFG) --chroot "bash -c '($CMD)'" &>>$TMP
    RC=$?
