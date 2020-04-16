@@ -149,6 +149,16 @@ function build_image_versions_to_manifest {
     done
 }
 
+function find_chartfile {
+    local helm_rpm=$1
+
+    for RPMS_DIR in ${RPMS_DIRS}; do
+        if [ -d ${RPMS_DIR} ]; then
+            find ${RPMS_DIR} -name "${helm_rpm}${FIND_GLOB}"
+        fi
+    done
+}
+
 # Extract the helm charts from a rpm
 function extract_chartfile {
     local helm_rpm=$1
@@ -157,8 +167,7 @@ function extract_chartfile {
         centos)
             # Bash globbing does not handle [^-] like regex
             # so grep needed to be used
-            rpm_file=$(ls ${RPMS_DIR} | grep "^${helm_rpm}${GREP_GLOB}")
-            chartfile=${RPMS_DIR}/${rpm_file}
+            chartfile=$(find_chartfile ${helm_rpm})
             if [ ! -f ${chartfile} ]; then
                 echo "Failed to find helm package: ${helm_rpm}" >&2
                 exit 1
@@ -422,8 +431,9 @@ if [ ${#IMAGE_RECORDS[@]} -ne 0 ]; then
 fi
 
 # Extract helm charts and app version from the application rpm
-RPMS_DIR=${MY_WORKSPACE}/std/rpmbuild/RPMS
-GREP_GLOB="-[^-]*-[^-]*.tis.noarch.rpm"
+RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${MY_REPO}/cgcs-centos-repo/Binary/noarch"
+FIND_GLOB="*.tis.noarch.rpm"
+
 extract_application_rpms
 # Extract helm charts from the application dependent rpms
 if [ ${#APP_HELM_FILES[@]} -gt 0 ]; then
