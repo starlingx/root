@@ -9,6 +9,9 @@
 # in a single openstack-helm.tgz tarball
 #
 
+BUILD_HELM_CHARTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $BUILD_HELM_CHARTS_DIR/srpm-utils
+
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     echo "Environment not setup for builds" >&2
@@ -150,13 +153,29 @@ function build_image_versions_to_manifest {
 }
 
 function find_chartfile {
-    local helm_rpm=$1
+    local helm_rpm_name=$1
+    local helm_rpm=""
+    local rpm_name=""
+    local rpms_dir=""
 
-    for RPMS_DIR in ${RPMS_DIRS}; do
-        if [ -d ${RPMS_DIR} ]; then
-            find ${RPMS_DIR} -name "${helm_rpm}${FIND_GLOB}"
+    for helm_rpm in $(
+        # Generate a list of rpms that seem like a good match
+        for rpms_dir in ${RPMS_DIRS}; do
+            if [ -d ${rpms_dir} ]; then
+                find ${rpms_dir} -name "${helm_rpm_name}${FIND_GLOB}"
+            fi
+        done ); do
+
+        # Verify the rpm name
+        rpm_name=$(rpm_get_name ${helm_rpm})
+        if [ "${rpm_name}" == "${helm_rpm_name}" ]; then
+            echo ${helm_rpm}
+            return 0
         fi
     done
+
+    # no match found
+    return 1
 }
 
 # Extract the helm charts from a rpm
