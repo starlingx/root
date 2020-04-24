@@ -55,6 +55,6 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/4609dacc5f2ffa54012eaffc60196488a6c589b6
     tag: stx.4.0-v1.0.0
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-centos-stable-20200309T230005Z.0
+    src_build_tag: master-centos-stable-20200420T230011Z.0
     src_ref: https://opendev.org/starlingx/upstream/commit/abc5b279122345f9ec4acd735a6dde6c2b6f8b90
-    tag: stx.4.0-v1.0.0
+    tag: stx.4.0-v1.1.0
