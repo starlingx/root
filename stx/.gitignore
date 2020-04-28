@@ -32,6 +32,7 @@ installer-prebuilt
 /oidc-auth-armada-app
 /openstack-armada-app
 /platform-armada-app
+/portieris-armada-app
 /stx-puppet
 /test
 /update
