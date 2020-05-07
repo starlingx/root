@@ -36,6 +36,7 @@ function generate_dep_list {
         | grep -v "error:" \
         | grep -v "warning:" \
         | grep -v "Preparing..." \
+        | grep -v "installing package" \
         | sed "s/ is needed by.*$//" | sed "s/ >=.*$//" | sort -u > $DEPLISTFILE
     \rm -rf $TMP_RPM_DB
 }
