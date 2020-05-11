@@ -670,6 +670,12 @@ raw_create_tarballs_extract_script () {
    local DEST
    local TAR_ARGS
    local POST_PATCH_FIRST_PASS=0
+   local KVERSION=""
+
+   # get version for kernel-rt
+   if [[ $OLD_BUILD_DIR =~ kernel-rt ]]; then
+      KVERSION=$PKG_VER
+   fi
 
    echo "set -e" >> $EXTRACT_SCRIPT
    echo "set -x" >> $EXTRACT_SCRIPT
@@ -816,6 +822,10 @@ raw_create_tarballs_extract_script () {
                 "git commit "*)
                     ;;
                 "rm -rf "*)
+                    ;;
+                "VERSION=$KVERSION"*)
+                    # for kernel-rt
+                    echo "export $LINE" >> $EXTRACT_SCRIPT
                     ;;
                 *)
                     echo "$LINE" >> $EXTRACT_SCRIPT
