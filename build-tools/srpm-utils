@@ -3149,13 +3149,44 @@ srpm_match_target () {
 srpm_git_revision_count () {
     local SRC_DIR=$1
     local BASE_SRCREV=$2
+    local -i COUNT=0
+    local -i DIRTY=0
 
     pushd $SRC_DIR > /dev/null
-    local COUNT=$(git rev-list --count $BASE_SRCREV..HEAD)
+    COUNT=$(git rev-list --count $BASE_SRCREV..HEAD)
     if [ $? -ne 0 ]; then
+        popd > /dev/null
         return 1
     fi
-    local DIRTY=$(git status --porcelain | wc -l)
+    DIRTY=$(git status --porcelain | wc -l)
+    if [ "$DIRTY" -ne 0 ]; then
+        # add an extra value for uncommitted work.
+        COUNT=$((COUNT+1))
+    fi
+    popd > /dev/null
+
+    echo $COUNT
+    return 0
+}
+
+# Calculate a folder-specific GITREVCOUNT
+srpm_git_revision_count_pkg () {
+    local SRC_DIR=$1
+    local BASE_SRCREV=$2
+    local -i COUNT=0
+    local -i DIRTY=0
+
+    pushd $SRC_DIR > /dev/null
+    if [ -z "${BASE_SRCREV}" ]; then
+        COUNT=$(git rev-list --count HEAD -- .)
+    else
+        COUNT=$(git rev-list --count $BASE_SRCREV..HEAD -- .)
+    fi
+    if [ $? -ne 0 ]; then
+        popd > /dev/null
+        return 1
+    fi
+    DIRTY=$(git status --porcelain . | wc -l)
     if [ "$DIRTY" -ne 0 ]; then
         # add an extra value for uncommitted work.
         COUNT=$((COUNT+1))
@@ -3167,39 +3198,59 @@ srpm_git_revision_count () {
 }
 
 srpm_source_build_data () {
-   local DATA_FILE=$1
-   if [ ! -f $DATA_FILE ]; then
-       >&2 echo "ERROR: $FUNCNAME (${LINENO}): $DATA_FILE not found"
-       return 1
-   fi
-   source $DATA_FILE
+    local DATA_FILE=$1
+    if [ ! -f $DATA_FILE ]; then
+        >&2 echo "ERROR: $FUNCNAME (${LINENO}): $DATA_FILE not found"
+        return 1
+    fi
+    source $DATA_FILE
 
-   # TIS_PATCH_VER is mandatory
-   if [ -z "$TIS_PATCH_VER" ]; then
-       >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_PATCH_VER must be set in $DATA_FILE"
-       return 1
-   elif [[ "$TIS_PATCH_VER" == GITREVCOUNT* ]]; then
-       # Calculate the patch version dynamically based on the number of commits
-       # in the subgit.  This also supports adding a "+N" at the end to force
-       # an additional increment (e.g., TIS_PATCH_VER=GITREVCOUNT+1)
-       if [ -z "$TIS_BASE_SRCREV" ]; then
-          >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_BASE_SRCREV must be set in $DATA_FILE"
-          return 1
-       fi
-       if [ ! -d "$SRC_DIR" ]; then
-          >&2 echo "ERROR: $FUNCNAME (${LINENO}): SRC_DIR must specify a subgit root path"
-          return 1
-       fi
-       TIS_PATCH_INC=${TIS_PATCH_VER//[A-Z \+]/}
-       TIS_PATCH_VER=$(srpm_git_revision_count $SRC_DIR $TIS_BASE_SRCREV)
-       if [ $? -ne 0 ] || [ "$TIS_PATCH_VER" == "" ]; then
-          >&2 echo "ERROR: $FUNCNAME (${LINENO}): Invalid TIS_BASE_SRCREV '$TIS_BASE_SRCREV'"
-          return 1
-       fi
-       if [[ "$TIS_PATCH_INC" =~ ^-?[0-9]+$ ]]; then
-           TIS_PATCH_VER=$((TIS_PATCH_VER+${TIS_PATCH_INC}))
-       fi
-   fi
+    # TIS_PATCH_VER is mandatory
+    if [ -z "$TIS_PATCH_VER" ]; then
+        >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_PATCH_VER must be set in $DATA_FILE"
+        return 1
+    elif [[ "${TIS_PATCH_VER}" =~ [^0-9] ]]; then
+        # Expand TIS_PATCH_VER with supported variables
+        local -i PKG_GITREVCOUNT=0
+        local -i GITREVCOUNT=0
+        local varname
 
-   return 0
+        for varname in ${TIS_PATCH_VER//[+-]/ }; do
+            if [ "${varname}" = "PKG_GITREVCOUNT" ]; then
+                # Calculate PKG_GITREVCOUNT, with optional PKG_BASE_SRCREV
+                PKG_GITREVCOUNT=$(srpm_git_revision_count_pkg $PKG_BASE $PKG_BASE_SRCREV)
+                if [ $? -ne 0 ]; then
+                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): Failed to calculate PKG_GITREVCOUNT"
+                    return 1
+                fi
+            elif [ "${varname}" = "GITREVCOUNT" ]; then
+                # Calculate GITREVCOUNT
+                if [ -z "$TIS_BASE_SRCREV" ]; then
+                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_BASE_SRCREV must be set in $DATA_FILE"
+                    return 1
+                fi
+
+                GITREVCOUNT=$(srpm_git_revision_count $SRC_DIR $TIS_BASE_SRCREV)
+                if [ $? -ne 0 ]; then
+                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): Failed to calculate GITREVCOUNT"
+                    return 1
+                fi
+            elif [[ "${varname}" =~ [^0-9] ]]; then
+                # TIS_PATCH_VER has some unsupported var or characters
+                >&2 echo "ERROR: $FUNCNAME (${LINENO}): Unsupported value in TIS_PATCH_VER: ${varname}"
+                return 1
+            fi
+        done
+
+        # Bash will expand the supported variables defined above, and perform any arithmetic,
+        # using the $((...)) syntax.
+        # So TIS_PATCH_VER=GITREVCOUNT+PKG_GITREVCOUNT+2, where:
+        # - GITREVCOUNT evaluates to 20
+        # - PKG_GITREVCOUNT evaluates to 15
+        # will result in TIS_PATCH_VER=37 when Bash evaluates the following:
+        #
+        TIS_PATCH_VER=$((TIS_PATCH_VER))
+    fi
+
+    return 0
 }
