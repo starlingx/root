@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #
 # Copyright (c) 2018 Wind River Systems, Inc.
 #
@@ -8,6 +10,11 @@
 # A place for any functions relating to git, or the git hierarchy created
 # by repo manifests.
 #
+
+echo_stderr ()
+{
+    echo "$@" >&2
+}
 
 git_ctx_root_dir () {
     dirname "${MY_REPO}"
@@ -81,6 +88,243 @@ git_list_containing_tag () {
 
 
 #
+# git_root [<dir>]:
+#      Return the root directory of a git
+#      Note: symlinks are fully expanded.
+#
+
+git_root () {
+    local DIR="${1:-${PWD}}"
+
+    if [ ! -d "${DIR}" ]; then
+        echo_stderr "No such directory: ${DIR}"
+        return 1
+    fi
+
+        (
+        cd "${DIR}"
+        ROOT_DIR="$(git rev-parse --show-toplevel)" || exit 1
+        readlink -f "${ROOT_DIR}"
+        )
+}
+
+#
+# git_list_tags [<dir>]:
+#      Return a list of all git tags.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_list_tags () {
+    local DIR="${1:-${PWD}}"
+
+    (
+    cd "$DIR"
+    git tag
+    )
+}
+
+
+#
+# git_list_branches [<dir>]:
+#      Return a list of all git branches.
+#      Non-local branches will be prefixed by 'remote/<remote-name>'
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_list_branches () {
+    local DIR="${1:-${PWD}}"
+
+    (
+    cd "$DIR"
+    git branch --list --all | sed 's#^..##'
+    )
+}
+
+
+#
+# git_list_remote_branches <remote> [<dir>]:
+#      Return a list of all git branches defined for <remote>.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_list_remote_branches () {
+    local REMOTE="${1}"
+    local DIR="${2:-${PWD}}"
+
+    (
+    cd "$DIR"
+    git branch --list --all "${REMOTE}/*" | sed "s#^.*/${REMOTE}/##"
+    )
+}
+
+
+#
+# git_is_tag <tag> [<dir>]:
+#      Test if a <tag> is defined within a git.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_is_tag () {
+    local TAG="${1}"
+    local DIR="${2:-${PWD}}"
+
+    # remove a trailing ^0 if present
+    TAG=${TAG%^0}
+
+    if [ "$TAG" == "" ]; then
+        return 1;
+    fi
+
+    (
+    cd "$DIR"
+    git show-ref ${TAG} | cut -d ' ' -f 2 | grep -q '^refs/tags/'
+    )
+}
+
+
+#
+# git_is_local_branch <branch> [<dir>]:
+#      Test if a <branch> is defined locally within a git.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_is_local_branch () {
+    local BRANCH="${1}"
+    local DIR="${2:-${PWD}}"
+
+    if [ "$BRANCH" == "" ]; then
+        return 1;
+    fi
+
+    (
+    cd "$DIR"
+    git show-ref ${BRANCH} | cut -d ' ' -f 2 | grep -q '^refs/heads/'
+    )
+}
+
+
+#
+# git_is_remote_branch <branch> [<dir>]:
+#      Test if a <branch> is defined in any of the remotes of the git.
+#      The branche does NOT need to be prefixed by the remore name.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_is_remote_branch () {
+    local BRANCH="${1}"
+    local DIR="${2:-${PWD}}"
+
+    if [ "$BRANCH" == "" ]; then
+        return 1;
+    fi
+
+    (
+    cd "$DIR"
+    git show-ref ${BRANCH} | cut -d ' ' -f 2 | grep -q '^refs/remotes/'
+    )
+}
+
+
+#
+# git_is_branch <branch> [<dir>]:
+#      Test if a <branch> is defined in the git.
+#      The branch can be local or remote.
+#      Remote branches do NOT need to be prefixed by the remore name.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_is_branch () {
+    local BRANCH="${1}"
+    local DIR="${2:-${PWD}}"
+
+    if [ "$BRANCH" == "" ]; then
+        return 1;
+    fi
+
+    git_is_local_branch ${BRANCH} "${DIR}" || git_is_remote_branch ${BRANCH} "${DIR}"
+}
+
+
+#
+# git_is_ref <ref> [<dir>]:
+#      Test if a <ref> is a valid name for a commit.
+#      The reference can be a sha, tag, or branch.
+#      Remote branches must be prefixed by the remore name,
+#      as in <remote-name>/<branch> .
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_is_ref () {
+    local REF="${1}"
+    local DIR="${2:-${PWD}}"
+
+    if [ "$REF" == "" ]; then
+        return 1;
+    fi
+
+    # test "$(git cat-file -t ${REF})" == "commit"
+    local TYPE=""
+    TYPE="$(git cat-file -t ${REF} 2> /dev/null)" && test "${TYPE}" == "commit"
+}
+
+
+#
+# git_is_sha <sha> [<dir>]:
+#      Test if a <sha> is defined in the git.  The sha can be abreviated.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+#
+
+git_is_sha () {
+    local SHA="${1}"
+    local DIR="${2:-${PWD}}"
+
+    if [ "$SHA" == "" ]; then
+        return 1;
+    fi
+
+    git_is_ref ${SHA} "${DIR}" && ! ( git_is_branch ${SHA} "${DIR}" || git_is_tag ${SHA} "${DIR}")
+}
+
+
+#
+# git_ref_type <ref> [<dir>]:
+#      Determine the type of the git reference <ref>.
+#      The result, via stdout,  will be one of ("sha", "tag", "branch" or "invalid")
+#      Remote branches do NOT need to be prefixed by the remore name.
+#      Either specify a directory <dir> in the git,
+#      or use current directory if unspecified.
+
+git_ref_type () {
+    local REF="${1}"
+    local DIR="${2:-${PWD}}"
+
+    if git_is_branch ${REF} ${DIR}; then
+        echo 'branch'
+        return 0
+    fi
+    if git_is_tag ${REF} ${DIR}; then
+        echo 'tag'
+        return 0
+    fi
+    if git_is_sha ${REF} ${DIR}; then
+        echo 'sha'
+        return 0
+    fi
+    echo 'invalid'
+    return 1
+}
+
+#
+#
 # git_context:
 #     Returns a bash script that can be used to recreate the current git context,
 #
@@ -145,4 +389,93 @@ git_test_context () {
     fi
 
     return 1
+}
+
+git_local_branch () {
+    local result=""
+    result=$(git name-rev --name-only HEAD)
+    if [ "$result" == "" ] || [ "$result" == "undefined" ]; then
+        return 1
+    fi
+
+    # handle the case where a tag is returned by looking at the parent.
+    # This weird case when a local commit is tagged and we were in
+    # detached head state, or on 'default' branch.
+    while git_is_tag $result; do
+        result=$(git name-rev --name-only $result^1 )
+        if [ "$result" == "" ] || [ "$result" == "undefined" ]; then
+            return 1
+        fi
+    done
+
+    echo $result
+}
+
+git_list_remotes () {
+    git remote | grep -v gerrit
+}
+
+git_remote () {
+    local DIR="${1:-${PWD}}"
+
+    (
+    cd ${DIR}
+    local_branch=$(git_local_branch) || return 1
+
+    # Return remote of current local branch, else default remote.
+    git config branch.${local_branch}.remote || git_list_remotes
+    )
+}
+
+git_remote_url () {
+    local remote=""
+    remote=$(git_remote) || return 1
+    git config remote.$remote.url
+}
+
+git_remote_branch () {
+    local local_branch=""
+    local_branch=$(git_local_branch) || return 1
+    git config branch.${local_branch}.merge | sed 's#^refs/heads/##'
+}
+
+git_review_method () {
+    local url=""
+    url=$(git_remote_url) || exit 1
+    if [[ "${url}" =~ "/git.starlingx.io/" || "${url}" =~ "/opendev.org/" ]]; then
+        echo 'gerrit'
+    else
+        echo 'default'
+    fi
+}
+
+git_review_url () {
+    local method=""
+    method=$(git_review_method)
+    if [ "${method}" == "gerrit" ]; then
+        git config remote.gerrit.url
+        if [ $? -ne 0 ]; then
+            # Perhaps we need to run git review -s' and try again
+            git review -s > /dev/null || return 1
+            git config remote.gerrit.url
+        fi
+    else
+        git_remote_url
+    fi
+}
+
+git_review_remote () {
+    local method=""
+    method=$(git_review_method)
+    if [ "${method}" == "gerrit" ]; then
+        git config remote.gerrit.url > /dev/null
+        if [ $? -ne 0 ]; then
+            # Perhaps we need to run git review -s' and try again
+            git review -s > /dev/null || return 1
+            git config remote.gerrit.url > /dev/null || return 1
+        fi
+        echo "gerrit"
+    else
+        git_remote
+    fi
 }

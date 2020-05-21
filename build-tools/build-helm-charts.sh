@@ -9,6 +9,9 @@
 # in a single openstack-helm.tgz tarball
 #
 
+BUILD_HELM_CHARTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $BUILD_HELM_CHARTS_DIR/srpm-utils
+
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     echo "Environment not setup for builds" >&2
@@ -149,6 +152,32 @@ function build_image_versions_to_manifest {
     done
 }
 
+function find_chartfile {
+    local helm_rpm_name=$1
+    local helm_rpm=""
+    local rpm_name=""
+    local rpms_dir=""
+
+    for helm_rpm in $(
+        # Generate a list of rpms that seem like a good match
+        for rpms_dir in ${RPMS_DIRS}; do
+            if [ -d ${rpms_dir} ]; then
+                find ${rpms_dir} -name "${helm_rpm_name}${FIND_GLOB}"
+            fi
+        done ); do
+
+        # Verify the rpm name
+        rpm_name=$(rpm_get_name ${helm_rpm})
+        if [ "${rpm_name}" == "${helm_rpm_name}" ]; then
+            echo ${helm_rpm}
+            return 0
+        fi
+    done
+
+    # no match found
+    return 1
+}
+
 # Extract the helm charts from a rpm
 function extract_chartfile {
     local helm_rpm=$1
@@ -157,8 +186,7 @@ function extract_chartfile {
         centos)
             # Bash globbing does not handle [^-] like regex
             # so grep needed to be used
-            rpm_file=$(ls ${RPMS_DIR} | grep "^${helm_rpm}${GREP_GLOB}")
-            chartfile=${RPMS_DIR}/${rpm_file}
+            chartfile=$(find_chartfile ${helm_rpm})
             if [ ! -f ${chartfile} ]; then
                 echo "Failed to find helm package: ${helm_rpm}" >&2
                 exit 1
@@ -422,8 +450,9 @@ if [ ${#IMAGE_RECORDS[@]} -ne 0 ]; then
 fi
 
 # Extract helm charts and app version from the application rpm
-RPMS_DIR=${MY_WORKSPACE}/std/rpmbuild/RPMS
-GREP_GLOB="-[^-]*-[^-]*.tis.noarch.rpm"
+RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${MY_REPO}/cgcs-centos-repo/Binary/noarch"
+FIND_GLOB="*.tis.noarch.rpm"
+
 extract_application_rpms
 # Extract helm charts from the application dependent rpms
 if [ ${#APP_HELM_FILES[@]} -gt 0 ]; then

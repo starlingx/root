@@ -15,4 +15,8 @@ openstack-neutron-linuxbridge
 ^kernel-rt-doc-
 ^kernel-rt-abi-whitelists
 ^kernel-rt-debug-
+^kernel-rt-debuginfo
 ^kernel-rt-kdump
+^kernel-rt-cross-headers
+^kernel-rt-kvm-debuginfo
+^kernel-rt-tools-debuginfo

@@ -88,6 +88,7 @@ export MOCK=/usr/bin/mock
 
 BUILD_RPMS_PARALLEL_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${BUILD_RPMS_PARALLEL_DIR}/image-utils.sh"
+source "${BUILD_RPMS_PARALLEL_DIR}/wheel-utils.sh"
 source "${BUILD_RPMS_PARALLEL_DIR}/spec-utils"
 source "${BUILD_RPMS_PARALLEL_DIR}/srpm-utils"
 
@@ -1484,6 +1485,11 @@ image_inc_list iso std ${DISTRO} > "${IMAGE_INC_FILE}"
 
 DEV_IMAGE_INC_FILE="${MY_WORKSPACE}/image-dev.inc"
 image_inc_list iso dev ${DISTRO} > "${DEV_IMAGE_INC_FILE}"
+
+for STREAM in stable dev; do
+    WHEELS_INC_FILE="${MY_WORKSPACE}/${DISTRO}_${STREAM}_wheels.inc"
+    wheels_inc_list ${STREAM} ${DISTRO} > "${WHEELS_INC_FILE}"
+done
 
 LAST_PLATFORM_RELEASE_FILE="$MY_BUILD_DIR/.platform_release"
 

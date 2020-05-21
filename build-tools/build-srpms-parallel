@@ -337,6 +337,18 @@ if [ $? -ne 0 ]; then
    exit 1
 fi
 
+mkdir -p $SRPM_ASSEMBLE
+if [ $? -ne 0 ]; then
+   echo "ERROR: $FUNCNAME (${LINENO}): Failed to create directory '$SRPM_ASSEMBLE'"
+   exit 1
+fi
+
+mkdir -p $BUILD_INPUTS
+if [ $? -ne 0 ]; then
+   echo "ERROR: $FUNCNAME (${LINENO}): Failed to create directory '$BUILD_INPUTS'"
+   exit 1
+fi
+
 build_dir () {
    local build_idx=$1
    local d=$2

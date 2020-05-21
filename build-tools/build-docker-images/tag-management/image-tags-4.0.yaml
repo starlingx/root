@@ -7,10 +7,10 @@ images:
     # Tag determined based on release tag associated with upstream commit
     tag: stx.4.0-v2.2
   - name: docker.io/starlingx/k8s-plugins-sriov-network-device
-    src_build_tag: master-centos-stable-20191203T153530Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/dac417bd31ed36d455e94db4aabe5916367654d4
-    # Tag determined based on release tag associated with upstream commit
-    tag: stx.4.0-v3.1
+    src_build_tag: master-centos-stable-20200512T184214Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/e2dc5c2dd0042788697ade268ac5c24fe9dc2f8c
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.4.0-v3.2-16-g4e0302ae
   - name: docker.io/starlingx/intel-fpga-admissionwebhook
     src_build_tag: master-distroless-stable-20191203T153530Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
@@ -55,6 +55,6 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/4609dacc5f2ffa54012eaffc60196488a6c589b6
     tag: stx.4.0-v1.0.0
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-centos-stable-20200309T230005Z.0
+    src_build_tag: master-centos-stable-20200420T230011Z.0
     src_ref: https://opendev.org/starlingx/upstream/commit/abc5b279122345f9ec4acd735a6dde6c2b6f8b90
-    tag: stx.4.0-v1.0.0
+    tag: stx.4.0-v1.1.0

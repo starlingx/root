@@ -7,6 +7,7 @@
 *~
 installer-prebuilt
 /ansible-playbooks
+/cert-manager-armada-app
 /clients
 /compile
 /config
@@ -22,13 +23,16 @@ installer-prebuilt
 /ha
 /helm-charts
 /integ
+/kernel
 /metal
 /monitor-armada-app
 /monitoring
 /nfv
+/nginx-ingress-controller-armada-app
 /oidc-auth-armada-app
 /openstack-armada-app
 /platform-armada-app
+/portieris-armada-app
 /stx-puppet
 /test
 /update

@@ -64,7 +64,6 @@ BUILD_AVOIDANCE_DATA_DIR="$MY_WORKSPACE/build_avoidance_data"
 BUILD_AVOIDANCE_SOURCE="$MY_REPO/build-data/build_avoidance_source"
 BUILD_AVOIDANCE_LOCAL_SOURCE="$MY_REPO/local-build-data/build_avoidance_source"
 BUILD_AVOIDANCE_TEST_CONTEXT="$BUILD_AVOIDANCE_DATA_DIR/test_context"
-BUILD_AVOIDANCE_LAST_SYNC_FILE="$BUILD_AVOIDANCE_DATA_DIR/last_sync_context"
 
 if [ ! -f $BUILD_AVOIDANCE_SOURCE ]; then
     echo "Couldn't read $BUILD_AVOIDANCE_SOURCE"
@@ -102,9 +101,29 @@ echo "BUILD_AVOIDANCE_DIR=$BUILD_AVOIDANCE_DIR"
 echo "BUILD_AVOIDANCE_HOST=$BUILD_AVOIDANCE_HOST"
 echo "BUILD_AVOIDANCE_USR=$BUILD_AVOIDANCE_USR"
 
+build_avoidance_last_sync_file () {
+    local BUILD_TYPE=$1
+
+    if [ -z "$BUILD_TYPE" ]; then
+        echo "build_avoidance_last_sync_file: Build type not set"
+        exit 1
+    fi
+    echo "$BUILD_AVOIDANCE_DATA_DIR/$BUILD_TYPE/last_sync_context"
+}
+
 build_avoidance_clean () {
-    if [ -f $BUILD_AVOIDANCE_LAST_SYNC_FILE ]; then
-        \rm -f -v "$BUILD_AVOIDANCE_LAST_SYNC_FILE"
+    local BUILD_TYPE=$1
+    local lsf
+
+    if [ "$BUILD_TYPE" == "" ]; then
+        for lsf in $(find $BUILD_AVOIDANCE_DATA_DIR -name last_sync_context); do
+            \rm -f -v "$lsf"
+        done
+    else
+        lsf="$(build_avoidance_last_sync_file $BUILD_TYPE)"
+        if [ -f $lsf ]; then
+            \rm -f -v "$lsf"
+        fi
     fi
 }
 
@@ -321,9 +340,13 @@ test_build_avoidance_context () {
 #
 get_build_avoidance_context () {
     (
+    local BUILD_TYPE=$1
     local context
     local BA_CONTEXT=""
     local BA_LAST_SYNC_CONTEXT=""
+
+    export BUILD_AVOIDANCE_LAST_SYNC_FILE="$(build_avoidance_last_sync_file $BUILD_TYPE)"
+    mkdir -p "$(dirname $BUILD_AVOIDANCE_LAST_SYNC_FILE)"
 
     # Load last synced context
     if [ -f $BUILD_AVOIDANCE_LAST_SYNC_FILE ]; then
@@ -345,7 +368,12 @@ get_build_avoidance_context () {
 
     # Must set this prior to build_avoidance_copy_dir.
     # The setting is not exported outside of the subshell.
-    BUILD_AVOIDANCE_URL="$BUILD_AVOIDANCE_HOST:$BUILD_AVOIDANCE_DIR"
+    if [ -z "$BUILD_AVOIDANCE_HOST" ]; then
+        BUILD_AVOIDANCE_URL="$BUILD_AVOIDANCE_DIR"
+    else
+        BUILD_AVOIDANCE_URL="$BUILD_AVOIDANCE_HOST:$BUILD_AVOIDANCE_DIR"
+    fi
+
 
     build_avoidance_copy_dir "$REMOTE_CTX_DIR" "$LOCAL_CTX_DIR"
     if [ $? -ne 0 ]; then
@@ -454,9 +482,17 @@ get_build_avoidance_context () {
 
     # test that the reference build context hasn't been deleted
     local BA_CONTEXT_DIR="$BUILD_AVOIDANCE_DIR/$BA_CONTEXT"
-    >&2 echo "ssh $BUILD_AVOIDANCE_HOST '[ -d $BA_CONTEXT_DIR ]'"
-    if ! ssh $BUILD_AVOIDANCE_HOST '[ -d $BA_CONTEXT_DIR ]' ; then
-        return 1
+
+    if [ -z "$BUILD_AVOIDANCE_HOST" ]; then
+        >&2 echo "[ -d $BA_CONTEXT_DIR ]"
+        if ! [ -d $BA_CONTEXT_DIR ] ; then
+            return 1
+        fi
+    else
+        >&2 echo "ssh $BUILD_AVOIDANCE_HOST '[ -d $BA_CONTEXT_DIR ]'"
+        if ! ssh $BUILD_AVOIDANCE_HOST '[ -d $BA_CONTEXT_DIR ]' ; then
+            return 1
+        fi
     fi
 
     # Save the latest context
@@ -465,7 +501,11 @@ get_build_avoidance_context () {
     echo $BA_CONTEXT > $BUILD_AVOIDANCE_LAST_SYNC_FILE
 
     # The location of the load with the most compatable new context
-    URL=$BUILD_AVOIDANCE_HOST:$BA_CONTEXT_DIR
+    if [ -z "$BUILD_AVOIDANCE_HOST" ]; then
+        URL=$BA_CONTEXT_DIR
+    else
+        URL=$BUILD_AVOIDANCE_HOST:$BA_CONTEXT_DIR
+    fi
 
     # return URL to caller.
     echo $URL
@@ -538,9 +578,9 @@ build_avoidance_copy_dir_rsync () {
     fi
     if [ "$VERBOSE" != "" ]; then
         FLAGS="$FLAGS -v"
-        echo "rsync $FLAGS '$BUILD_AVOIDANCE_URL/$FROM/*' '$TO/'"
+        echo "rsync $FLAGS '$BUILD_AVOIDANCE_URL/$FROM/' '$TO/'"
     fi
-    rsync $FLAGS "$BUILD_AVOIDANCE_URL/$FROM/*" "$TO/"
+    rsync $FLAGS "$BUILD_AVOIDANCE_URL/$FROM/" "$TO/"
     return $?
 }
 
@@ -767,18 +807,11 @@ build_avoidance () {
 
     echo "==== Build Avoidance Start ===="
 
+    export BUILD_AVOIDANCE_LAST_SYNC_FILE="$(build_avoidance_last_sync_file $BUILD_TYPE)"
+    mkdir -p "$(dirname $BUILD_AVOIDANCE_LAST_SYNC_FILE)"
+
     if [ "$BUILD_TYPE" == "" ]; then
         >&2 echo "Error: $FUNCNAME (${LINENO}): BUILD_TYPE required"
-        return 1
-    fi
-
-    if [ "$BUILD_TYPE" == "installer" ]; then
-        >&2 echo "build_avoidance: BUILD_TYPE==installer not supported"
-        return 1
-    fi
-
-    if [ "$BUILD_TYPE" == "containers" ]; then
-        >&2 echo "build_avoidance: BUILD_TYPE==containers not supported"
         return 1
     fi
 
@@ -790,7 +823,7 @@ build_avoidance () {
         fi
     fi
 
-    if [ ! -L $MY_WORKSPACE/$BUILD_TYPE ]; then
+    if [ ! -L $MY_WORKSPACE/$BUILD_TYPE/repo ]; then
         ln -s $MY_REPO $MY_WORKSPACE/$BUILD_TYPE/repo
         if [ $? -ne 0 ]; then
             >&2 echo "Error: $FUNCNAME (${LINENO}): Failed to create symlink $MY_WORKSPACE/$BUILD_TYPE/repo -> $MY_REPO"

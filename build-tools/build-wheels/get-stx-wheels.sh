@@ -88,7 +88,23 @@ function get_wheels_files {
     find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_wheels.inc"
 }
 
-declare -a WHEELS_FILES=($(get_wheels_files))
+function get_lower_layer_wheels_files {
+    find ${MY_REPO}/cgcs-centos-repo/layer_wheels_inc -maxdepth 1 -name "*_${OS}_${BUILD_STREAM}_wheels.inc"
+}
+
+function find_wheel_rpm {
+    local wheel="$1"
+    local repo=
+
+    for repo in ${MY_WORKSPACE}/std/rpmbuild/RPMS \
+                ${MY_REPO}/cgcs-centos-repo/Binary; do
+        if [ -d $repo ]; then
+            find $repo -name "${wheel}-[^-]*-[^-]*[.][^.]*[.]rpm"
+        fi
+    done | head -n 1
+}
+
+declare -a WHEELS_FILES=($(get_wheels_files) $(get_lower_layer_wheels_files))
 if [ ${#WHEELS_FILES[@]} -eq 0 ]; then
     echo "Could not find ${OS} wheels.inc files" >&2
     exit 1
@@ -109,9 +125,9 @@ for wheel in $(sed -e 's/#.*//' ${WHEELS_FILES[@]} | sort -u); do
         centos)
             # Bash globbing does not handle [^\-] well,
             # so use grep instead
-            wheelfile=$(ls ${MY_WORKSPACE}/std/rpmbuild/RPMS/${wheel}-* | grep -- '[^\-]*-[^\-]*.rpm')
+            wheelfile="$(find_wheel_rpm ${wheel})"
 
-            if [ ! -f "${wheelfile}" ]; then
+            if [ ! -e "${wheelfile}" ]; then
                 echo "Could not find ${wheel}" >&2
                 FAILED+=($wheel)
                 continue

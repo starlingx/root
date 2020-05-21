@@ -222,7 +222,6 @@ python3-slip-dbus
 #pyxattr
 python3-pyxattr
 qrencode-libs
-#rdma
 readline
 rootfiles
 rpm
