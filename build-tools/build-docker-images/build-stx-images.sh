@@ -26,8 +26,10 @@ IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PREFIX=dev
 LATEST_PREFIX=""
 PUSH=no
-PROXY=""
 CONFIG_FILE=""
+HTTP_PROXY=""
+HTTPS_PROXY=""
+NO_PROXY=""
 DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 BASE=
@@ -57,7 +59,9 @@ Options:
     --wheels:     Specify path to wheels tarball or image, URL or docker tag (required option)
     --wheels-alternate: Specify path to alternate wheels tarball or image, URL or docker tag
     --push:       Push to docker repo
-    --proxy:      Set proxy <URL>:<PORT>
+    --http_proxy: Set proxy <URL>:<PORT>, urls splitted with ","
+    --https_proxy: Set proxy <URL>:<PORT>, urls splitted with ","
+    --no_proxy: Set proxy <URL>, urls splitted with ","
     --user:       Docker repo userid
     --registry:   Docker registry
     --prefix:     Prefix on the image tag (default: dev)
@@ -287,7 +291,20 @@ function post_build {
 
 
     if [ -n "${CUSTOMIZATION}" ]; then
-        docker run --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
+        local -a PROXY_ARGS=
+        if [ ! -z "$HTTP_PROXY" ]; then
+            PROXY_ARGS+=(--env http_proxy=$HTTP_PROXY)
+        fi
+
+        if [ ! -z "$HTTPS_PROXY" ]; then
+            PROXY_ARGS+=(--env https_proxy=$HTTPS_PROXY)
+        fi
+
+        if [ ! -z "$NO_PROXY" ]; then
+            PROXY_ARGS+=(--env no_proxy=$NO_PROXY)
+        fi
+
+        docker run "${PROXY_ARGS[@]}" --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
         if [ $? -ne 0 ]; then
             echo "Failed to add customization for ${LABEL}... Aborting"
             RESULTS_FAILED+=(${LABEL})
@@ -402,8 +419,16 @@ function build_image_loci {
         BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
     fi
 
-    if [ ! -z "$PROXY" ]; then
-        BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
+    if [ ! -z "$HTTP_PROXY" ]; then
+        BUILD_ARGS+=(--build-arg http_proxy=$HTTP_PROXY)
+    fi
+
+    if [ ! -z "$HTTPS_PROXY" ]; then
+        BUILD_ARGS+=(--build-arg https_proxy=$HTTPS_PROXY)
+    fi
+
+    if [ ! -z "$NO_PROXY" ]; then
+        BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
     fi
 
     if [ -n "${PROJECT_REF}" ]; then
@@ -554,9 +579,18 @@ function build_image_docker {
     BASE_BUILD_ARGS+=(${real_docker_context} --no-cache)
     BASE_BUILD_ARGS+=(--file ${real_docker_file})
     BASE_BUILD_ARGS+=(--build-arg "BASE=${BASE}")
-    if [ ! -z "$PROXY" ]; then
-        BASE_BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
+    if [ ! -z "$HTTP_PROXY" ]; then
+        BASE_BUILD_ARGS+=(--build-arg http_proxy=$HTTP_PROXY)
     fi
+
+    if [ ! -z "$HTTPS_PROXY" ]; then
+        BASE_BUILD_ARGS+=(--build-arg https_proxy=$HTTPS_PROXY)
+    fi
+
+    if [ ! -z "$NO_PROXY" ]; then
+        BASE_BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
+    fi
+
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
     with_retries ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
 
@@ -639,7 +673,7 @@ function build_image_script {
     cp $(dirname ${image_build_file})/${SCRIPT} ${SCRIPT}
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
+    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $HTTP_PROXY $HTTPS_PROXY $NO_PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -681,7 +715,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -736,8 +770,16 @@ while true; do
             PUSH=yes
             shift
             ;;
-        --proxy)
-            PROXY=$2
+        --http_proxy)
+            HTTP_PROXY=$2
+            shift 2
+            ;;
+        --https_proxy)
+            HTTPS_PROXY=$2
+            shift 2
+            ;;
+        --no_proxy)
+            NO_PROXY=$2
             shift 2
             ;;
         --user)

@@ -18,7 +18,9 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
 fi
 
 PUSH=no
-PROXY=""
+HTTP_PROXY=""
+HTTPS_PROXY=""
+NO_PROXY=""
 DOCKER_USER=
 DOCKER_REGISTRY=
 FILE_BASEDIR=${PWD}
@@ -59,7 +61,9 @@ Options:
     --customize:  Customization script
     --extra:      Extra file (to be accessible to customization script)
     --push:       Push to docker repo
-    --proxy:      Set proxy <URL>:<PORT>
+    --http_proxy:      Set http proxy <URL>:<PORT>, urls splitted with ","
+    --https_proxy:     Set https proxy <URL>:<PORT>, urls splitted with ","
+    --no_proxy:        set bypass list for proxy <URL> urls splitted with ","
     --user:       Docker repo userid
     --registry:   Docker registry
     --clean:      Remove image(s) from local registry
@@ -184,7 +188,7 @@ function read_params_from_file {
     FILE_BASEDIR=$(dirname ${FILE})
 }
 
-OPTS=$(getopt -o h -l help,file:,from:,wheel:,module-src:,pkg:,customize:,extra:,push,proxy:,user:,registry:,clean,attempts:,update-id: -- "$@")
+OPTS=$(getopt -o h -l help,file:,from:,wheel:,module-src:,pkg:,customize:,extra:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,clean,attempts:,update-id: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -235,8 +239,16 @@ while true; do
             PUSH=yes
             shift
             ;;
-        --proxy)
-            PROXY=$2
+        --http_proxy)
+            HTTP_PROXY=$2
+            shift 2
+            ;;
+        --https_proxy)
+            HTTPS_PROXY=$2
+            shift 2
+            ;;
+        --no_proxy)
+            NO_PROXY=$2
             shift 2
             ;;
         --user)
