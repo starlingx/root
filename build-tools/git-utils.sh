@@ -97,6 +97,9 @@ git_root () {
     local DIR="${1:-${PWD}}"
 
     if [ ! -d "${DIR}" ]; then
+        DIR="$(dirname "${DIR}")"
+    fi
+    if [ ! -d "${DIR}" ]; then
         echo_stderr "No such directory: ${DIR}"
         return 1
     fi

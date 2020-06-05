@@ -628,16 +628,9 @@ build_dir_srpm () {
       # Load data from build_srpm.data
       #
       export DATA="$DATA_PATH/$SRPM_DATA"
-      local COPY_LIST
-      local COPY_LIST_TO_TAR
-      local SRC_DIR
-      local TIS_PATCH_VER
-      local PBR_VERSION
-      local BUILD_IS_BIG=0
-      local BUILD_IS_SLOW=0
 
-      if [ -f $DATA ]; then
-          srpm_source_build_data $DATA
+      if [ -f "$DATA" ]; then
+          srpm_source_build_data "$DATA" "$SRC_BUILD_TYPE_SRPM" "$ORIG_SRPM_PATH"
           if [ $? -ne 0 ]; then
               echo "ERROR: $FUNCNAME (${LINENO}): failed to source $DATA"
               return 1
@@ -944,17 +937,9 @@ build_dir_spec () {
          #
          # Load data from build_srpm.data
          #
-         local COPY_LIST
-         local COPY_LIST_TO_TAR
-         local SRC_DIR
-         local OPT_DEP_LIST
-         local TIS_PATCH_VER
-         local PBR_VERSION
-         local BUILD_IS_BIG=0
-         local BUILD_IS_SLOW=0
 
-         if [ -f $DATA ]; then
-             srpm_source_build_data $DATA
+         if [ -f "$DATA" ]; then
+             srpm_source_build_data "$DATA" "$SRC_BUILD_TYPE_SPEC" "$SPEC"
              if [ $? -ne 0 ]; then
                  echo "ERROR: $FUNCNAME (${LINENO}): failed to source $DATA"
                  return 1
@@ -1063,8 +1048,13 @@ build_dir_spec () {
          fi
 
 
+         export SRC_BUILD_TYPE="$SRC_BUILD_TYPE_SPEC"
+         export SRPM_OR_SPEC_PATH="$SPEC"
+
          echo "MAKE_SRPM=$MAKE_SRPM"
          echo "DATA=$DATA"
+         echo "SRC_BUILD_TYPE=$SRC_BUILD_TYPE"
+         echo "SRPM_OR_SPEC_PATH=$SRPM_OR_SPEC_PATH"
    
          if [ -d "$RPMBUILD_BASE/SRPMS" ]; then
              clean_srpm_dir "$RPMBUILD_BASE/SRPMS" 1

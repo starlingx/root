@@ -12,7 +12,7 @@ if [ "x$DATA" == "x" ]; then
    exit 1
 fi
 
-srpm_source_build_data $DATA
+srpm_source_build_data "$DATA" "$SRC_BUILD_TYPE" "$SRPM_OR_SPEC_PATH"
 if [ $? -ne 0 ]; then
     echo "ERROR: default_build_srpm (${LINENO}): Failed to source build data from $DATA"
     exit 1

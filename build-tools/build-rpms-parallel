@@ -1461,7 +1461,6 @@ while true ; do
     esac
 done 
 
-
 # Reset variables
 if [ -n "$MY_WORKSPACE" ]; then
    export MY_WORKSPACE_TOP=${MY_WORKSPACE_TOP:-$MY_WORKSPACE}
