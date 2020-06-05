@@ -30,6 +30,10 @@ usage () {
     echo "   i.e. while debugging compilation failures."
     echo "      build-pkgs-serial [--build-avoidance | --no-build-avoidance] [--no-descendants] [--no-required] [--no-build-info] [--no-autoclean] [--careful] [--formal] [ list of package names ]"
     echo ""
+    echo "   Test build dependencies of a package:"
+    echo "   Note: A full build of all packages should preceed the dependency test build"
+    echo "      build-pkgs-serial --dep-test <package_name>"
+    echo ""
     echo "   Delete source rpms, and the directories associated with it's creation:"
     echo "   Note: does not clean an edit environment"
     echo "      build-pkgs-serial --clean [--build-avoidance | --no-build-avoidance] [ list of package names ]"
@@ -57,12 +61,13 @@ STD_BUILD=1
 RT_BUILD=1
 INSTALLER_BUILD=0
 CONTAINERS_BUILD=0
+DEP_TEST_FLAG=0
 
 export BUILD_AVOIDANCE_URL=""
 
 
 # read the options
-TEMP=$(getopt -o h --long serial,rt,std,installer,containers,layer:,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,append-log -n 'build-pkgs-serial' -- "$@")
+TEMP=$(getopt -o h --long serial,rt,std,installer,containers,layer:,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,dep-test,append-log -n 'build-pkgs-serial' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -98,6 +103,7 @@ while true ; do
         --no-meta-patch)  EXTRA_ARGS_SRPM+=" --no-meta-patch" ; shift ;;
         -h|--help)        HELP=1 ; shift ;;
         --clean)          CLEAN_FLAG=1 ; shift ;;
+        --dep-test)       DEP_TEST_FLAG=1; EXTRA_ARGS_RPM+=" --dep-test"; shift ;;
         --edit)           EDIT_FLAG=1 ; EXTRA_ARGS_SRPM+=" --edit"; shift ;;
         --rt)             STD_BUILD=0 ; shift ;;
         --std)            RT_BUILD=0 ; shift ;;
@@ -427,7 +433,7 @@ function launch_build()
 
    if [ $EDIT_FLAG -ne 1 ]; then
       echo -e "\n######## $(date): Launching build-rpms-serial --$build_type $EXTRA_ARGS $@\n" | tee --append $logfile
-      echo "${BUILD_PKGS_SERIAL_DIR}/build-rpms-serial --$build_type $EXTRA_ARGS_COMMON $EXTRA_ARGS_SRPM $targets" | tee --append $logfile
+      echo "${BUILD_PKGS_SERIAL_DIR}/build-rpms-serial --$build_type $EXTRA_ARGS_COMMON $EXTRA_ARGS_RPM $targets" | tee --append $logfile
       ${BUILD_PKGS_SERIAL_DIR}/build-rpms-serial --$build_type $EXTRA_ARGS_COMMON $EXTRA_ARGS_RPM $targets 2>&1 | tee --append $logfile
       rc=${PIPESTATUS[0]}
       if [ $rc -eq 0 ]; then

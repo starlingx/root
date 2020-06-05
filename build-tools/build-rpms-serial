@@ -61,6 +61,7 @@ usage () {
     echo ""
     echo "Usage: "
     echo "   $ME [ [--rt] [--no-required] [--no-descendants] [--no-build-info] [--no-autoclean] [--formal] <optional list of package names> ]"
+    echo "   $ME --dep-test <package name>"
     echo "   $ME --clean [ [--no-descendants] <optional list of package names> ]"
     echo "   $ME --help"
     echo ""
@@ -1191,9 +1192,10 @@ HELP=0
 CLEAN_FLAG=0
 FORMAL_FLAG=0
 CAREFUL=0
+DEP_TEST_FLAG=0
    
 # read the options
-TEMP=$(getopt -o h --long serial,std,rt,installer,containers,no-required,no-descendants,no-autoclean,no-build-info,clean,formal,careful,help,layer: -n "$ME" -- "$@")
+TEMP=$(getopt -o h --long serial,std,rt,installer,containers,no-required,no-descendants,no-autoclean,no-build-info,dep-test,clean,formal,careful,help,layer: -n "$ME" -- "$@")
 
 if [ $? -ne 0 ]; then
     usage
@@ -1220,6 +1222,7 @@ while true ; do
         --containers) BUILD_TYPE=containers; shift ;;
         -h|--help) HELP=1 ; shift ;;
         --clean) CLEAN_FLAG=1 ; shift ;;
+        --dep-test) DEP_TEST_FLAG=1 ; MAX_WORKERS=1; NO_DESCENDANTS=1; NO_REQUIRED=1; NO_BUILD_INFO=1; shift ;;
         --serial) shift ;;
         --layer) export LAYER=$2 ; shift ; shift ;;
         --) shift ; break ;;
@@ -1304,13 +1307,12 @@ RELEASE_INFO_FILE="$(get_release_info)"
 if [ -f "$RELEASE_INFO_FILE" ]; then
    source "$RELEASE_INFO_FILE"
 else
-   echo "ERROR: failed to find RELEASE_INFO_FILE=$RELEASE_INFO_FILE"
-   exit 1
+   echo "Warning: failed to find RELEASE_INFO_FILE=$RELEASE_INFO_FILE"
 fi
 
 if [ "x$PLATFORM_RELEASE" == "x" ]; then
-   echo "ERROR: PLATFORM_RELEASE is not defined in $RELEASE_INFO_FILE"
-   exit 1
+   echo "Warning: PLATFORM_RELEASE is not defined in $RELEASE_INFO_FILE"
+   PLATFORM_RELEASE="00.00"
 fi
 
 export RPM_BUILD_BASE="$RPM_BUILD_ROOT"
@@ -1370,7 +1372,7 @@ fi
 
 # create temp dir
 export TMPDIR="$MY_WORKSPACE/tmp"
-mkdir -p $TMPDIR
+mkdir -p "$TMPDIR"
 
 # Create symlinks from /var/... to /localdisk/loadbuild/... if on a build server
 
@@ -1386,12 +1388,23 @@ fi
 
 ALL=0
 UNRESOLVED_TARGETS=" "
-if [ "x$TARGETS" == "x" ]; then
-    echo "make: all"
-    ALL=1
+
+if [ $DEP_TEST_FLAG -eq 1 ]; then
+    # we expect exactly one package
+    if [ $(echo $TARGETS | wc -w) -ne 1 ]; then
+        echo "ERROR: dependency testing requires exactly one package"
+        usage
+        exit 1
+    fi
 else
-    echo "make: $TARGETS"
-    UNRESOLVED_TARGETS="$TARGETS"
+    # we accept a list of packages, and no list implies all
+    if [ "x$TARGETS" == "x" ]; then
+        echo "make: all"
+        ALL=1
+    else
+        echo "make: $TARGETS"
+        UNRESOLVED_TARGETS="$TARGETS"
+    fi
 fi
 
 if [ "$BUILD_TYPE" != "std" ]; then
@@ -1520,8 +1533,13 @@ clean_list () {
        \rm -f -v $RESULT_DIR/mockchain.log 2>> /dev/null
        mock_clean
    else  
-       # Wipe only traces of what we built
-       mock_partial_clean "$SRPMS_LIST" "$RPMS_LIST"
+       # If dependency test
+       if [ $DEP_TEST_FLAG -eq 1 ]; then
+           mock_clean
+       else
+           # Wipe only traces of what we built
+           mock_partial_clean "$SRPMS_LIST" "$RPMS_LIST"
+       fi
    fi
 }
 
