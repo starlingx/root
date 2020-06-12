@@ -348,7 +348,7 @@ def read_data_from_primary_xml_gz(repodata_path, rpm_type='RPM', arch=default_ar
                     if name == "kernel-rt" and provided_name in pkg_data[rpm_type]['providers'] and pkg_data[rpm_type]['providers'][provided_name] == "kernel":
                         continue
                     if name.startswith('kernel-rt'):
-                        alt_name=string.replace(name, 'kernel-rt', 'kernel')
+                        alt_name=name.replace('kernel-rt', 'kernel')
                         if provided_name in pkg_data[rpm_type]['providers'] and pkg_data[rpm_type]['providers'][provided_name] == alt_name:
                             continue
                     pkg_data[rpm_type]['providers'][provided_name]=name
@@ -362,7 +362,7 @@ def read_data_from_primary_xml_gz(repodata_path, rpm_type='RPM', arch=default_ar
                if name == "kernel-rt" and file_name in pkg_data[rpm_type]['file_owners'] and pkg_data[rpm_type]['file_owners'][file_name] == "kernel":
                    continue
                if name.startswith('kernel-rt'):
-                   alt_name=string.replace(name, 'kernel-rt', 'kernel')
+                   alt_name=name.replace('kernel-rt', 'kernel')
                    if provided_name in pkg_data[rpm_type]['file_owners'] and pkg_data[rpm_type]['file_owners'][file_name] == alt_name:
                        continue
                pkg_data[rpm_type]['file_owners'][file_name]=name
@@ -370,7 +370,7 @@ def read_data_from_primary_xml_gz(repodata_path, rpm_type='RPM', arch=default_ar
             print("%s: %s.%s has no 'root:format'" % (repodata_path, name, pkg_arch))
         # print "%s  %s  %s  %s  %s" % (name, pkg_arch, version,  release, license)
     infile.close
-    
+
 def calulate_all_direct_requires_and_descendants(rpm_type='RPM'):
     # print "calulate_all_direct_requires_and_descendants rpm_type=%s" % rpm_type
     for name in pkg_data[rpm_type]['requires']:
