@@ -55,6 +55,6 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/4609dacc5f2ffa54012eaffc60196488a6c589b6
     tag: stx.4.0-v1.0.0
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-centos-stable-20200520T080013Z.0
-    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/cfb8352a9e55a052cdd5f1de7e0970720ead5af7
-    tag: stx.4.0-v1.2.0
+    src_build_tag: master-centos-stable-20200617T033148Z.0
+    src_ref: https://opendev.org/starlingx/config/commit/ff41cd29dcb598c518bcf95d8469c836ae23553e
+    tag: stx.4.0-v1.3.0
