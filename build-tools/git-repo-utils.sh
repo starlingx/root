@@ -53,7 +53,7 @@ git_repo_project() {
     cd ${DIR}
 
     GIT_RELATIVE_DIR=$(git_repo_rel_dir)
-    repo forall -c "if [ \$REPO_PATH == ${GIT_RELATIVE_DIR} ]; then echo \$REPO_PROJECT; fi"
+    repo forall -c "if [ \$REPO_PATH = ${GIT_RELATIVE_DIR} ]; then echo \$REPO_PROJECT; fi"
     )
 }
 
@@ -69,7 +69,7 @@ git_repo_remote() {
     cd ${DIR}
 
     GIT_RELATIVE_DIR=$(git_repo_rel_dir)
-    repo forall -c "if [ \$REPO_PATH == ${GIT_RELATIVE_DIR} ]; then echo \$REPO_REMOTE; fi"
+    repo forall -c "if [ \$REPO_PATH = ${GIT_RELATIVE_DIR} ]; then echo \$REPO_REMOTE; fi"
     )
 }
 
@@ -86,7 +86,7 @@ git_repo_remote_branch() {
     cd ${DIR}
 
     GIT_RELATIVE_DIR=$(git_repo_rel_dir)
-    REF=$(repo forall -c "if [ \$REPO_PATH == ${GIT_RELATIVE_DIR} ]; then echo \$REPO_RREV; fi")
+    REF=$(repo forall -c "if [ \$REPO_PATH = ${GIT_RELATIVE_DIR} ]; then echo \$REPO_RREV; fi")
     if git_is_branch ${REF} ; then
         echo ${REF}
     else
@@ -107,7 +107,7 @@ git_repo_remote_ref() {
     cd ${DIR}
 
     GIT_RELATIVE_DIR=$(git_repo_rel_dir)
-    repo forall -c "if [ \$REPO_PATH == ${GIT_RELATIVE_DIR} ]; then echo \$REPO_RREV; fi"
+    repo forall -c "if [ \$REPO_PATH = ${GIT_RELATIVE_DIR} ]; then echo \$REPO_RREV; fi"
     )
 }
 
