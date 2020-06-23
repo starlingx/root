@@ -31,12 +31,15 @@ DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 BASE=
 WHEELS=
+WHEELS_ALTERNATE=
+IMAGE_BUILD_CFG_FILE="docker-image-build.cfg"
 CLEAN=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
 declare -a ONLY
 declare -a SKIP
+declare -a SERVICES_ALTERNATE
 declare -i MAX_ATTEMPTS=1
 
 function usage {
@@ -50,6 +53,7 @@ Options:
     --stream:     Build stream, stable or dev (default: stable)
     --base:       Specify base docker image (required option)
     --wheels:     Specify path to wheels tarball or image, URL or docker tag (required option)
+    --wheels-alternate: Specify path to alternate wheels tarball or image, URL or docker tag
     --push:       Push to docker repo
     --proxy:      Set proxy <URL>:<PORT>
     --user:       Docker repo userid
@@ -329,7 +333,15 @@ function build_image_loci {
     BUILD_ARGS=(--build-arg PROJECT=${PROJECT})
     BUILD_ARGS+=(--build-arg PROJECT_REPO=${PROJECT_REPO})
     BUILD_ARGS+=(--build-arg FROM=${BASE})
-    BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
+
+    if is_in ${LABEL} ${SERVICES_ALTERNATE[@]}; then
+        echo "Python2 service ${LABEL}"
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_ALTERNATE})
+    else
+        echo "Python3 service ${LABEL}"
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
+    fi
+
     if [ ! -z "$PROXY" ]; then
         BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
     fi
@@ -592,7 +604,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,proxy:,user:,registry:,base:,wheels:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -617,6 +629,10 @@ while true; do
             ;;
         --wheels)
             WHEELS=$2
+            shift 2
+            ;;
+        --wheels-alternate)
+            WHEELS_ALTERNATE=$2
             shift 2
             ;;
         --version)
@@ -705,6 +721,26 @@ fi
 
 if [ -z "${WHEELS}" ]; then
     echo "Path to wheels tarball must be specified with --wheels option." >&2
+    exit 1
+fi
+
+# Get python2 based services from config file
+if [ -f ${MY_REPO}/build-tools/build-docker-images/${IMAGE_BUILD_CFG_FILE} ]; then
+    SERVICES_ALTERNATE=(`source ${MY_REPO}/build-tools/build-docker-images/$IMAGE_BUILD_CFG_FILE \
+                        && echo ${SERVICES_ALTERNATE} | sed s/,/\ /g`)
+    if [ -z "${WHEELS_ALTERNATE}" ]; then
+        WHEELS_ALTERNATE=$(source ${MY_REPO}/build-tools/build-docker-images/$IMAGE_BUILD_CFG_FILE \
+                            && echo ${WHEELS_ALTERNATE})
+    fi
+    echo "SERVICES_ALTERNATE: ${SERVICES_ALTERNATE[@]}" >&2
+    echo "WHEELS_ALTERNATE: ${WHEELS_ALTERNATE}" >&2
+else
+    echo "IMAGE_BUILD_CFG_FILE not found!" >&2
+fi
+
+if [ ${#SERVICES_ALTERNATE[@]} -ne 0 ] && [ -z "${WHEELS_ALTERNATE}" ]; then
+    echo "Path to wheels-alternate tarball must be specified with --wheels-alternate option"\
+         "if python2 based services need to be build!" >&2
     exit 1
 fi
 
