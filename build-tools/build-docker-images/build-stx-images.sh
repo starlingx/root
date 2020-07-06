@@ -420,6 +420,10 @@ function build_image_docker {
     #
     local LABEL
     LABEL=$(source ${image_build_file} && echo ${LABEL})
+    local DOCKER_CONTEXT
+    DOCKER_CONTEXT=$(source ${image_build_file} && echo ${DOCKER_CONTEXT})
+    local DOCKER_FILE
+    DOCKER_FILE=$(source ${image_build_file} && echo ${DOCKER_FILE})
     local DOCKER_REPO
     DOCKER_REPO=$(source ${image_build_file} && echo ${DOCKER_REPO})
     local DOCKER_REF
@@ -441,10 +445,10 @@ function build_image_docker {
 
     echo "Building ${LABEL}"
 
-    local docker_src
-    if [ -z "${DOCKER_REPO}" ]; then
-        docker_src=$(dirname ${image_build_file})/docker
-    else
+    local real_docker_context
+    local real_docker_file
+
+    if [ -n "${DOCKER_REPO}" ]; then
         local ORIGWD=${PWD}
 
         echo "get_git '${DOCKER_REPO}' '${DOCKER_REF}' '${DOCKER_PATCHES}'"
@@ -455,27 +459,40 @@ function build_image_docker {
             return 1
         fi
 
-        local DOCKER_FILE="${PWD}/Dockerfile"
-        if [ ! -f ${DOCKER_FILE} ]; then
-            DOCKER_FILE=$(find ${PWD} -type f -name Dockerfile | head -n 1)
+        real_docker_file="${PWD}/Dockerfile"
+        if [ ! -f ${real_docker_file} ]; then
+            real_docker_file=$(find ${PWD} -type f -name Dockerfile | head -n 1)
         fi
-        docker_src=$(dirname ${DOCKER_FILE})
+        real_docker_context=$(dirname ${real_docker_file})
         cd ${ORIGWD}
+    else
+        if [ -n "${DOCKER_CONTEXT}" ]; then
+            real_docker_context=$(dirname ${image_build_file})/${DOCKER_CONTEXT}
+        else
+            real_docker_context=$(dirname ${image_build_file})/docker
+        fi
+
+        if [ -n "${DOCKER_FILE}" ]; then
+            real_docker_file=$(dirname ${image_build_file})/${DOCKER_FILE}
+        else
+            real_docker_file=${real_docker_context}/Dockerfile
+        fi
     fi
 
     # Check for a Dockerfile
-    if [ ! -f ${docker_src}/Dockerfile ]; then
-        echo "${docker_src}/Dockerfile not found" >&2
+    if [ ! -f ${real_docker_file} ]; then
+        echo "${real_docker_file} not found" >&2
         RESULTS_FAILED+=(${LABEL})
         return 1
     fi
 
-    # Possible design option: Make a copy of the docker_src dir in BUILDDIR
+    # Possible design option: Make a copy of the real_docker_context dir in BUILDDIR
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
     local -a BASE_BUILD_ARGS
-    BASE_BUILD_ARGS+=(${docker_src} --no-cache)
+    BASE_BUILD_ARGS+=(${real_docker_context} --no-cache)
+    BASE_BUILD_ARGS+=(--file ${real_docker_file})
     BASE_BUILD_ARGS+=(--build-arg "BASE=${BASE}")
     if [ ! -z "$PROXY" ]; then
         BASE_BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
