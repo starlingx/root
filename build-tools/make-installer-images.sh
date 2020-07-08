@@ -20,14 +20,14 @@ chroot $rootfs_dir /bin/bash -x <<EOF
         rm -rf ./etc/ld.so.conf.d/kernel-${old_version}.conf
         rm -rf ./lib/modules/${old_version}
     fi
-    if [ -d ./usr/lib64/python2.7/site-packages/pyanaconda/ ];then
-            rm -rf usr/lib64/python2.7/site-packages/pyanaconda/
+    if [ -d ./usr/lib64/python3.6/site-packages/pyanaconda/ ];then
+            rm -rf usr/lib64/python3.6/site-packages/pyanaconda/
         fi
-        if [ -d ./usr/lib64/python2.7/site-packages/rpm/ ];then
-            rm -rf usr/lib64/python2.7/site-packages/rpm/
+        if [ -d ./usr/lib64/python3.6/site-packages/rpm/ ];then
+            rm -rf usr/lib64/python3.6/site-packages/rpm/
         fi
         #find old .pyo files and delete them
-        all_pyo="`find ./usr/lib64/python2.7/site-packages/pyanaconda/ usr/lib64/python2.7/site-packages/rpm/ -name *.pyo`"
+        all_pyo="`find ./usr/lib64/python3.6/site-packages/pyanaconda/ usr/lib64/python3.6/site-packages/rpm/ -name *.pyo`"
         if [ -n $all ]; then
             for pyo in $all_pyo;do
                 rm -f $pyo
@@ -39,7 +39,7 @@ EOF
 }
 
 
-echo "This script makes new initrd.img, vmlinuz and squashfs.img."
+echo "This script makes new initrd.img, vmlinuz and install.img."
 echo "NOTE: it has to be executed with *root*!"
 
 if [ $# -lt 1 ];then
@@ -140,8 +140,8 @@ else
     exit -1
 fi
 
-echo "---------------- start to make new squashfs.img -------------"
-ORIG_SQUASHFS=$work_dir/orig/squashfs.img
+echo "---------------- start to make new install.img -------------"
+ORIG_SQUASHFS=$work_dir/orig/install.img
 if [ ! -f $ORIG_SQUASHFS ];then
     echo "ERROR: $ORIG_SQUASHFS does NOT exist!"
     exit -1
