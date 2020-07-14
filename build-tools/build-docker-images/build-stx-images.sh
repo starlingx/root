@@ -27,12 +27,14 @@ PREFIX=dev
 LATEST_PREFIX=""
 PUSH=no
 PROXY=""
+CONFIG_FILE=""
 DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 BASE=
 WHEELS=
 WHEELS_ALTERNATE=
-IMAGE_BUILD_CFG_FILE="docker-image-build.cfg"
+DEFAULT_CONFIG_FILE_DIR="${MY_REPO}/build-tools/build-docker-images"
+DEFAULT_CONFIG_FILE_PREFIX="docker-image-build"
 CLEAN=no
 TAG_LATEST=no
 TAG_LIST_FILE=
@@ -69,6 +71,7 @@ Options:
                      can be specified with a comma-separated list, or with
                      multiple --skip arguments.
     --attempts:   Max attempts, in case of failure (default: 1)
+    --config-file:Specify a path to a config file which will specify additional arguments to be passed into the the command
 
 
 EOF
@@ -88,6 +91,63 @@ function is_in {
 
 function is_empty {
     test $# -eq 0
+}
+
+function get_args_from_file {
+    # get additional build args from specified file.
+    local -a config_items
+
+    echo "Get args from file: $1"
+    for i in $(cat $1)
+    do
+        config_items=($(echo $i | sed s/=/\ /g))
+        echo "--${config_items[0]} ${config_items[1]}"
+        case ${config_items[0]} in
+            base)
+                if [ -z "${BASE}" ]; then
+                    BASE=${config_items[1]}
+                fi
+                ;;
+            user)
+                if [ -z "${DOCKER_USER}" ]; then
+                    DOCKER_USER=${config_items[1]}
+                fi
+                ;;
+            proxy)
+                if [ -z "${PROXY}" ]; then
+                    PROXY=${config_items[1]}
+                fi
+                ;;
+            registry)
+                if [ -z "${DOCKER_REGISTRY}" ]; then
+                    # Add a trailing / if needed
+                    DOCKER_REGISTRY="${config_items[1]%/}/"
+                fi
+                ;;
+            only)
+                # Read comma-separated values into array
+                if [ -z "${ONLY}" ]; then
+                    # Read comma-separated values into array
+                    ONLY=(`echo ${config_items[1]} | sed s/,/\ /g`)
+                fi
+                ;;
+            wheels)
+                if [ -z "${WHEELS}" ]; then
+                    WHEELS=${config_items[1]}
+                fi
+                ;;
+            wheels_alternate)
+                if [ -z "${WHEELS_ALTERNATE}" ]; then
+                    WHEELS_ALTERNATE=${config_items[1]}
+                    echo "WHEELS_ALTERNATE: ${WHEELS_ALTERNATE}" >&2
+                fi
+                ;;
+            services_alternate)
+                SERVICES_ALTERNATE=(`echo ${config_items[1]} | sed s/,/\ /g`)
+                echo "SERVICES_ALTERNATE: ${SERVICES_ALTERNATE[@]}" >&2
+                ;;
+        esac
+    done
 }
 
 #
@@ -621,7 +681,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -711,6 +771,10 @@ while true; do
             MAX_ATTEMPTS=$2
             shift 2
             ;;
+        --config-file)
+            CONFIG_FILE=$2
+            shift 2
+            ;;
         -h | --help )
             usage
             exit 1
@@ -736,23 +800,24 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE_DIR}/${DEFAULT_CONFIG_FILE_PREFIX}-${OS}-${BUILD_STREAM}.cfg"
+
+# Read additional arguments from config file if it exists.
+if [[ -z "$CONFIG_FILE" ]] && [[ -f ${DEFAULT_CONFIG_FILE} ]]; then
+    CONFIG_FILE=${DEFAULT_CONFIG_FILE}
+fi
+if [[ ! -z  ${CONFIG_FILE} ]]; then
+    if [[ -f ${CONFIG_FILE} ]]; then
+        get_args_from_file ${CONFIG_FILE}
+    else
+        echo "Config file not found: ${CONFIG_FILE}"
+        exit 1
+    fi
+fi
+
 if [ -z "${WHEELS}" ]; then
     echo "Path to wheels tarball must be specified with --wheels option." >&2
     exit 1
-fi
-
-# Get python2 based services from config file
-if [ -f ${MY_REPO}/build-tools/build-docker-images/${IMAGE_BUILD_CFG_FILE} ]; then
-    SERVICES_ALTERNATE=(`source ${MY_REPO}/build-tools/build-docker-images/$IMAGE_BUILD_CFG_FILE \
-                        && echo ${SERVICES_ALTERNATE} | sed s/,/\ /g`)
-    if [ -z "${WHEELS_ALTERNATE}" ]; then
-        WHEELS_ALTERNATE=$(source ${MY_REPO}/build-tools/build-docker-images/$IMAGE_BUILD_CFG_FILE \
-                            && echo ${WHEELS_ALTERNATE})
-    fi
-    echo "SERVICES_ALTERNATE: ${SERVICES_ALTERNATE[@]}" >&2
-    echo "WHEELS_ALTERNATE: ${WHEELS_ALTERNATE}" >&2
-else
-    echo "IMAGE_BUILD_CFG_FILE not found!" >&2
 fi
 
 if [ ${#SERVICES_ALTERNATE[@]} -ne 0 ] && [ -z "${WHEELS_ALTERNATE}" ]; then
