@@ -1,96 +1,295 @@
 #!/bin/bash
 
-# Build an IMG file capable of being booted in a virtual environment
-# The default settings are vda device which the Cumulus environment expects
-# and controller mode
+PROGNAME=$(basename "$0")
+FORCE=0
+AUTO_MODE=
+IMG_SIZE=
+BOOTIMAGE_ISO=
+IMG_FILE=
+AUTO_ISO=
+DHCPV6C=yes
+OAM_DEV=ens3
+: KVM=
+KVM_OPTS=()
+TEMPFILES_DIR=
+ENABLE_TTY_ECHO=0
 
-usage () {
-    echo ""
-    echo "Usage: "
-    echo "   build-img [--cpe] [--dest <filename>] [--part [1 | 2]]"
-    echo "   --dest <tis.img>"
-    echo "   --cpe  Boots in CPE mode. Default is controller mode."
-    echo ""
+# Print out the help message
+usage() {
+    echo "\
+Usage: $0 OPTIONS...
+Create a QCOW2/QEMU image with StarlingX pre-installed
+
+ -f,--force        overwrite output file if it exists
+
+ -m,--mode={controller|aio|aio_lowlatency}
+                   create a controller or an all-in-one/low latency system
+                   (default: aio)
+
+ -s,--size=nnnG    image file size, must end with "G" (default: 500G)
+
+ -e,--oam-dev      OAM network device (default: ens3)
+
+ -4,--ip4          don't configure IPv6 in the generated image
+
+ -i,--iso=BOOTIMAGE_ISO
+                   use this iso file as input, it must have been generated
+                   by build-iso with default options
+                   (default: \$MY_WORKSPACE/export/bootimage.iso)
+
+ -o,--output=IMG_FILE
+                   output image file name
+                   (default: \$MY_WORKSPACE/export/stx_\$MODE.qcow2)
+
+ENVIRONMENT
+
+ MY_REPO           source repo directory
+ MY_WORKSPACE      build workspace directory
+ KVM               path to kvm executable (default: auto)
+"
 }
 
-DEST_ISO=bootimage_auto.iso
-DEST_IMG=tis.img
-AUTO_MODE=controller
-HELP=0
-PART=0
+# Delete temporary files
+cleanup() {
+   # QEMU unsets echo in console terminal -- undo that before exiting
+   [[ $ENABLE_TTY_ECHO -eq 0 ]] || stty echo
+   rm -rf "$TEMPFILES_DIR"
+   rm -f "$IMG_FILE.tmp"
+}
 
-# read the options
-TEMP=`getopt -o hp:d: --long help,cpe,part:,dest: -n 'test.sh' -- "$@"`
-eval set -- "$TEMP"
+# Clean up before exiting due to a signal
+handle_sig() {
+   trap - EXIT
+   cleanup
+   exit 1
+}
 
-# extract options and their arguments into variables.
-while true ; do
-    case "$1" in
-        -h|--help) HELP=1 ; shift ;;
-        --cpe) AUTO_MODE=cpe;  shift ;;
-        -d | --dest) DEST_IMG="$2"; shift; shift ;;
-        -p | --part) PART="$2"; shift; shift ;;
-        --) shift ; break ;;
-        *) echo "Internal error!" ; exit 1 ;;
-    esac
-done
+# Clean up before normal exit
+handle_exit() {
+  local rv="$?"
+  trap - EXIT
+  cleanup
+  exit $rv
+}
 
-if [ $HELP -eq 1 ]; then
-   usage
-   exit 0
+# Print out an error message and exit
+die() {
+    echo "$PROGNAME: error: $*" >&2
+    exit 1
+}
+
+# Print out a command-line error message and exit
+cmdline_error() {
+    if [ "$#" -gt 0 ] ; then
+        echo "$PROGNAME: error: $*" >&2
+    fi
+    echo "Type \`$0 --help' for more info." >&2
+    exit 2
+}
+
+# find QEMU/KVM
+find_kvm() {
+    local kvm
+    if [[ -n "$KVM" ]] ; then
+        kvm=$(which "$KVM")
+        [[ -n $kvm ]] || exit 1
+    else
+        for kvm_basename in qemu-kvm kvm ; do
+            kvm=$(export PATH=$PATH:/usr/bin:/usr/libexec ; which $kvm_basename 2>/dev/null || :)
+            [[ -n $kvm ]] && break || :
+        done
+        [[ -n $kvm ]] || die "unable to find kvm executable"
+    fi
+    KVM="$kvm"
+    if [[ -c /dev/kvm ]] ; then
+        KVM_OPTS+=("-enable-kvm")
+    fi
+}
+
+# Process command line
+init() {
+    local temp
+    temp=$(getopt -o hf4e:m:s:i:o: --long help,force,ip4,oam-dev:,mode:,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
+    eval set -- "$temp"
+    while true ; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -f|--force)
+                FORCE=1
+                shift
+                ;;
+            -4|--ip4)
+                DHCPV6C=no
+                shift
+                ;;
+            -e|--oam-dev)
+                OAM_DEV="$2"
+                shift 2
+                ;;
+            -m|--mode)
+                [[ "$2" =~ ^(controller|aio|aio_lowlatency)$ ]] || cmdline_error "invalid --mode"
+                AUTO_MODE="$2"
+                shift 2
+                ;;
+            -s|--size)
+                [[ $2 =~ ^[0-9]{1,5}G$ ]] || cmdline_error "invalid --size"
+                IMG_SIZE="$2"
+                shift 2
+                ;;
+            -i|--iso)
+                BOOTIMAGE_ISO="$2"
+                shift 2
+                ;;
+            -o|--output)
+                IMG_FILE="$2"
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -?*)
+                cmdline_error
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    [[ $# -le 0 ]] || cmdline_error "too many arguments"
+
+    # These are required
+    [[ -n $MY_WORKSPACE ]] || die "MY_WORKSPACE is not set"
+    [[ -n $MY_REPO ]] || die "MY_REPO is not set"
+
+    # Defaults
+    : ${AUTO_MODE:=aio}
+    : ${IMG_SIZE:=500G}
+    : ${BOOTIMAGE_ISO:=$MY_WORKSPACE/export/bootimage.iso}
+    : ${IMG_FILE:=$MY_WORKSPACE/export/stx_$AUTO_MODE.qcow2}
+}
+
+# main
+init "$@"
+
+# make sure we clean up before exiting
+trap handle_sig  INT TERM PIPE HUP
+trap handle_exit EXIT
+
+# make sure update-iso.sh exists
+UPDATE_ISO=$MY_REPO/stx/utilities/utilities/platform-util/scripts/update-iso.sh
+: <"$UPDATE_ISO" || exit 1
+
+# make sure input ISO file exists
+: <"$BOOTIMAGE_ISO" || exit 1
+
+# find QEMU/KVM
+find_kvm
+
+# find qemu-img
+which qemu-img >/dev/null || exit 1
+
+# refuse to overwrite existing output file
+if [[ -e "$IMG_FILE" ]] && [[ $FORCE -ne 1 ]] ; then
+    die "output file $IMG_FILE already exist, delete it first or use --force"
 fi
 
-echo PART=$PART
+# which menu item to use?
+menu_item=
+case "$AUTO_MODE" in
+    controller)     menu_item=0 ;;
+    aio)            menu_item=2 ;;
+    aio_lowlatency) menu_item=4 ;;
+    *)              die "internal error" ;;
+esac
 
-# Step 1: Build an ISO that autoboots 
+# create a directory for temporary files
+TEMPFILES_DIR=$(mktemp -d -t build_img.XXXXXXXX) || exit 1
 
-# Cumulus default device is vda
-if [ $PART -ne 2 ]; then
-   build-iso --file bootimage_auto.iso --auto $AUTO_MODE --device vda --cumulus
+# create an updated iso with the menu item pre-selected
+auto_iso="$TEMPFILES_DIR/bootimage_$AUTO_MODE.iso"
+rm -f "$auto_iso"
+cmd=("$UPDATE_ISO" -i "$BOOTIMAGE_ISO" -o "$auto_iso" -d "$menu_item" -t 3)
+
+# generate a kickstart add-on that sets up OAM_DEV
+ks_addon="$TEMPFILES_DIR/ks_addon.sh"
+cat >"$ks_addon" <<_END
+#### start ks-addon.cfg
+uuid=\$(uuidgen)
+cat >/etc/sysconfig/network-scripts/ifcfg-$OAM_DEV <<END
+UUID=\$uuid
+DEVICE=$OAM_DEV
+NAME=$OAM_DEV
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=dhcp
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=no
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+ONBOOT=yes
+DHCPV6C=$DHCPV6C
+END
+#### end ks-addon.cfg
+_END
+cmd+=(-a "$ks_addon")
+
+# execute update_iso.sh
+echo "${cmd[@]}"
+"${cmd[@]}" || exit 1
+
+# create a blank image file
+rm -f "$IMG_FILE.tmp"
+cmd=(qemu-img create "$IMG_FILE.tmp" -f qcow2 "$IMG_SIZE")
+echo "${cmd[@]}"
+"${cmd[@]}" || exit 1
+
+# QEMU unsets echo in console terminal -- undo that before exiting
+# (see "cleanup" above)
+ENABLE_TTY_ECHO=1
+
+# run the installer in QEMU
+cmd=(
+    "$KVM"
+    "${KVM_OPTS[@]}"
+    -m 8192
+    -drive file="$IMG_FILE.tmp",if=ide
+    -cdrom "$auto_iso"
+    -boot d
+    -no-reboot
+    -nographic
+    -smp 4
+    -chardev stdio,id=serial,signal=on
+)
+echo "${cmd[@]}"
+"${cmd[@]}" 2>&1 | tee $TEMPFILES_DIR/kvm.log
+if [[ ${PIPESTATUS[0]} -ne 0 || ${PIPESTATUS[1]} -ne 0 ]] ; then
+    die "qemu: installation failed"
 fi
 
-# Step 2: Convert the ISO to IMG
-if [ $PART -ne 1 ]; then
-   INSTALL_ISO_TO_DISK_IMAGE=$MY_REPO/stx/extras.ND/scripts/install_iso_to_disk_image.sh
-
-   if [ ! -e "/dev/loop-control"  -o ! -e "/dev/kvm" ]; then
-      CMD="cd $MY_WORKSPACE/export; \
-           $INSTALL_ISO_TO_DISK_IMAGE bootimage_auto.iso $DEST_IMG"
-
-      if [ "$HOSTNAME" == "yow-cgts3-centos7" ]; then
-         echo "Attempting to run kvm_iso_to_img on yow-cgts3-lx"
-         ssh -o StrictHostKeyChecking=no yow-cgts3-lx "$CMD"
-         if [ $? -ne 0 ]; then
-            echo "Failed to run update-efiboot-image on yow-cgts3-lx"
-         fi
-      fi
-
-      if [ "$HOSTNAME" == "yow-cgts2-centos7" ]; then
-         echo "Attempting to run kvm_iso_to_img on yow-cgts2-lx"
-         ssh -o StrictHostKeyChecking=no yow-cgts2-lx "$CMD"
-         if [ $? -ne 0 ]; then
-            echo "Failed to run update-efiboot-image on yow-cgts2-lx"
-         fi
-      fi
-
-      if [ ! -f "$MY_WORKSPACE/export/$DEST_IMG" ]; then
-         printf "\n"
-         printf "****************************************************************** \n"
-         printf "No kvm and/or loop device on this machine.  To complete the build \n"
-         printf "please copy '$MY_WORKSPACE/export/bootimage_auto.iso' to a machine \n"
-         printf "that supports kvm and loop devices and run ... \n"
-         printf "   $INSTALL_ISO_TO_DISK_IMAGE bootimage_auto.iso $DEST_IMG\n"
-         printf "****************************************************************** \n"
-         exit 1
-      fi
-   fi
-
-   if [ ! -f "$MY_WORKSPACE/export/$DEST_IMG" ]; then
-      (
-      cd $MY_WORKSPACE/export
-      $INSTALL_ISO_TO_DISK_IMAGE bootimage_auto.iso $DEST_IMG
-      exit $?
-      )
-   fi
+# QEMU exits with status=0 even when killed by a signal. Check its output
+# for a known message to detect this case
+if tail "$TEMPFILES_DIR/kvm.log" | grep -q -F "qemu: terminating on signal" ; then
+    die "qemu terminated by a signal"
 fi
 
+# rename tmp image file to the final name
+mv -f "$IMG_FILE.tmp" "$IMG_FILE" || exit 1
+
+# done
+echo "
+
+Created $IMG_FILE
+
+To use this image, type:
+
+    $KVM ${KVM_OPTS[@]} -m 16384 -drive file=$IMG_FILE,if=ide -boot c -nographic -smp 4
+
+"
