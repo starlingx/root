@@ -2,28 +2,29 @@
 # If these have dependencies, they will be pulled in automatically
 #
 acpid
+bc
 gdb
 influxdb
-#python3-influxdb
-#python3-gunicorn
+python3-influxdb
+python3-gunicorn
 iperf3
 isomd5sum
-#python3-aodhclient
-#python2-oslo-log
+python3-aodhclient
+python3-oslo-log
 python3-six
-#python3-d2to1
-#hiera
-#python3-pecan
-#python3-configobj
-#python3-pep8
-#python2-rsa
-#ruby-shadow
+python3-d2to1
+hiera
+python3-pecan
+python3-configobj
+python3-pycodestyle
+python3-rsa
+rubygem-ruby-shadow
 swig
 syslinux
 iotop
 linuxptp
 procps-ng
-#python-daemon
+python3-daemon
 python3-pyudev
 curl
 lvm2
@@ -40,31 +41,31 @@ selinux-policy
 tcpdump
 sysstat
 smartmontools
-#collectd
-#puppet-collectd
+collectd
+puppet-collectd
 socat
 attr
 
 # for realtime kernel
 #rtctl
-#rt-setup
+rt-setup
 
 # For low-latency compute
 #OVMF
 edk2-ovmf
 
 # neutron bgp
-#python2-pankoclient
+python3-pankoclient
 
 # ima plugin for RPM
 ntfs-3g
 ntfsprogs
-#python-memcached
+python3-memcached
 python3-coverage
 
 # kubernetes packages
-#docker-ce
-#etcd
+docker-ce
+etcd
 #docker-forward-journald
 
 # Add debugging tools
@@ -73,7 +74,7 @@ unzip
 traceroute
 
 # support for persistent sessions
-#screen
+screen
 
 # For kata container
-#kata-runtime
+kata-runtime

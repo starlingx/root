@@ -8,7 +8,7 @@ bind-libs-lite
 bind-license
 binutils
 biosdevname
-#btrfs-progs
+btrfs-progs
 bzip2-libs
 ca-certificates
 centos-logos
@@ -43,7 +43,7 @@ dracut-config-rescue
 dracut-network
 e2fsprogs
 e2fsprogs-libs
-#ebtables
+iptables-ebtables
 efibootmgr
 efivar-libs
 elfutils-libelf
@@ -170,7 +170,7 @@ man-db
 mdadm
 microcode_ctl
 mokutil
-#mozjs17
+mozjs60
 ncurses
 ncurses-base
 ncurses-libs
@@ -196,7 +196,6 @@ passwd
 pciutils-libs
 pcre
 pinentry
-#pkgconfig
 pkgconf-pkg-config
 policycoreutils
 popt
@@ -206,8 +205,8 @@ python3-gobject-base
 #pygpgme
 #pyliblzma
 python36
-#python-backports
-#python-backports-ssl_match_hostname
+#python3-backports
+#python3-backports-ssl_match_hostname
 python3-configobj
 python3-decorator
 python3-iniparse
@@ -218,8 +217,7 @@ python3-pyudev
 python3-setuptools
 python3-slip
 python3-slip-dbus
-#python-urlgrabber
-#pyxattr
+python3-urlgrabber
 python3-pyxattr
 qrencode-libs
 readline
