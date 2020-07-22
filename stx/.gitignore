@@ -38,4 +38,5 @@ installer-prebuilt
 /update
 /upstream
 /utilities
+/vault-armada-app
 /zuul-jobs
