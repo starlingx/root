@@ -13,6 +13,7 @@ OAM_DEV=ens3
 KVM_OPTS=()
 TEMPFILES_DIR=
 ENABLE_TTY_ECHO=0
+SUDO=0
 
 # Print out the help message
 usage() {
@@ -25,6 +26,8 @@ Create a QCOW2/QEMU image with StarlingX pre-installed
  -m,--mode={controller|aio|aio_lowlatency}
                    create a controller or an all-in-one/low latency system
                    (default: aio)
+
+    --sudo         Use sudo to mount the ISO, rather than udisks
 
  -s,--size=nnnG    image file size, must end with "G" (default: 500G)
 
@@ -109,7 +112,7 @@ find_kvm() {
 # Process command line
 init() {
     local temp
-    temp=$(getopt -o hf4e:m:s:i:o: --long help,force,ip4,oam-dev:,mode:,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
+    temp=$(getopt -o hf4e:m:s:i:o: --long help,force,ip4,oam-dev:,mode:,sudo,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
     eval set -- "$temp"
     while true ; do
         case "$1" in
@@ -134,6 +137,10 @@ init() {
                 AUTO_MODE="$2"
                 shift 2
                 ;;
+            --sudo)
+               SUDO=1
+               shift
+               ;;
             -s|--size)
                 [[ $2 =~ ^[0-9]{1,5}G$ ]] || cmdline_error "invalid --size"
                 IMG_SIZE="$2"
@@ -212,7 +219,11 @@ TEMPFILES_DIR=$(mktemp -d -t build_img.XXXXXXXX) || exit 1
 # create an updated iso with the menu item pre-selected
 auto_iso="$TEMPFILES_DIR/bootimage_$AUTO_MODE.iso"
 rm -f "$auto_iso"
-cmd=("$UPDATE_ISO" -i "$BOOTIMAGE_ISO" -o "$auto_iso" -d "$menu_item" -t 3)
+cmd=()
+if [[ $SUDO == 1 ]] ; then
+    cmd+=(sudo)
+fi
+cmd+=("$UPDATE_ISO" -i "$BOOTIMAGE_ISO" -o "$auto_iso" -d "$menu_item" -t 3)
 
 # generate a kickstart add-on that sets up OAM_DEV
 ks_addon="$TEMPFILES_DIR/ks_addon.sh"
@@ -266,8 +277,11 @@ cmd=(
     -no-reboot
     -nographic
     -smp 4
-    -chardev stdio,id=serial,signal=on
 )
+# if STDOUT is not a terminal, disable QEMU's terminal features
+if [[ ! -t 1 ]] ; then
+    cmd+=(-serial file:/dev/stdout)
+fi
 echo "${cmd[@]}"
 "${cmd[@]}" 2>&1 | tee $TEMPFILES_DIR/kvm.log
 if [[ ${PIPESTATUS[0]} -ne 0 || ${PIPESTATUS[1]} -ne 0 ]] ; then
@@ -276,7 +290,7 @@ fi
 
 # QEMU exits with status=0 even when killed by a signal. Check its output
 # for a known message to detect this case
-if tail "$TEMPFILES_DIR/kvm.log" | grep -q -F "qemu: terminating on signal" ; then
+if tail "$TEMPFILES_DIR/kvm.log" | grep -q -E "(qemu|kvm).*: terminating on signal" ; then
     die "qemu terminated by a signal"
 fi
 
