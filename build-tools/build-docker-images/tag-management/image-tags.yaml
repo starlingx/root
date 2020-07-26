@@ -63,3 +63,8 @@ images:
     src_ref: https://opendev.org/starlingx/vault-armada-app/commit/2cd206d6703cc2733e39ecad4539c0d5f1600550
     # Tag based on kubectl package version used in image
     tag: stx.5.0-v1.18.3
+  - name: docker.io/starlingx/portieris
+    src_build_tag: master-centos-stable-20200726T013628Z.0
+    src_ref: https://opendev.org/starlingx/portieris-armada-app/commit/a6123ffebb77f23d5182576be17e69d62fd8d701
+    # Tag based on upstream package version
+    tag: stx.5.0-v0.7.0
