@@ -24,6 +24,9 @@ BUILD_STREAM=stable
 IMAGE_VERSION=
 PUSH=no
 PROXY=""
+CONFIG_FILE=""
+DEFAULT_CONFIG_FILE_DIR="${MY_REPO}/build-tools/build-docker-images"
+DEFAULT_CONFIG_FILE_PREFIX="base-image-build"
 DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 declare -a REPO_LIST
@@ -56,11 +59,50 @@ Options:
     --clean:      Remove image(s) from local registry
     --hostname:   build repo host
     --attempts:   Max attempts, in case of failure (default: 1)
+    --config-file:Specify a path to a config file which will specify additional arguments to be passed into the command
 
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,hostname:,attempts: -- "$@")
+function get_args_from_file {
+    # get additional args from specified file.
+    local -a config_items
+
+    echo "Get args from file: $1"
+    for i in $(cat $1)
+    do
+        config_items=($(echo $i | sed s/=/\ /g))
+        echo "--${config_items[0]} ${config_items[1]}"
+        case ${config_items[0]} in
+            version)
+                if [ -z "${IMAGE_VERSION}" ]; then
+                    IMAGE_VERSION=${config_items[1]}
+                fi
+                ;;
+            user)
+                if [ -z "${DOCKER_USER}" ]; then
+                    DOCKER_USER=${config_items[1]}
+                fi
+                ;;
+            proxy)
+                if [ -z "${PROXY}" ]; then
+                    PROXY=${config_items[1]}
+                fi
+                ;;
+            registry)
+                if [ -z "${DOCKER_REGISTRY}" ]; then
+                    # Add a trailing / if needed
+                    DOCKER_REGISTRY="${config_items[1]%/}/"
+                fi
+                ;;
+            repo)
+                REPO_LIST+=(${config_items[1]})
+                ;;
+        esac
+    done
+}
+
+OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,hostname:,attempts:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -140,6 +182,10 @@ while true; do
             MAX_ATTEMPTS=$2
             shift 2
             ;;
+        --config-file)
+            CONFIG_FILE=$2
+            shift 2
+            ;;
         -h | --help )
             usage
             exit 1
@@ -167,6 +213,21 @@ fi
 
 if [ -z "${IMAGE_VERSION}" ]; then
     IMAGE_VERSION=${OS_VERSION}
+fi
+
+DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE_DIR}/${DEFAULT_CONFIG_FILE_PREFIX}-${OS}-${BUILD_STREAM}.cfg"
+
+# Read additional auguments from config file if it exists.
+if [[ -z "$CONFIG_FILE" ]] && [[ -f ${DEFAULT_CONFIG_FILE} ]]; then
+    CONFIG_FILE=${DEFAULT_CONFIG_FILE}
+fi
+if [[ ! -z  ${CONFIG_FILE} ]]; then
+    if [[ -f ${CONFIG_FILE} ]]; then
+        get_args_from_file ${CONFIG_FILE}
+    else
+        echo "Config file not found: ${CONFIG_FILE}"
+        exit 1
+    fi
 fi
 
 if [ ${#REPO_LIST[@]} -eq 0 ]; then
