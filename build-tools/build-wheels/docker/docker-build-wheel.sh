@@ -117,7 +117,7 @@ function with_retries {
     local -i attempt=0
 
     while :; do
-        let -i attempt++
+        let attempt++
 
         echo "Running: ${cmd} $@"
         ${cmd} "$@"
@@ -340,7 +340,7 @@ from_zip
 from_pypi
 
 if [ -f $FAILED_LOG ]; then
-    let -i failures=$(cat $FAILED_LOG | wc -l)
+    let failures=$(cat $FAILED_LOG | wc -l)
 
     cat <<EOF
 ############################################################

@@ -206,7 +206,7 @@ srpm_create_raw_extract_script () {
       SAME=1
    fi
 
-   let -i COUNT=0
+   let COUNT=0
    while [ $SAME -eq 0 ]; do
       \cp -f $STDOUT_LOG $PREV_STDOUT_LOG
       \cp -f $STDERR_LOG $PREV_STDERR_LOG
@@ -226,7 +226,7 @@ srpm_create_raw_extract_script () {
       if [ $? -eq 0 ]; then
          SAME=1
       fi
-      let -i COUNT++
+      let COUNT++
       if [ $COUNT -ge 20 ]; then 
          break; 
       fi
