@@ -21,7 +21,7 @@ function with_retries {
     local -i attempt=0
 
     while :; do
-        let -i attempt++
+        let attempt++
 
         echo "Running: ${cmd} $@"
         ${cmd} "$@"
