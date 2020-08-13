@@ -148,7 +148,7 @@ function check_requirements {
         which ${req} >&/dev/null
         if [ $? -ne 0 ]; then
             echo "Unable to find required utility: ${req}" >&2
-            let -i missing++
+            let missing++
         fi
     done
 
