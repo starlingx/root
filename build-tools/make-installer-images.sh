@@ -114,6 +114,45 @@ rm -f ./usr/lib/udev/rules.d/71-biosdevname.rules ./usr/sbin/biosdevname
 exit
 EOF
 
+echo "-->patch usr/lib/net-lib.sh with IPv6 improvements from newer dracut"
+patch usr/lib/net-lib.sh <<EOF
+--- ../initrd.orig/usr/lib/net-lib.sh   2020-08-18 19:37:17.063163840 -0400
++++ usr/lib/net-lib.sh  2020-08-19 09:47:15.237089800 -0400
+@@ -645,7 +645,8 @@
+     timeout=\$((\$timeout*10))
+
+     while [ \$cnt -lt \$timeout ]; do
+-        [ -z "\$(ip -6 addr show dev "\$1" scope link tentative)" ] \\
++        [ -n "\$(ip -6 addr show dev "\$1" scope link)" ] \\
++            && [ -z "\$(ip -6 addr show dev "\$1" scope link tentative)" ] \\
+             && return 0
+         [ -n "\$(ip -6 addr show dev "\$1" scope link dadfailed)" ] \\
+             && return 1
+@@ -662,7 +663,9 @@
+     timeout=\$((\$timeout*10))
+
+     while [ \$cnt -lt \$timeout ]; do
+-        [ -z "\$(ip -6 addr show dev "\$1" tentative)" ] \\
++        [ -n "\$(ip -6 addr show dev "\$1")" ] \\
++            && [ -z "\$(ip -6 addr show dev "\$1" tentative)" ] \\
++            && [ -n "\$(ip -6 route list proto ra dev "\$1" | grep ^default)" ] \\
+             && return 0
+         [ -n "\$(ip -6 addr show dev "\$1" dadfailed)" ] \\
+             && return 1
+@@ -679,8 +682,9 @@
+     timeout=\$((\$timeout*10))
+
+     while [ \$cnt -lt \$timeout ]; do
+-        [ -z "\$(ip -6 addr show dev "\$1" tentative)" ] \\
+-            && [ -n "\$(ip -6 route list proto ra dev "\$1")" ] \\
++        [ -n "\$(ip -6 addr show dev "\$1")" ] \\
++            && [ -z "\$(ip -6 addr show dev "\$1" tentative)" ] \\
++            && [ -n "\$(ip -6 route list proto ra dev "\$1" | grep ^default)" ] \\
+             && return 0
+         sleep 0.1
+         cnt=\$((\$cnt+1))
+EOF
+
 echo "--> Rebuild the initrd"
 if [ -f $output_dir/new-initrd.img ]; then
     mv -f $output_dir/new-initrd.img $output_dir/initrd.img-backup-$timestamp
