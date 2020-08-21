@@ -5,6 +5,7 @@ FORCE=0
 AUTO_MODE=
 IMG_SIZE=
 BOOTIMAGE_ISO=
+GRAPHICAL_SUFFIX=
 IMG_FILE=
 AUTO_ISO=
 DHCPV6C=yes
@@ -12,8 +13,9 @@ OAM_DEV=ens3
 : KVM=
 KVM_OPTS=()
 TEMPFILES_DIR=
-ENABLE_TTY_ECHO=0
 SUDO=0
+GRAPHICAL=0
+TTY_SETTINGS=
 
 # Print out the help message
 usage() {
@@ -31,6 +33,8 @@ Create a QCOW2/QEMU image with StarlingX pre-installed
 
  -s,--size=nnnG    image file size, must end with "G" (default: 500G)
 
+ -g,--graphical    create a graphical installation, rather than console
+
  -e,--oam-dev      OAM network device (default: ens3)
 
  -4,--ip4          don't configure IPv6 in the generated image
@@ -42,7 +46,10 @@ Create a QCOW2/QEMU image with StarlingX pre-installed
 
  -o,--output=IMG_FILE
                    output image file name
-                   (default: \$MY_WORKSPACE/export/stx_\$MODE.qcow2)
+                   Default:
+                      \$MY_WORKSPACE/export/stx_\${MODE}.qcow2)
+                   Default with --graphical:
+                      \$MY_WORKSPACE/export/stx_\${MODE}_graphical.qcow2)
 
 ENVIRONMENT
 
@@ -54,8 +61,9 @@ ENVIRONMENT
 
 # Delete temporary files
 cleanup() {
-   # QEMU unsets echo in console terminal -- undo that before exiting
-   [[ $ENABLE_TTY_ECHO -eq 0 ]] || stty echo
+   # QEMU changes terminal settings, restore them before exiting
+   [[ -z $TTY_SETTINGS ]] || stty "$TTY_SETTINGS" <&1
+   # remove temporary files
    rm -rf "$TEMPFILES_DIR"
    rm -f "$IMG_FILE.tmp"
 }
@@ -112,7 +120,7 @@ find_kvm() {
 # Process command line
 init() {
     local temp
-    temp=$(getopt -o hf4e:m:s:i:o: --long help,force,ip4,oam-dev:,mode:,sudo,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
+    temp=$(getopt -o hf4e:m:gs:i:o: --long help,force,ip4,oam-dev:,mode:,graphical,sudo,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
     eval set -- "$temp"
     while true ; do
         case "$1" in
@@ -137,10 +145,15 @@ init() {
                 AUTO_MODE="$2"
                 shift 2
                 ;;
+            -g|--graphical)
+                GRAPHICAL=1
+                GRAPHICAL_SUFFIX=_graphical
+                shift
+                ;;
             --sudo)
-               SUDO=1
-               shift
-               ;;
+                SUDO=1
+                shift
+                ;;
             -s|--size)
                 [[ $2 =~ ^[0-9]{1,5}G$ ]] || cmdline_error "invalid --size"
                 IMG_SIZE="$2"
@@ -176,7 +189,7 @@ init() {
     : ${AUTO_MODE:=aio}
     : ${IMG_SIZE:=500G}
     : ${BOOTIMAGE_ISO:=$MY_WORKSPACE/export/bootimage.iso}
-    : ${IMG_FILE:=$MY_WORKSPACE/export/stx_$AUTO_MODE.qcow2}
+    : ${IMG_FILE:=$MY_WORKSPACE/export/stx_${AUTO_MODE}${GRAPHICAL_SUFFIX}.qcow2}
 }
 
 # main
@@ -217,7 +230,7 @@ esac
 TEMPFILES_DIR=$(mktemp -d -t build_img.XXXXXXXX) || exit 1
 
 # create an updated iso with the menu item pre-selected
-auto_iso="$TEMPFILES_DIR/bootimage_$AUTO_MODE.iso"
+auto_iso="$TEMPFILES_DIR/bootimage_${AUTO_MODE}${GRAPHICAL_SUFFIX}.iso"
 rm -f "$auto_iso"
 cmd=()
 if [[ $SUDO == 1 ]] ; then
@@ -225,10 +238,12 @@ if [[ $SUDO == 1 ]] ; then
 fi
 cmd+=("$UPDATE_ISO" -i "$BOOTIMAGE_ISO" -o "$auto_iso" -d "$menu_item" -t 3)
 
-# generate a kickstart add-on that sets up OAM_DEV
+# generate a kickstart add-on
 ks_addon="$TEMPFILES_DIR/ks_addon.sh"
-cat >"$ks_addon" <<_END
-#### start ks-addon.cfg
+echo "#### start ks-addon.cfg" >"$ks_addon"
+# configure $OAM_DEV
+cat >>"$ks_addon" <<_END
+# configure $OAM_DEV
 uuid=\$(uuidgen)
 cat >/etc/sysconfig/network-scripts/ifcfg-$OAM_DEV <<END
 UUID=\$uuid
@@ -248,8 +263,34 @@ IPV6_ADDR_GEN_MODE=stable-privacy
 ONBOOT=yes
 DHCPV6C=$DHCPV6C
 END
-#### end ks-addon.cfg
 _END
+# Comment-out global_filter in lvm.conf
+# The installer normally sets it to the installer hard drive's bus address,
+# and LVM doesn't come up when booted in different emulation environment.
+cat >>"$ks_addon" <<'_END'
+# Comment-out global_filter in lvm.conf
+sed -r -i 's!^(\s*)global_filter\s*=.*!\1# global_filter = [ "a|.*/|" ]!' /etc/lvm/lvm.conf
+_END
+# Change grub parameters to boot to graphical console.
+# The installer sets these to use the serial port when we install
+# in text mode.
+if [[ $GRAPHICAL -eq 1 ]] ; then
+cat >>"$ks_addon" <<'_END'
+# Boot in graphical mode
+sed -r -i \
+    -e '/^\s*GRUB_SERIAL_COMMAND=/       d' \
+    -e '/^\s*GRUB_TERMINAL(_OUTPUT)?=/   s/=.*/="console"/' \
+    -e '/^\s*GRUB_CMDLINE_LINUX=/        s/\bconsole=ttyS0,\S+/console=tty0/' \
+    /etc/default/grub
+if [ -d /sys/firmware/efi ] ; then
+  grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
+else
+  grub2-mkconfig -o /boot/grub2/grub.cfg
+fi
+_END
+fi
+
+echo "#### end ks-addon.cfg" >>"$ks_addon"
 cmd+=(-a "$ks_addon")
 
 # execute update_iso.sh
@@ -261,10 +302,6 @@ rm -f "$IMG_FILE.tmp"
 cmd=(qemu-img create "$IMG_FILE.tmp" -f qcow2 "$IMG_SIZE")
 echo "${cmd[@]}"
 "${cmd[@]}" || exit 1
-
-# QEMU unsets echo in console terminal -- undo that before exiting
-# (see "cleanup" above)
-ENABLE_TTY_ECHO=1
 
 # run the installer in QEMU
 cmd=(
@@ -278,10 +315,15 @@ cmd=(
     -nographic
     -smp 4
 )
-# if STDOUT is not a terminal, disable QEMU's terminal features
-if [[ ! -t 1 ]] ; then
+# if STDOUT is a terminal, save current terminal settings
+# so that we can restore them later
+if [[ -t 1 ]] ; then
+    TTY_SETTINGS=$(stty -g <&1)
+# otherwise, disable QEMU's terminal features
+else
     cmd+=(-serial file:/dev/stdout)
 fi
+# execute qemu
 echo "${cmd[@]}"
 "${cmd[@]}" 2>&1 | tee $TEMPFILES_DIR/kvm.log
 if [[ ${PIPESTATUS[0]} -ne 0 || ${PIPESTATUS[1]} -ne 0 ]] ; then
@@ -299,11 +341,14 @@ mv -f "$IMG_FILE.tmp" "$IMG_FILE" || exit 1
 
 # done
 echo "
-
 Created $IMG_FILE
 
 To use this image, type:
-
-    $KVM ${KVM_OPTS[@]} -m 16384 -drive file=$IMG_FILE,if=ide -boot c -nographic -smp 4
-
 "
+if [[ $GRAPHICAL -eq 1 ]] ; then
+    echo "    $KVM ${KVM_OPTS[@]} -m 16384 -drive file=$IMG_FILE,if=ide -boot c -smp 4"
+    echo
+    echo "(requires a graphical console)"
+else
+    echo "    $KVM ${KVM_OPTS[@]} -m 16384 -drive file=$IMG_FILE,if=ide -boot c -nographic -smp 4"
+fi
