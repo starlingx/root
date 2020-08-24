@@ -266,6 +266,10 @@ function build_application_tarball {
             echo "  - ${patch}" >> metadata.yaml
         done
     fi
+    # Add the tarball build date: For consistency with tooling that might use
+    # this metadata, match the date format used for BUILD_DATE in
+    # /etc/build.info
+    echo "build_date: $(date '+%Y-%m-%d %H:%M:%S %z')" >> metadata.yaml
 
     # Add an md5
     find . -type f ! -name '*.md5' -print0 | xargs -0 md5sum > checksum.md5
