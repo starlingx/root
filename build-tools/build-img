@@ -10,6 +10,9 @@ IMG_FILE=
 AUTO_ISO=
 DHCPV6C=yes
 OAM_DEV=ens3
+IPV4_GW_ADDR=
+IPV6_GW_ADDR=
+declare -A PASSWORDS
 : KVM=
 KVM_OPTS=()
 TEMPFILES_DIR=
@@ -35,9 +38,38 @@ Create a QCOW2/QEMU image with StarlingX pre-installed
 
  -g,--graphical    create a graphical installation, rather than console
 
- -e,--oam-dev      OAM network device (default: ens3)
+ -e,--oam-dev=OAM_DEV
+                   OAM network device (default: ens3)
 
- -4,--ip4          don't configure IPv6 in the generated image
+ -4,--ipv4         don't configure IPv6 in the generated image
+
+ -w,--ipv4-default-gateway=GW_IPV4_ADDR
+                   Add a default IPv4 route via this gateway address
+
+ -W,--ipv6-default-gateway=GW_IPV6_ADDR
+                   Add a default IPv6 route via this gateway address
+
+ -p,--password=USER:PASSWORD
+                   Unlock USER account and set its password in the generated
+                   image.
+                   USER must exist -- e.g., root, sysadmin.
+                   This option may be repeated.
+
+                   WARNING: this option is not recommended because the
+                            password will be visible to anyone listing the
+                            processes. Use \`--passwords-from' instead.
+
+ -P,--passwords-from=PASSWORD_FILE
+                   Unlock and set passwords of each user account from
+                   PASSWORD_FILE, which must contain one or more lines
+                   of the form
+
+                      USER:PASSWORD
+
+                   USERs must exist -- e.g., root, sysadmin.
+
+ -S,--passwords-from-stdin
+                   Same as \`--passwords-from=/dev/stdin'
 
  -i,--iso=BOOTIMAGE_ISO
                    use this iso file as input, it must have been generated
@@ -83,19 +115,100 @@ handle_exit() {
   exit $rv
 }
 
+# Print out an error message
+error() {
+    echo "$PROGNAME: error: $*" >&2
+}
+
 # Print out an error message and exit
 die() {
-    echo "$PROGNAME: error: $*" >&2
+    error "$*"
     exit 1
 }
 
 # Print out a command-line error message and exit
 cmdline_error() {
     if [ "$#" -gt 0 ] ; then
-        echo "$PROGNAME: error: $*" >&2
+        error "$*"
     fi
     echo "Type \`$0 --help' for more info." >&2
     exit 2
+}
+
+# Encrypt a password for /etc/passwd
+encrypt_password() {
+    export ARG="$1"
+    python -c '
+import crypt, os, binascii, sys
+salt = binascii.b2a_hex(os.urandom (8)).decode("ascii")
+encrypted = crypt.crypt (os.environ["ARG"], "$5$" + salt + "$")
+print (encrypted)
+' "$1"
+    local status="$?"
+    unset ARG
+    [[ $status -eq 0 ]] || exit 1
+}
+
+# Save username/password to $PASSWORDS
+save_password() {
+    local passwd_str="$1"
+    local error_prefix="$2"
+    if [[ ! $passwd_str =~ : ]] ; then
+        error "${error_prefix}expecting USER:PASSWORD"
+        return 1
+    fi
+    local user="${passwd_str%%:*}"
+    local passwd="${passwd_str#*:}"
+    if [[ -z $user || -z $passwd ]] ; then
+        error "${error_prefix}expecting USER:PASSWORD"
+        return 1
+    fi
+    if [[ $user =~ [^a-zA-Z0-9._-] ]] ; then
+        error "${error_prefix}username must only contain characters [a-zA-Z0-9._-]"
+        return 1
+    fi
+    PASSWORDS[$user]="$passwd"
+    return 0
+}
+
+# Read passwords from file or STDIN
+read_passwords() {
+    local filename="$1"
+    local -i lineno=0
+    local numchar="#"
+    # Open password file or STDIN as file descriptor 3
+    if [[ -z $filename || $filename == - ]] ; then
+        filename=STDIN
+        exec 3<&0 || exit 1
+    else
+        exec 3<"$filename" || exit 1
+    fi
+    while read line <&3 ; do
+        let lineno++
+        # skip empty lines and comments
+        # ${numchar} is "#" to avoid tripping up VI's syntax highlighting
+        if [[ ! $line =~  ^[[:space:]]*(${numchar}.*)?*$ ]] ; then
+            save_password "$line" "$filename:$lineno: " || exit 1
+        fi
+    done
+    # close file descriptor 3
+    exec 3<&-
+}
+
+# Check if an IPv4 address is valid
+is_ipv4_addr() {
+    # make sure we have python
+    python -c 'import socket' || exit 1
+    # parse the address via python
+    python -c 'import socket,sys;socket.inet_aton(sys.argv[1])' "$1" >/dev/null 2>&1
+}
+
+# Check if an IPv6 address is valid
+is_ipv6_addr() {
+    # make sure we have python
+    python -c 'import socket' || exit 1
+    # parse the address via python
+    python -c 'import socket,sys;socket.inet_pton(socket.AF_INET6,sys.argv[1])' "$1" >/dev/null 2>&1
 }
 
 # find QEMU/KVM
@@ -120,7 +233,7 @@ find_kvm() {
 # Process command line
 init() {
     local temp
-    temp=$(getopt -o hf4e:m:gs:i:o: --long help,force,ip4,oam-dev:,mode:,graphical,sudo,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
+    temp=$(getopt -o hf4w:W:e:p:P:Sm:gs:i:o: --long help,force,ipv4,ipv4-default-gateway:,ipv6-default-gateway:,oam-dev:,password:,passwords-from:,passwords-from-stdin,mode:,graphical,sudo,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
     eval set -- "$temp"
     while true ; do
         case "$1" in
@@ -132,12 +245,34 @@ init() {
                 FORCE=1
                 shift
                 ;;
-            -4|--ip4)
+            -4|--ipv4)
                 DHCPV6C=no
                 shift
                 ;;
+            -w|--ipv4-default-gateway)
+                is_ipv4_addr "$2" || cmdline_error "invalid IP address \`$2'"
+                IPV4_GW_ADDR="$2"
+                shift 2
+                ;;
+            -W|--ipv6-default-gateway)
+                is_ipv6_addr "$2" || cmdline_error "invalid IP address \`$2'"
+                IPV6_GW_ADDR="$2"
+                shift 2
+                ;;
             -e|--oam-dev)
                 OAM_DEV="$2"
+                shift 2
+                ;;
+            -P|--passwords-from)
+                read_passwords "$2"
+                shift 2
+                ;;
+            -S|--passwords-from-stdin)
+                read_passwords -
+                shift
+                ;;
+            -p|--password)
+                save_password "$2" "invalid $1: " || cmdline_error
                 shift 2
                 ;;
             -m|--mode)
@@ -264,6 +399,32 @@ ONBOOT=yes
 DHCPV6C=$DHCPV6C
 END
 _END
+
+# Add default routes
+if [[ -n "$IPV4_GW_ADDR" ]] ; then
+    cat >>"$ks_addon" <<_END
+# Add a default IPv4 route
+echo "default via $IPV4_GW_ADDR dev $OAM_DEV metric 1" >/etc/sysconfig/network-scripts/route-$OAM_DEV
+_END
+fi
+if [[ -n "$IPV6_GW_ADDR" ]] ; then
+    cat >>"$ks_addon" <<_END
+# Add a default IPv6 route
+echo "default via $IPV6_GW_ADDR dev $OAM_DEV metric 1" >/etc/sysconfig/network-scripts/route6-$OAM_DEV
+_END
+fi
+
+# Set passwords
+for user in "${!PASSWORDS[@]}" ; do
+    encrypted=$(encrypt_password "${PASSWORDS[$user]}")
+    [[ $? -eq 0 ]] || exit 1
+    cat >>"$ks_addon" <<_END
+# set ${user}'s password
+usermod -e '' -p '$encrypted' '$user' || exit 1
+chage --inactive -1 --maxdays -1 --lastday \$(date '+%Y-%m-%d') '$user' || exit 1
+_END
+done
+
 # Comment-out global_filter in lvm.conf
 # The installer normally sets it to the installer hard drive's bus address,
 # and LVM doesn't come up when booted in different emulation environment.
@@ -271,11 +432,12 @@ cat >>"$ks_addon" <<'_END'
 # Comment-out global_filter in lvm.conf
 sed -r -i 's!^(\s*)global_filter\s*=.*!\1# global_filter = [ "a|.*/|" ]!' /etc/lvm/lvm.conf
 _END
+
 # Change grub parameters to boot to graphical console.
 # The installer sets these to use the serial port when we install
 # in text mode.
 if [[ $GRAPHICAL -eq 1 ]] ; then
-cat >>"$ks_addon" <<'_END'
+    cat >>"$ks_addon" <<'_END'
 # Boot in graphical mode
 sed -r -i \
     -e '/^\s*GRUB_SERIAL_COMMAND=/       d' \
