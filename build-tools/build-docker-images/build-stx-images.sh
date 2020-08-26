@@ -304,7 +304,7 @@ function post_build {
             PROXY_ARGS+=(--env no_proxy=$NO_PROXY)
         fi
 
-        docker run "${PROXY_ARGS[@]}" --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
+        docker run ${PROXY_ARGS[@]} --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
         if [ $? -ne 0 ]; then
             echo "Failed to add customization for ${LABEL}... Aborting"
             RESULTS_FAILED+=(${LABEL})
