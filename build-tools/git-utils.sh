@@ -27,7 +27,7 @@ git_ctx_root_dir () {
 git_list () {
     local DIR=${1}
 
-    find -L "${DIR}" -maxdepth 5 -type d -name '.git' -exec dirname {} \; | sort -V
+    find -L "${DIR}" -maxdepth 5 -type d -name '.git' -exec dirname {} \; | grep -v '[.]repo[/]repo$' | sort -V
 }
 
 
@@ -380,11 +380,12 @@ git_test_context () {
     # Limit search to last 500 commits in the interest of speed.
     # I don't expect to be using contexts more than a few weeks old.
     cat "$context" | \
-        sed "s#checkout -f \([a-e0-9]*\)#rev-list --max-count=500 HEAD | \
+        sed -e "s/\.repo\/repo/d" \
+            -e "s#checkout -f \([a-e0-9]*\)#rev-list --max-count=500 HEAD | \
         grep \1#" > $query
 
-    target_hits=$(cat "$context" | wc -l)
-    actual_hits=$(cd $(git_ctx_root_dir); source $query | wc -l)
+    target_hits=$(cat "$context" | grep -v '[.]repo[/]repo ' | wc -l)
+    actual_hits=$(cd $(git_ctx_root_dir); source $query 2> /dev/null | wc -l)
     \rm $query
 
     if [ $actual_hits -eq $target_hits ]; then
