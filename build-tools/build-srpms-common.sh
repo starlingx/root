@@ -94,7 +94,7 @@ md5sums_from_input_vars () {
     fi
 
     # Remove $MY_REPO prefix from paths
-    cat $INPUT_FILES_SORTED | xargs md5sum | sed "s# $(readlink -f $MY_REPO)/# #"
+    cat $INPUT_FILES_SORTED | xargs -d '\n'  md5sum | sed "s# $(readlink -f $MY_REPO)/# #"
 
     if [ $TMP_FLAG -eq 0 ]; then
         \rm -f $INPUT_FILES_SORTED
