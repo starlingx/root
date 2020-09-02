@@ -33,6 +33,7 @@ installer-prebuilt
 /openstack-armada-app
 /platform-armada-app
 /portieris-armada-app
+/rook-ceph
 /stx-puppet
 /test
 /update
