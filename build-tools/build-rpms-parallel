@@ -68,7 +68,18 @@ if [ $? -ne 0 ]; then
    CREATEREPO="createrepo"
 fi
 
-DEPENDANCY_DIR="$MY_REPO/cgcs-tis-repo/dependancy-cache"
+# Old repo path or new?
+LOCAL_REPO=${MY_REPO}/local-repo
+if [ ! -d ${LOCAL_REPO} ]; then
+    LOCAL_REPO=${MY_REPO}/cgcs-tis-repo
+    if [ ! -d ${LOCAL_REPO} ]; then
+        # This one isn't fatal, LOCAL_REPO is not required
+        LOCAL_REPO=${MY_REPO}/local-repo
+    fi
+fi
+
+# Make sure we have a dependency cache
+DEPENDANCY_DIR="${LOCAL_REPO}/dependancy-cache"
 SRPM_DIRECT_REQUIRES_FILE="$DEPENDANCY_DIR/SRPM-direct-requires"
 SRPM_TRANSITIVE_REQUIRES_FILE="$DEPENDANCY_DIR/SRPM-transitive-requires"
 SRPM_TRANSITIVE_DESCENDANTS_FILE="$DEPENDANCY_DIR/SRPM-transitive-descendants"

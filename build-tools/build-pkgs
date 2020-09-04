@@ -39,8 +39,18 @@ fi
 export TMPDIR=$MY_WORKSPACE/tmp
 mkdir -p $TMPDIR
 
+# Old repo path or new?
+LOCAL_REPO=${MY_REPO}/local-repo
+if [ ! -d ${LOCAL_REPO} ]; then
+    LOCAL_REPO=${MY_REPO}/cgcs-tis-repo
+    if [ ! -d ${LOCAL_REPO} ]; then
+        # This one isn't fatal, LOCAL_REPO is not required
+        LOCAL_REPO=${MY_REPO}/local-repo
+    fi
+fi
+
 # Make sure we have a dependency cache
-DEP_CACHE="$MY_REPO/cgcs-tis-repo/dependancy-cache"
+DEP_CACHE="${LOCAL_REPO}/dependancy-cache"
 
 BUILD_TYPES=(" std rt installer containers")
 DEP_RPM_TYPE=(" RPMS SRPMS ")
