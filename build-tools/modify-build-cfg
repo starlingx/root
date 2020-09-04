@@ -13,12 +13,22 @@
 
 LAYER=${2:-$LAYER}
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 # Try to find a layer specific mock.cfg.proto
-MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.${LAYER}.proto"
+MOCK_CFG_PROTO="${CENTOS_REPO}/mock.cfg.${LAYER}.proto"
 echo "==== Try MOCK_CFG_PROTO=$MOCK_CFG_PROTO ===="
 if [ ! -f "$MOCK_CFG_PROTO" ]; then
     # Not present, Use default mock.cfg.proto
-    MOCK_CFG_PROTO="$MY_REPO/cgcs-centos-repo/mock.cfg.proto"
+    MOCK_CFG_PROTO="${CENTOS_REPO}/mock.cfg.proto"
 fi
 
 echo "==== Use MOCK_CFG_PROTO=$MOCK_CFG_PROTO ===="

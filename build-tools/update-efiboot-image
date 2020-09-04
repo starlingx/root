@@ -133,23 +133,33 @@ fi
 # Update the vanilla UEFI Centos grub.cfg with the Titanium Cloud version
 ${SUDOPREFIX} cp "$BSP_FILES_PATH/grub.cfg"  "$EFI_MOUNT/EFI/BOOT/grub.cfg"
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 # Update the grub and shim executables with the Titanium Cloud signed versions
 #
 # To do this, we extract the RPMS, grab the two executables we need, and replace
 # the ones in the current filesystem
 TMPDIR=`mktemp -d`
-SHIMPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS $MY_REPO/cgcs-centos-repo/Binary -name 'shim-x64-[0-9]*.x86_64.rpm'`
+SHIMPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary -name 'shim-x64-[0-9]*.x86_64.rpm'`
 if [ -z "$SHIMPKG" ]; then
-    SHIMPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS $MY_REPO/cgcs-centos-repo/Binary -name 'shim-[0-9]*.x86_64.rpm'`
+    SHIMPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary -name 'shim-[0-9]*.x86_64.rpm'`
 fi
 if [ -z "$SHIMPKG" ]; then
     printf "  Error -- could not locate shim binary package"
     exit 1
 fi
 
-GRUBPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS $MY_REPO/cgcs-centos-repo/Binary -name 'grub2-efi-x64-[0-9]*.x86_64.rpm'`
+GRUBPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary -name 'grub2-efi-x64-[0-9]*.x86_64.rpm'`
 if [ -z "$GRUBPKG" ]; then
-    GRUBPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS $MY_REPO/cgcs-centos-repo/Binary -name 'grub2-efi-[0-9]*.x86_64.rpm'`
+    GRUBPKG=`find $MY_WORKSPACE/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary -name 'grub2-efi-[0-9]*.x86_64.rpm'`
 fi
 if [ -z "$GRUBPKG" ]; then
     printf "  Error -- could not locate grub binary package"

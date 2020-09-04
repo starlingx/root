@@ -4,6 +4,16 @@
 # Migrate Titanium Cloud patches to the new package version
 #
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 usage () {
     echo ""
     echo "Step 4: Migrate Titanium Cloud patches to the new package version"
@@ -11,7 +21,7 @@ usage () {
     echo "Usage: "
     echo "   patch_rebase_4 [--origin_branch <branch>] [--working_branch <branch>] [--upversion_data <file>]"
     echo ""
-    echo "Assumes cgcs-centos-repo already has a working_branch commit that sets the new symlinks."
+    echo "Assumes $(basename ${CENTOS_REPO}) already has a working_branch commit that sets the new symlinks."
     echo ""
     echo "The upversion_data file has data on all the src.rpm being updated in the format:"
     echo "  export UPVERSION_DATA=$MY_WORKSPACE/upversion.log"
@@ -92,10 +102,10 @@ if [ "$DISPLAY" == "" ]; then
 fi
 
 # One step back to see the old symlinks
-cd $MY_REPO/cgcs-centos-repo
+cd ${CENTOS_REPO}
 git checkout $WORKING_BRANCH
 if [ $? != 0 ]; then
-   echo "ERROR: Can't checkout branch '$WORKING_BRANCH' in directory '$MY_REPO/cgcs-centos-repo'"
+   echo "ERROR: Can't checkout branch '$WORKING_BRANCH' in directory '${CENTOS_REPO}'"
    exit 1
 fi
 

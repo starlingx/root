@@ -65,6 +65,15 @@ DEP_TEST_FLAG=0
 
 export BUILD_AVOIDANCE_URL=""
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
 
 # read the options
 TEMP=$(getopt -o h --long serial,rt,std,installer,containers,layer:,edit,build-avoidance,no-build-avoidance,build-avoidance-dir:,build-avoidance-host:,build-avoidance-user:,build-avoidance-day:,no-meta-patch,no-descendants,no-required,no-build-info,no-autoclean,formal,careful,help,clean,dep-test,append-log -n 'build-pkgs-serial' -- "$@")
@@ -194,7 +203,12 @@ find_targets () {
          for d2 in $(grep -v '^#' $d/$centos_pkg_dirs); do
             name=""
             if [ -f $d/$d2/centos/srpm_path ]; then
-                path=$(cat $d/$d2/centos/srpm_path | head -n 1 | sed "s#^mirror:CentOS/tis-r3-CentOS/mitaka#$MY_REPO/cgcs-centos-repo#" | sed "s#^mirror:#$MY_REPO/cgcs-centos-repo/#" | sed "s#^repo:#$MY_REPO/#" | sed "s#^3rd_party:#$MY_REPO/cgcs-3rd-party-repo/#" | sed "s#^Source/#$MY_REPO/cgcs-centos-repo/Source/#")
+               path=$(cat $d/$d2/centos/srpm_path | head -n 1 | \
+                      sed -e "s#^mirror:CentOS/tis-r3-CentOS/mitaka#${CENTOS_REPO}#" \
+                          -e "s#^mirror:#${CENTOS_REPO}/#" \
+                          -e "s#^repo:#$MY_REPO/#" \
+                          -e "s#^3rd_party:#$MY_REPO/cgcs-3rd-party-repo/#" \
+                          -e "s#^Source/#${CENTOS_REPO}/Source/#")
                 name=$(rpm -q --qf='%{NAME}' --nosignature -p $path)
             else
                 path=$(find $d/$d2/centos/ -name '*.spec' | head -n 1)

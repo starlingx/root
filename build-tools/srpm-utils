@@ -3257,7 +3257,7 @@ srpm_canonical_path_single () {
     local path="$1"
     local canonical_path
 
-    if [[ "${path}" =~ /stx/downloads/|/cgcs-centos-repo/ ]]; then
+    if [[ "${path}" =~ /stx/downloads/|/centos-repo/|/cgcs-centos-repo/ ]]; then
         # Expand all but final symlink.
         # These symlinks often point outside of the source code repository.
         canonical_path="$(readlink -f "$(dirname "${path}")")"
@@ -3390,7 +3390,7 @@ srpm_source_file_list () {
     local SRPM_OR_SPEC_PATH="$2"
     local INPUT_FILES_SORTED="$3"
 
-    LINK_FILTER='\([/]stx[/]downloads[/]\|[/]cgcs-centos-repo[/]\)'
+    LINK_FILTER='\([/]stx[/]downloads[/]\|[/]centos-repo[/]\|[/]cgcs-centos-repo[/]\)'
     local INPUT_FILES
     local INPUT_LINKS
     local INPUT_SOURCES
