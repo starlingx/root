@@ -45,14 +45,14 @@ metadata_expire=0
 [StxCentos7Distro]
 name=Stx-Centos-7-Distro
 enabled=1
-baseurl=LOCAL_BASE/MY_REPO_DIR/cgcs-centos-repo/Binary
+baseurl=LOCAL_BASE/MY_REPO_DIR/centos-repo/Binary
 failovermethod=priority
 exclude=kernel-devel libvirt-devel
 
 [StxCentos7Distro-rt]
 name=Stx-Centos-7-Distro-rt
 enabled=1
-baseurl=LOCAL_BASE/MY_REPO_DIR/cgcs-centos-repo/rt/Binary
+baseurl=LOCAL_BASE/MY_REPO_DIR/centos-repo/rt/Binary
 failovermethod=priority
 
 """
