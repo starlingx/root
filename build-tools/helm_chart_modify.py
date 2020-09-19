@@ -120,11 +120,9 @@ def modify_yaml(document, grand_parent_key, parent_key, new_image_dict):
             continue
 
         if grand_parent_key == 'images' and parent_key == 'tags':
-            match_found = False
             name = get_image_name(document[k])
             if name in new_image_dict:
                 modify_image_and_tag(document, k, '', new_image_dict[name])
-                break
         else:
             # copy values that are not keyed by image_key or tag_key
             if k not in (image_key, tag_key):
@@ -135,11 +133,9 @@ def modify_yaml(document, grand_parent_key, parent_key, new_image_dict):
 
     k = image_key
     if k in document and not isinstance(document[k], dict):
-        match_found = False
         name = get_image_name(document[k])
         if name in new_image_dict:
             modify_image_and_tag(document, k, tag_key, new_image_dict[name])
-            break
 
 
 def main(argv):
