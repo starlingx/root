@@ -15,6 +15,59 @@
 
 MY_YUM_CONF=""
 
+# Several commands may need to be executed with sudo if we're not using
+# udev.  Use a variable to hold the optional "sudo" part
+if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
+    SUDOPREFIX=""
+else
+    SUDOPREFIX="sudo"
+fi
+
+function env_check {
+    for VAR_TO_CHECK in $@; do
+        if [ -z "${!VAR_TO_CHECK}" ]; then
+            echo "Required environment variable is missing: $VAR_TO_CHECK"
+            exit 1
+        fi
+    done
+}
+
+env_check MY_REPO MY_WORKSPACE BSP_FILES_PATH
+
+# Cleanup function that will release all mounts and loop devices
+function finish {
+    if [ -z "$LOOP" ] && [ ! -z "$SETUP_RET" ]; then
+        if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
+            LOOP=$(echo $SETUP_RET | awk '{print $5;}' | sed -e 's/\.//g')
+        else
+            LOOP=$(echo $SETUP_RET)
+        fi
+    fi
+
+    if [ ! -z "$LOOP" ]; then
+        if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
+            udisksctl unmount -b $LOOP
+        else
+            sudo umount $LOOP
+        fi
+        echo $(date) Unmounted $LOOP. $? | tee --append $MOUNT_LOG_FILE
+
+        if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
+            CLEANUP_RET=$(udisksctl loop-delete -b $LOOP)
+        else
+            CLEANUP_RET=$(sudo losetup -d $LOOP)
+        fi
+        echo $(date) Released loop device $LOOP. $CLEANUP_RET | tee --append $MOUNT_LOG_FILE
+    fi
+
+
+    if [ ! -z "$EFI_MOUNT" ] && [ -d "$EFI_MOUNT" ]; then
+        ${SUDOPREFIX} rmdir $EFI_MOUNT
+        echo $(date) Deleted mount point $EFI_MOUNT | tee --append $MOUNT_LOG_FILE
+    fi
+
+}
+
 function setup_env_vars  {
     mkdir -p $MY_WORKSPACE/export/
 
@@ -67,7 +120,22 @@ printf "  Calling $0\n"
 setup_env_vars
 
 printf "  Calling $(basename $0)\n"
+
+mkdir -p $OUTPUT_DIR
+if [ $? -ne 0 ]; then
+   printf "  Error: failed to create directory '$OUTPUT_DIR'.\n"
+   exit 1
+fi
+
 MOUNT_LOG_FILE=$OUTPUT_DIR/mounts_used.log
+touch $MOUNT_LOG_FILE
+if [ $? -ne 0 ]; then
+   printf "  Error: Failed to create log file '$MOUNT_LOG_FILE'.\n"
+   exit 1
+fi
+
+# Register our cleanup function
+trap finish EXIT
 
 # Clear old image file
 printf "  Delete old efiboot.img file\n"
@@ -83,25 +151,25 @@ printf "  Replacing the efiboot.img grub.cfg file with the Titanium Cloud one\n"
 # This is controlled via env variable
 
 if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
-    RET=$(udisksctl loop-setup -f $OUTPUT_DIR/efiboot.img --no-user-interaction)
+    SETUP_RET=$(udisksctl loop-setup -f $OUTPUT_DIR/efiboot.img --no-user-interaction)
     if [ $? -ne 0 ]; then
       printf "  Error: failed udev loop-setup command.\n"
       exit 1
     fi
-    LOOP=$(echo $RET | awk '{print $5;}' | sed -e 's/\.//g')
+    LOOP=$(echo $SETUP_RET | awk '{print $5;}' | sed -e 's/\.//g')
 else
     # no udev - use losetup command
     # retcode is the lo device used
-    RET=$(sudo losetup --show -f $OUTPUT_DIR/efiboot.img)
-    if [ -z "$RET" ] ; then
+    SETUP_RET=$(sudo losetup --show -f $OUTPUT_DIR/efiboot.img)
+    if [ -z "$SETUP_RET" ] ; then
       printf "  Error: failed sudo losetup command.\n"
       exit 1
     fi
 
     # Save the loop device used into a file
-    echo $(date) $RET >> $MOUNT_LOG_FILE
+    echo $(date) $SETUP_RET >> $MOUNT_LOG_FILE
 
-    LOOP=$(echo $RET)
+    LOOP=$(echo $SETUP_RET)
     if [ -z $LOOP ] ; then
       printf "  Error: failed losetup  command.\n"
       exit 1
@@ -120,14 +188,6 @@ fi
 if [ -z $EFI_MOUNT ] ; then
   printf "  Error: failed mount command.\n"
   exit 1
-fi
-
-# Several commands may need to be executed with sudo if we're not using
-# udev.  Use a variable to hold the optional "sudo" part
-if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
-    SUDOPREFIX=""
-else
-    SUDOPREFIX="sudo"
 fi
 
 # Update the vanilla UEFI Centos grub.cfg with the Titanium Cloud version
@@ -170,15 +230,4 @@ rm -rf $TMPDIR
 ${SUDOPREFIX} mkdir -p $EFI_MOUNT/CERTS
 ${SUDOPREFIX} cp $INTERNAL_REPO_ROOT/build-tools/certificates/* $EFI_MOUNT/CERTS
 
-# Cleanup mounts
-if [ 0${BUILD_ISO_USE_UDEV} -eq 1 ]; then
-    udisksctl unmount -b $LOOP
-    RET=$(udisksctl loop-delete -b $LOOP)
-else
-    sudo umount $LOOP
-    RET=$(sudo losetup -d $LOOP)
-fi
-
-echo $(date) Deleted $LOOP. $RET >> $MOUNT_LOG_FILE
-${SUDOPREFIX} rmdir $EFI_MOUNT
 exit 0
