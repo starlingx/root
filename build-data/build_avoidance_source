@@ -10,7 +10,7 @@
 #
 BUILD_AVOIDANCE_SRPM_DIRECTORIES="inputs srpm_assemble rpmbuild/SRPMS rpmbuild/SOURCES"
 BUILD_AVOIDANCE_SRPM_FILES=""
-BUILD_AVOIDANCE_RPM_DIRECTORIES="results rpmbuild/RPMS rpmbuild/SPECS repo/cgcs-tis-repo/dependancy-cache"
+BUILD_AVOIDANCE_RPM_DIRECTORIES="results rpmbuild/RPMS rpmbuild/SPECS repo/local-repo/dependancy-cache"
 BUILD_AVOIDANCE_RPM_FILES=".platform_release"
 
 
