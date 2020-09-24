@@ -130,7 +130,7 @@ for build_type in std rt; do
     rsync -r ${JENKINSURL}/$build_type/rpmbuild/SRPMS/* $MY_WORKSPACE/$build_type/rpmbuild/SRPMS
     sleep 1
     # Some of there directories might not exist (obsolete).  Just do our best and ignore errors
-    for sub_repo in centos-repo cgcs-centos-repo local-repo cgcs-tis-repo cgcs-3rd-party-repo; do
+    for sub_repo in centos-repo cgcs-centos-repo local-repo cgcs-tis-repo; do
         rsync ${JENKINSURL}/$build_type/$sub_repo.last_head $MY_WORKSPACE/$build_type
         if [ $? -eq 0 ] && [ "$build_type" == "std" ]; then
             cp $MY_WORKSPACE/$build_type/$sub_repo.last_head $MY_REPO/$sub_repo/.last_head

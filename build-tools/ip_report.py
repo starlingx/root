@@ -360,7 +360,6 @@ class IPReport(object):
             filename = filename.replace('mirror:', self.repo + '/centos-repo/')
 
         filename = filename.replace('repo:', self.repo + '/')
-        filename = filename.replace('3rd_party:', self.repo + '/cgcs-3rd-party-repo/')
 
         # At this point, filename could be a complete path (incl symlink), or just a filename
         best_guess = filename

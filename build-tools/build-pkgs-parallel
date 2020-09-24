@@ -206,7 +206,6 @@ find_targets () {
                        sed -e "s#^mirror:CentOS/tis-r3-CentOS/mitaka#${CENTOS_REPO}#" \
                            -e "s#^mirror:#${CENTOS_REPO}/#" \
                            -e "s#^repo:#$MY_REPO/#" \
-                           -e "s#^3rd_party:#$MY_REPO/cgcs-3rd-party-repo/#" \
                            -e "s#^Source/#${CENTOS_REPO}/Source/#")
                 name=$(rpm -q --qf='%{NAME}' --nosignature -p $path)
             else

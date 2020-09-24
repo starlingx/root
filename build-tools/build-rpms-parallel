@@ -2183,9 +2183,6 @@ fi
 
 if [ $CLEAN_FLAG -eq 0 ]; then
    update_cgcs_repo ${CENTOS_REPO}
-   if [ -d $MY_REPO/cgcs-3rd-party-repo ]; then
-       update_cgcs_repo cgcs-3rd-party-repo
-   fi
 fi
 
 mock_clean_mounts

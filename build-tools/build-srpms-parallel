@@ -56,7 +56,6 @@ if [ ! -d ${MIRROR_ROOT} ]; then
     fi
 fi
 
-THIRD_PARTY_ROOT="$MY_REPO/cgcs-3rd-party-repo"
 REPO_DOWNLOADS_ROOT="$MY_REPO"
 SRPM_REBUILT_LIST=""
 SRPM_FAILED_REBUILD_LIST=""
@@ -403,9 +402,6 @@ build_dir () {
       # If "mirror:" is specified, then we search for the file relateive to
       # $MIRROR_ROOT 
       #
-      # If "3rd_party:" is specified, then we search for the file relateive to
-      # $THIRD_PARTY_ROOT 
-      #
       # An absolute path is parsed as an absolute path (mainly intended for
       # developer/experimental use without checking in files or messing with
       # your git repos)
@@ -422,11 +418,6 @@ build_dir () {
          if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
             # handle repo: definitions
             echo "$p" | grep "^repo:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^repo:%$REPO_DOWNLOADS_ROOT/%")
-         fi
-
-         if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
-            # handle 3rd_party: definitions
-            echo "$p" | grep "^3rd_party:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^3rd_party:%$THIRD_PARTY_ROOT/%")
          fi
 
          if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
@@ -1499,11 +1490,6 @@ if [ $ALL -eq 1 ]; then
                            if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
                               # handle repo: definitions
                               echo "$p" | grep "^repo:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^repo:%$REPO_DOWNLOADS_ROOT/%")
-                           fi
-
-                           if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
-                              # handle repo: definitions
-                              echo "$p" | grep "^3rd_party:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^3rd_party:%$THIRD_PARTY_ROOT/%")
                            fi
 
                            if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
