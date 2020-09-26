@@ -315,7 +315,7 @@ def merge_yaml(yaml_merged, yaml_new):
 yaml_out = collections.OrderedDict()
 for yaml_file in yaml_files:
     print 'Merging yaml from file: %s' % yaml_file
-    for document in yaml.load_all(open(yaml_file), Loader=yaml.RoundTripLoader):
+    for document in yaml.load_all(open(yaml_file), Loader=yaml.RoundTripLoader, preserve_quotes=True):
         document_name = (document['schema'], document['metadata']['schema'], document['metadata']['name'])
         if document_name in yaml_out:
             merge_yaml(yaml_out[document_name], document)
