@@ -15,13 +15,22 @@ if [ ! -d ${CENTOS_REPO} ]; then
     fi
 fi
 
+LOCAL_REPO=${MY_REPO}/local-repo
+if [ ! -d ${LOCAL_REPO} ]; then
+    LOCAL_REPO=${MY_REPO}/cgcs-tis-repo
+    if [ ! -d ${LOCAL_REPO} ]; then
+        # This one isn't fatal, LOCAL_REPO is not required
+        LOCAL_REPO=${MY_REPO}/local-repo
+    fi
+fi
+
 # If a file listed in list.txt is missing, this function attempts to find the
 # RPM and copy it to the local directory.  This should not be required normally
 # and is only used when collecting the source RPMs initially.
 function findSrc {
     local lookingFor=$1
     find ${CENTOS_REPO}/Source -name $lookingFor | xargs -I '{}' cp '{}' .
-    find $MY_REPO/cgcs-tis-repo/Source -name $lookingFor | xargs -I '{}' cp '{}' .
+    find ${LOCAL_REPO}/Source -name $lookingFor | xargs -I '{}' cp '{}' .
     find $MY_WORKSPACE/std/rpmbuild/SRPMS -name $lookingFor | xargs -I '{}' cp '{}' .
 }
 
