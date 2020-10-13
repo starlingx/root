@@ -159,7 +159,8 @@ def main(argv):
             new_image_dict[name] = image
 
     # Load chart into dictionary(s) and then modify any image locations/tags if required
-    for document in yaml.load_all(open(yaml_file), Loader=yaml.RoundTripLoader):
+    for document in yaml.load_all(
+        open(yaml_file), Loader=yaml.RoundTripLoader, preserve_quotes=True):
         document_name = (document['schema'],
                          document['metadata']['schema'],
                          document['metadata']['name'])
