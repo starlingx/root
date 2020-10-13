@@ -452,8 +452,18 @@ if [ ${#IMAGE_RECORDS[@]} -ne 0 ]; then
     fi
 fi
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 # Extract helm charts and app version from the application rpm
-RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${MY_REPO}/cgcs-centos-repo/Binary/noarch"
+RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary/noarch"
 FIND_GLOB="*.tis.noarch.rpm"
 
 extract_application_rpms

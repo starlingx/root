@@ -46,7 +46,16 @@ FILES_PATH="$DISTRO/files"
 PATCHES_PATH="$DISTRO/patches"
 ORIG_SPECS_PATH="$DISTRO"
 SRPM_LIST_PATH="$DISTRO/srpm_path"
-MIRROR_ROOT="$MY_REPO/cgcs-${DISTRO}-repo"
+
+MIRROR_ROOT="$MY_REPO/${DISTRO}-repo"
+if [ ! -d ${MIRROR_ROOT} ]; then
+    # Old value... a temporary measure for backward compatibility
+    MIRROR_ROOT="$MY_REPO/cgcs-${DISTRO}-repo"
+    if [ ! -d ${MIRROR_ROOT} ]; then
+        MIRROR_ROOT="$MY_REPO/${DISTRO}-repo"
+    fi
+fi
+
 THIRD_PARTY_ROOT="$MY_REPO/cgcs-3rd-party-repo"
 REPO_DOWNLOADS_ROOT="$MY_REPO"
 SRPM_REBUILT_LIST=""
@@ -269,6 +278,7 @@ export CCACHE_DIR="$BUILD_ROOT/.ccache"
 export SRC_BASE="$SRC_ROOT"
 export STX_BASE="$SRC_BASE/stx"
 export CGCS_BASE="$STX_BASE"
+export DISTRO_REPO_BASE=$MIRROR_ROOT
 export SPECS_BASE="$ORIG_SPECS_PATH"
 export FILES_BASE="$FILES_PATH"
 export PATCHES_BASE="$PATCHES_PATH"

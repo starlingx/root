@@ -28,6 +28,16 @@ rpm_compare () {
    done
 }
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 echo ""
 echo "======================================================"
 echo "Auditing built packages vs unpatched upstream packages"
@@ -35,7 +45,7 @@ echo "======================================================"
 for r in $(find $MY_WORKSPACE/*/rpmbuild/RPMS -name '*.rpm' | grep -v '.src.rpm' | grep -v debuginfo); do
    f=$(basename $r)
    f2=$(echo $f | sed 's#[.]tis[.][0-9]*[.]#.#' | sed 's#[.]tis[.]#.#')
-   r2=$(find $MY_REPO/cgcs-centos-repo/Binary/ -name $f2)
+   r2=$(find ${CENTOS_REPO}/Binary/ -name $f2)
    if [ "$r2" == "" ]; then
       # Probably one of our own
       # echo "Couldn't find '$f2'"
@@ -49,16 +59,18 @@ echo "============================"
 echo "Auditing built for conflicts"
 echo "============================"
 grep 'conflicts with file from package' -r --binary-files=without-match $MY_WORKSPACE/*/results/ |
+
 while read -r line; do
    w=$(echo "$line" | awk '{ print $8 }')".rpm"
    w2=$(echo "$line" | awk '{ print $14 }')".rpm"
    echo "$w $w2"
 done | sort --unique | sed 's#bash-completion-1:#bash-completion-#' |
+
 while read -r line2; do
    f=$(echo "$line2" | awk '{ print $1 }')
    f2=$(echo "$line2" | awk '{ print $2 }')
-   r=$(find $MY_REPO/cgcs-centos-repo/Binary/ $MY_WORKSPACE/*/rpmbuild/RPMS -name $f)
-   r2=$(find $MY_REPO/cgcs-centos-repo/Binary/ $MY_WORKSPACE/*/rpmbuild/RPMS -name $f2)
+   r=$(find ${CENTOS_REPO}/Binary/ $MY_WORKSPACE/*/rpmbuild/RPMS -name $f)
+   r2=$(find ${CENTOS_REPO}/Binary/ $MY_WORKSPACE/*/rpmbuild/RPMS -name $f2)
    # echo ""
    # echo "$f   vs   $f2"
    # echo "$r   vs   $r2"
@@ -66,5 +78,3 @@ while read -r line2; do
       rpm_compare "$r" "$r2"
    fi
 done
-
-

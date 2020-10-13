@@ -129,7 +129,7 @@ for build_type in std rt; do
     sleep 1
     rsync -r ${JENKINSURL}/$build_type/rpmbuild/SRPMS/* $MY_WORKSPACE/$build_type/rpmbuild/SRPMS
     sleep 1
-    for sub_repo in cgcs-centos-repo cgcs-tis-repo cgcs-3rd-party-repo; do
+    for sub_repo in centos-repo cgcs-centos-repo cgcs-tis-repo cgcs-3rd-party-repo; do
         rsync ${JENKINSURL}/$build_type/$sub_repo.last_head $MY_WORKSPACE/$build_type
         if [ "$build_type" == "std" ]; then
             cp $MY_WORKSPACE/$build_type/$sub_repo.last_head $MY_REPO/$sub_repo/.last_head

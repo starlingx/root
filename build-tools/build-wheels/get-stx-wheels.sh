@@ -84,12 +84,22 @@ fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 function get_wheels_files {
     find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_wheels.inc"
 }
 
 function get_lower_layer_wheels_files {
-    find ${MY_REPO}/cgcs-centos-repo/layer_wheels_inc -maxdepth 1 -name "*_${OS}_${BUILD_STREAM}_wheels.inc"
+    find ${CENTOS_REPO}/layer_wheels_inc -maxdepth 1 -name "*_${OS}_${BUILD_STREAM}_wheels.inc"
 }
 
 function find_wheel_rpm {
@@ -97,7 +107,7 @@ function find_wheel_rpm {
     local repo=
 
     for repo in ${MY_WORKSPACE}/std/rpmbuild/RPMS \
-                ${MY_REPO}/cgcs-centos-repo/Binary; do
+                ${CENTOS_REPO}/Binary; do
         if [ -d $repo ]; then
             find $repo -name "${wheel}-[^-]*-[^-]*[.][^.]*[.]rpm"
         fi
