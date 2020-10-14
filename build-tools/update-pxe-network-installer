@@ -63,7 +63,7 @@ else
     exit -1
 fi
 
-orig_squashfs_img="$i{CENTOS_REPO}/Binary/LiveOS/squashfs.img"
+orig_squashfs_img="${CENTOS_REPO}/Binary/LiveOS/squashfs.img"
 if [ -f $orig_squashfs_img ]; then
     cp -f $orig_squashfs_img $pxe_network_installer_dir/$orig_img_dir/.
 else
