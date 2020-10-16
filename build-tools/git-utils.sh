@@ -380,7 +380,7 @@ git_test_context () {
     # Limit search to last 500 commits in the interest of speed.
     # I don't expect to be using contexts more than a few weeks old.
     cat "$context" | \
-        sed -e "s/\.repo\/repo/d" \
+        sed -e "/\.repo\/repo/d" \
             -e "s#checkout -f \([a-e0-9]*\)#rev-list --max-count=500 HEAD | \
         grep \1#" > $query
 
