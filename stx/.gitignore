@@ -34,6 +34,7 @@ installer-prebuilt
 /platform-armada-app
 /portieris-armada-app
 /rook-ceph
+/snmp-armada-app
 /stx-puppet
 /test
 /update
