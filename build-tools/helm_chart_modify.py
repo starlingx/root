@@ -160,7 +160,10 @@ def main(argv):
 
     # Load chart into dictionary(s) and then modify any image locations/tags if required
     for document in yaml.load_all(
-        open(yaml_file), Loader=yaml.RoundTripLoader, preserve_quotes=True):
+        open(yaml_file),
+        Loader=yaml.RoundTripLoader,
+        preserve_quotes=True,
+        version=(1, 1)):
         document_name = (document['schema'],
                          document['metadata']['schema'],
                          document['metadata']['name'])
