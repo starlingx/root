@@ -1,6 +1,12 @@
 #!/bin/bash
 # set -x
 
+#
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 source "$SRC_BASE/build-tools/spec-utils"
 source "$SRC_BASE/build-tools/srpm-utils"
 
@@ -195,14 +201,14 @@ fi
 
 if [ $TAR_NEEDED -gt 0 ]; then
     echo "Creating tar file: $TAR_PATH ..."
-    echo "tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude='$SRC_DIR/$DISTRO' --exclude='pbr-*.egg' $SRC_DIR --transform 's,^$TRANSFORM,$TAR_NAME-$VERSION,'"
-    tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' $SRC_DIR --transform "s,^$TRANSFORM,$TAR_NAME-$VERSION,"
+    echo "tar --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude='$SRC_DIR/$DISTRO' --exclude='pbr-*.egg' --transform 's,^$TRANSFORM,$TAR_NAME-$VERSION,' -czf $TAR_PATH $SRC_DIR"
+    tar --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' --transform "s,^$TRANSFORM,$TAR_NAME-$VERSION," -czf "$TAR_PATH" "$SRC_DIR"
     if [ $? -ne 0 ]; then
 		if [ "x$STAGING" != "x" ]; then
 			popd
 		fi
     
-        echo "ERROR: default_build_srpm (${LINENO}): failed to create tar file, cmd: tar czf  $TAR_PATH --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' $SRC_DIR --transform \"s,^$TRANSFORM,$TAR_NAME-$VERSION,\""
+        echo "ERROR: default_build_srpm (${LINENO}): failed to create tar file, cmd: tar --exclude '.git*' --exclude 'build' --exclude='.pc' --exclude='patches' --exclude="$SRC_DIR/$DISTRO" --exclude='pbr-*.egg' --transform \"s,^$TRANSFORM,$TAR_NAME-$VERSION,\" -czf '$TAR_PATH' '$SRC_DIR'"
         exit 1
     fi
     echo "Created tar file: $TAR_PATH"

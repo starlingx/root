@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,6 +17,10 @@
 BUILD_ISO_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${BUILD_ISO_DIR}/image-utils.sh"
 source "${BUILD_ISO_DIR}/git-utils.sh"
+
+# Set REPOQUERY, REPOQUERY_SUB_COMMAND, REPOQUERY_RESOLVE and
+# REPOQUERY_WHATPROVIDES_DELIM for our build environment.
+source "${BUILD_ISO_DIR}/pkg-manager-utils.sh"
 
 usage () {
     echo ""
@@ -40,8 +44,8 @@ usage () {
 MY_YUM_CONF=""
 STD_REPO_ID="local-std"
 RT_REPO_ID="local-rt"
-LOWER_LAYER_STD_REPO_ID="StxCentos8Distro"
-LOWER_LAYER_RT_REPO_ID="StxCentos8Distro-rt"
+LOWER_LAYER_STD_REPO_ID=""
+LOWER_LAYER_RT_REPO_ID=""
 
 NPROCS=$(nproc)
 
@@ -77,13 +81,13 @@ function install_pkg_list {
 
    \cd $OUTPUT_DIST_DIR/isolinux/Packages
    $INTERNAL_REPO_ROOT/build-tools/build_iso/cgts_deps.sh --deps=$PKGLIST
-   
+
    if [ $? -ne 0 ]
    then
       echo "Could not install dependencies"
       exit 1
    fi
-   
+ 
    # clean up
    echo "Removing local-std yum repo  $CGCS_REPO_DIR/repodata"
    echo "Removing local-rt yum repo   $CGCS_RT_REPO_DIR/repodata"
@@ -111,7 +115,7 @@ function make_report {
    for PKGLIST in $PKGLISTFILES; do
       while read PKG; do
          PKG=`echo $PKG | sed "s/#.*//"`;
-         if [ "${PKG}x" != "x" ]; then 
+         if [ "${PKG}x" != "x" ]; then
             echo $PKG  >> $REPORT_FILE
          fi
       done < $PKGLIST
@@ -127,7 +131,7 @@ function make_report {
    echo "-----------------" >> $REPORT_FILE
    echo " WARNINGS        " >> $REPORT_FILE
    echo "-----------------" >> $REPORT_FILE
-   
+ 
    # Note that the warnings file may have multiple lines for the same
    # missing dependency.  A sort | uniq solves this so we don't duplicate
    # warnings
@@ -158,13 +162,17 @@ function init_vars {
       exit 1
    fi
 
+   # LOWER_LAYER_STD_REPO_ID should be something like StxCentos7Distro or StxCentos8Distro
+   LOWER_LAYER_STD_REPO_ID=$(grep '\[StxCentos.*Distro\]' ${MY_YUM_CONF} | sed -e 's/^\[//' -e 's/\].*//')
+   LOWER_LAYER_RT_REPO_ID=$(grep '\[StxCentos.*Distro-rt\]' ${MY_YUM_CONF} | sed -e 's/^\[//' -e 's/\].*//')
+
    DISTRO_REPO_DIR=$(for d in $(grep baseurl $MY_YUM_CONF | grep file: | awk -F : '{print $2}' | sed 's:///:/:g'); do if [ -d $d/images ]; then echo $d ;fi; done)
 
    #####################################
    # Output definitons
 
    # where to put stuff (curent dir unless MY_WORKSPACE defined)
-   OUTPUT_DIR="$PWD/export"   
+   OUTPUT_DIR="$PWD/export" 
    if [ ! -z "$MY_WORKSPACE" ] && [ -d "$MY_WORKSPACE" ] ; then
        OUTPUT_DIR="$MY_WORKSPACE/export"
        CGCS_REPO_DIR="$MY_WORKSPACE/std/rpmbuild/RPMS"
@@ -315,7 +323,7 @@ function init_output_dir {
    date +%s.%N > $OUTPUT_DIST_DIR/isolinux/.discinfo
    echo $PLATFORM_RELEASE >> $OUTPUT_DIST_DIR/isolinux/.discinfo
    echo "x86_64" >> $OUTPUT_DIST_DIR/isolinux/.discinfo
-   
+ 
    \cp -L -ru $DISTRO_REPO_DIR/isolinux/* $OUTPUT_DIST_DIR/isolinux/
    \cp -L -ru $DISTRO_REPO_DIR/images/pxeboot $OUTPUT_DIST_DIR/isolinux/images/
 
@@ -341,7 +349,7 @@ function init_output_dir {
        perl -p -i -e "s/device=sda/device=${DEVICE}/g"  $OUTPUT_DIST_DIR/isolinux/isolinux.cfg
    fi
 
-   # Copy UEFI files 
+   # Copy UEFI files
    \cp -L -ru $DISTRO_REPO_DIR/EFI/* $OUTPUT_DIST_DIR/isolinux/EFI/
    \cp -L "$BSP_FILES_PATH/grub.cfg" "$OUTPUT_DIST_DIR/isolinux/EFI/BOOT/grub.cfg"
    \cp -L "$BSP_FILES_PATH/pxeboot_grub.cfg" "$OUTPUT_DIST_DIR/isolinux/pxeboot/pxeboot_grub.cfg"
@@ -471,7 +479,7 @@ function final_touches {
    # create the repo
    \cd $OUTPUT_DIST_DIR/isolinux
    $CREATEREPO -q -g ../comps.xml .
-   
+ 
    # build the ISO
    printf "Building image $OUTPUT_FILE\n"
    \cd $OUTPUT_DIST_DIR
@@ -484,7 +492,7 @@ function final_touches {
       -eltorito-alt-boot \
       -e images/efiboot.img \
             -no-emul-boot \
-      isolinux/   
+      isolinux/ 
 
    isohybrid --uefi $OUTPUT_FILE
    implantisomd5 $OUTPUT_FILE
@@ -494,7 +502,7 @@ function final_touches {
 
 function extract_pkg_from_local_repo {
    local pkgname=$1
-   local yum_conf=$2
+   local pkg_mgr_conf=$2
    shift 2
 
    local repoid=""
@@ -504,7 +512,14 @@ function extract_pkg_from_local_repo {
       repoid_arg+=" --repoid=${repoid}"
    done
 
-   local pkgfile=$(TMPDIR=$TMP_DIR repoquery --config=${yum_conf} --arch=x86_64,noarch ${repoid_arg} --location -q ${pkgname})
+   echo "TMPDIR=$TMP_DIR"\
+        "${REPOQUERY} --config=${pkg_mgr_conf} ${repoid_arg}"\
+        "${REPOQUERY_SUB_COMMAND} --location"\
+        "--arch=noarch,x86_64 -q ${pkgname}"
+   local pkgfile=$(TMPDIR=$TMP_DIR \
+                 ${REPOQUERY} --config=${pkg_mgr_conf} ${repoid_arg} \
+                 ${REPOQUERY_SUB_COMMAND} --location \
+                 --arch=noarch,x86_64 -q ${pkgname})
    if [ -z "${pkgfile}" ]; then
       echo "Could not find package $pkgname in $@"
       exit 1
