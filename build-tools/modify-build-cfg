@@ -11,6 +11,17 @@
 # usage: modify-build-cfg [file.cfg] [<layer>]
 #
 
+#
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+MODIFY_BUILD_CFG_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
+
+# Set PKG_MANAGER for our build environment.
+source "${MODIFY_BUILD_CFG_DIR}/pkg-manager-utils.sh"
+
 LAYER=${2:-$LAYER}
 
 # For backward compatibility.  Old repo location or new?
@@ -21,6 +32,13 @@ if [ ! -d ${CENTOS_REPO} ]; then
         echo "ERROR: directory ${MY_REPO}/centos-repo not found."
         exit 1
     fi
+fi
+
+# Preferred python
+if rpm -q --whatprovides --quiet python3; then
+    PYTHON_PKG=python3
+else
+    PYTHON_PKG=python2
 fi
 
 # Try to find a layer specific mock.cfg.proto
@@ -98,7 +116,7 @@ grep -q "config_opts\['environment'\]\['WRS_GIT_BRANCH'\]" $FILE || \
 grep -q "config_opts\['environment'\]\['CGCS_GIT_BRANCH'\]" $FILE || \
     echo "config_opts['environment']['CGCS_GIT_BRANCH']" >> $FILE
 
-if [ -z $FORMAL_BUILD ]; then 
+if [ -z $FORMAL_BUILD ]; then
     grep -q "config_opts\['macros'\]\['%_no_cgcs_license_check'\] = '1'" $FILE || \
 	echo "config_opts['macros']['%_no_cgcs_license_check'] = '1'" >> $FILE
 else
@@ -118,8 +136,21 @@ if [ "containers" == "$BUILD_TYPE" ]; then
     NETWORK_PKGS="bind-utils"
 fi
 
-grep -q "config_opts\['chroot_setup_cmd'\] = 'install @buildsys-build pigz lbzip2 yum $NETWORK_PKGS'" $FILE || \
-    echo "config_opts['chroot_setup_cmd'] = 'install @buildsys-build pigz lbzip2 yum $NETWORK_PKGS'" >> $FILE
+BUILD_PKGS=''
+if [ "${PKG_MANAGER}" == "yum" ]; then
+    BUILD_PKGS='@buildsys-build'
+elif [ "${PKG_MANAGER}" == "dnf" ]; then
+    # buildsys-build group was dropped when Centos-8 switched to dnf.
+    # We must list all the members plus a few new ones (fedpkg-minimal, epel-rpm-macros).
+    BUILD_PKGS='bash bzip2 coreutils cpio diffutils epel-release epel-rpm-macros fedpkg-minimal findutils gawk gcc gcc-c++ grep gzip info make patch redhat-rpm-config redhat-release rpm-build sed shadow-utils tar unzip util-linux which xz'
+fi
+
+STX_PKGS='pigz lbzip2 bash'
+
+PKGS="${BUILD_PKGS} ${STX_PKGS} ${PKG_MANAGER} ${PYTHON_PKG} ${NETWORK_PKGS}"
+
+grep -q "config_opts\['chroot_setup_cmd'\] = 'install ${PKGS}'" $FILE || \
+    echo "config_opts['chroot_setup_cmd'] = 'install ${PKGS}'" >> $FILE
 
 # Special case for containers.
 # rpmbuild_networking is required for invoking helm commands within mock

@@ -1,5 +1,11 @@
 #!/bin/env bash
 
+#
+# Copyright (c) 2018-2020 Wind River Systems, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 # Here's the score, kids.  There are a few different places from which we can
 # get packages.  In priority order, they are:
 #
@@ -26,18 +32,24 @@
 #   export/dist/report_deps.txt
 #
 
+CGTS_DEPS_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
+
+# Set REPOQUERY, REPOQUERY_SUB_COMMAND, REPOQUERY_RESOLVE and 
+# REPOQUERY_WHATPROVIDES_DELIM for our build environment.
+source ${CGTS_DEPS_DIR}/../pkg-manager-utils.sh
+
 # This function generates a simple file of dependencies we're trying to resolve
 function generate_dep_list {
     TMP_RPM_DB=$(mktemp -d $(pwd)/tmp_rpm_db_XXXXXX)
     mkdir -p $TMP_RPM_DB
     rpm --initdb --dbpath $TMP_RPM_DB
-    rpm --dbpath $TMP_RPM_DB --test -Uvh --replacefiles '*.rpm' >> $DEPDETAILLISTFILE 2>&1
-    rpm --dbpath $TMP_RPM_DB --test -Uvh --replacefiles '*.rpm' 2>&1 \
-        | grep -v "error:" \
-        | grep -v "warning:" \
-        | grep -v "Preparing..." \
-        | grep -v "installing package" \
-        | sed "s/ is needed by.*$//" | sed "s/ >=.*$//" | sort -u > $DEPLISTFILE
+    rpm --dbpath $TMP_RPM_DB --test -Uvh --replacefiles '*.rpm' > $DEPLISTFILE_NEW 2>&1
+    cat $DEPLISTFILE_NEW >> $DEPDETAILLISTFILE
+    cat $DEPLISTFILE_NEW \
+        | grep -v   -e "error:" -e "warning:" -e "Preparing..." \
+                    -e "Verifying..." -e "installing package" \
+        | sed -e "s/ is needed by.*$//" -e "s/ >=.*$//" \
+        | sort -u > $DEPLISTFILE
     \rm -rf $TMP_RPM_DB
 }
 
@@ -79,8 +91,17 @@ function install_deps {
 
     # go through each repo and convert deps to packages based on package name
     for REPOID in `grep  '^[[].*[]]$' $YUM | grep -v '[[]main[]]' | awk -F '[][]' '{print $2 }'`; do
-        echo "TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch ${DEP_LIST} --qf='%{name}'"
-        TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --qf='%{name}' ${DEP_LIST} | sed "s/kernel-debug/kernel/g" >> $UNSORTED_PACKAGES
+        echo "TMPDIR=${TMP_DIR}"\
+             "${REPOQUERY} --config=${YUM} --repoid=$REPOID"\
+             "${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch"\
+             "${DEP_LIST} --qf='%{name}'"
+
+        TMPDIR=${TMP_DIR} \
+            ${REPOQUERY} --config=${YUM} --repoid=$REPOID \
+            ${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch \
+            --qf='%{name}' ${DEP_LIST} \
+            | sed "s/kernel-debug/kernel/g" >> $UNSORTED_PACKAGES
+
         \rm -rf $TMP_DIR/yum-$USER-*
     done
     sort $UNSORTED_PACKAGES -u > $SORTED_PACKAGES
@@ -100,15 +121,24 @@ function install_deps {
         \cp $SORTED_PACKAGES $UNSORTED_PACKAGES
         while read DEP
         do
-            DEP_LIST="${DEP_LIST} ${DEP}"
+            DEP_LIST="${DEP_LIST}${REPOQUERY_WHATPROVIDES_DELIM}${DEP}"
         done < $UNRESOLVED_PACKAGES
 
-        DEP_LIST=$(echo "$DEP_LIST" | sed 's/^ //g')
+        DEP_LIST=$(echo "$DEP_LIST" | sed "s/^${REPOQUERY_WHATPROVIDES_DELIM}//g")
         if [ "$DEP_LIST" != "" ]; then
 
             for REPOID in `grep  '^[[].*[]]$' $YUM | grep -v '[[]main[]]' | awk -F '[][]' '{print $2 }'`; do
-                echo "TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --whatprovides ${DEP_LIST} --qf='%{name}'"
-                TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --qf='%{name}' --whatprovides ${DEP_LIST} | sed "s/kernel-debug/kernel/g" >> $UNSORTED_PACKAGES
+                echo "TMPDIR=${TMP_DIR}"\
+                     "${REPOQUERY} --config=${YUM} --repoid=${REPOID}"\
+                     "${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch"\
+                     "--qf='%{name}' --whatprovides ${DEP_LIST}"
+
+                TMPDIR=${TMP_DIR} \
+                    ${REPOQUERY} --config=${YUM} --repoid=${REPOID} \
+                    ${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch \
+                    --qf='%{name}' --whatprovides "${DEP_LIST}" \
+                    | sed "s/kernel-debug/kernel/g" >> $UNSORTED_PACKAGES
+
                 \rm -rf $TMP_DIR/yum-$USER-*
             done
         fi
@@ -137,8 +167,20 @@ function install_deps {
 
         if [[ ! -z "${TARGETS// }" ]]; then
             REPO_PATH=$(cat $YUM | sed -n "/^\[$REPOID\]\$/,\$p" | grep '^baseurl=' | head -n 1 | awk -F 'file://' '{print $2}' | sed 's:/$::')
-            >&2  echo "TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --resolve $TARGETS --qf='%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}'"
-            TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --resolve $TARGETS --qf="%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}" | sort -r -V > $TMPFILE
+
+            >&2 echo "TMPDIR=${TMP_DIR}"\
+                    "${REPOQUERY} --config=${YUM} --repoid=${REPOID}"\
+                    "${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch"\
+                    "--qf='%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}'"\
+                    "${REPOQUERY_RESOLVE} ${TARGETS}"
+
+            TMPDIR=${TMP_DIR} \
+                ${REPOQUERY} --config=${YUM} --repoid=${REPOID} \
+                ${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch \
+                --qf="%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}" \
+                ${REPOQUERY_RESOLVE} ${TARGETS} \
+                | sort -r -V > $TMPFILE
+
             \rm -rf $TMP_DIR/yum-$USER-*
 
             while read STR
@@ -157,7 +199,11 @@ function install_deps {
                 cp $PKG_PATH .
                 if [ $? -ne 0 ]; then
                     >&2 echo "  Here's what I have to work with..."
-                    >&2 echo "  TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --resolve $PKG --qf=\"%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}\""
+                    >&2 echo "  TMPDIR=${TMP_DIR}"\
+                            "${REPOQUERY} --config=${YUM} --repoid=${REPOID}"\
+                            "${REPOQUERY_SUB_COMMAND} --arch=x86_64,noarch"\
+                            "--qf=\"%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}\""\
+                            "${REPOQUERY_RESOLVE} ${PKG}"
                     >&2 echo "  PKG=$PKG PKG_FILE=$PKG_FILE REPO_PATH=$REPO_PATH PKG_REL_PATH=$PKG_REL_PATH PKG_PATH=$PKG_PATH"
                 fi
 
@@ -172,8 +218,8 @@ function install_deps {
                     echo "  path $PKG_PATH" >> $BUILT_REPORT
                     FOUND_UNKNOWN=1
                 fi
-            done < $TMPFILE #<<< "$(TMPDIR=$TMP_DIR repoquery -c $YUM --repoid=$REPOID --arch=x86_64,noarch --resolve $TARGETS --qf=\"%{name} %{name}-%{version}-%{release}.%{arch}.rpm %{relativepath}\" | sort -r -V)"
-                        \rm -rf $TMP_DIR/yum-$USER-*
+            done < $TMPFILE
+            \rm -rf $TMP_DIR/yum-$USER-*
             TARGETS="$UNRESOLVED"
         fi
     done
@@ -220,6 +266,7 @@ OUTPUT_DIR=$MY_WORKSPACE/export
 TMP_DIR=$MY_WORKSPACE/tmp
 YUM=$OUTPUT_DIR/yum.conf
 DEPLISTFILE=$OUTPUT_DIR/deps.txt
+DEPLISTFILE_NEW=$OUTPUT_DIR/deps_new.txt
 DEPDETAILLISTFILE=$OUTPUT_DIR/deps_detail.txt
 
 BUILT_REPORT=$OUTPUT_DIR/local.txt
