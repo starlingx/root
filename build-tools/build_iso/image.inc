@@ -76,3 +76,6 @@ screen
 
 # For kata container
 kata-runtime
+
+# For nvme disk firmware update
+nvme-cli
