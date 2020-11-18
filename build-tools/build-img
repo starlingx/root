@@ -12,6 +12,7 @@ DHCPV6C=yes
 OAM_DEV=ens3
 IPV4_GW_ADDR=
 IPV6_GW_ADDR=
+AWS_COMPATIBLE=0
 declare -A PASSWORDS
 : KVM=
 KVM_OPTS=()
@@ -82,6 +83,10 @@ Create a QCOW2/QEMU image with StarlingX pre-installed
                       \$MY_WORKSPACE/export/stx_\${MODE}.qcow2)
                    Default with --graphical:
                       \$MY_WORKSPACE/export/stx_\${MODE}_graphical.qcow2)
+
+ --aws
+                   Prepare an image that can be loaded onto an AWS EC2
+                   instance
 
 ENVIRONMENT
 
@@ -230,10 +235,67 @@ find_kvm() {
     fi
 }
 
+# Perform setup work for an image to run on AWS
+# Create config files for adding ENA driver module, network scripts, and for
+# regenerating a generic initramfs image
+add_aws_setup(){
+    local ks_addon=$1
+    AWS_OAM_IF=ens5
+    AWS_MGMT_IF=ens6
+    cat >>"$ks_addon" <<_END
+cat >/etc/modules-load.d/ena.conf <<END
+ena
+END
+
+cat >/etc/dracut.conf.d/add-ena.conf <<END
+add_drivers+=" ena "
+END
+
+cat >/etc/dracut.conf.d/no-hostonly.conf <<END
+hostonly="no"
+END
+
+cat >/etc/sysconfig/network-scripts/ifcfg-${AWS_OAM_IF} <<END
+DEVICE=${AWS_OAM_IF}
+BOOTPROTO=dhcp
+ONBOOT=yes
+TYPE=Ethernet
+USERCTL=yes
+PEERDNS=yes
+DHCPV6C=yes
+DHCPV6C_OPTIONS=-nw
+PERSISTENT_DHCLIENT=yes
+RES_OPTIONS="timeout:2 attempts:5"
+DHCP_ARP_CHECK=no
+END
+
+cat >/etc/sysconfig/network-scripts/ifcfg-${AWS_MGMT_IF} <<END
+DEVICE=${AWS_MGMT_IF}
+BOOTPROTO=dhcp
+ONBOOT=yes
+TYPE=Ethernet
+USERCTL=yes
+PEERDNS=yes
+DHCPV6C=yes
+DHCPV6C_OPTIONS=-nw
+PERSISTENT_DHCLIENT=yes
+RES_OPTIONS="timeout:2 attempts:5"
+DHCP_ARP_CHECK=no
+END
+
+if [ ! -d /var/tmp ]; then
+    mkdir -m 1777 /var/tmp
+fi
+
+KERNEL_VERSION=\$(rpm -q kernel --qf '%{version}-%{release}.%{arch}')
+/sbin/dracut -f /boot/initramfs-\$KERNEL_VERSION.img \$KERNEL_VERSION
+_END
+}
+
 # Process command line
 init() {
     local temp
-    temp=$(getopt -o hf4w:W:e:p:P:Sm:gs:i:o: --long help,force,ipv4,ipv4-default-gateway:,ipv6-default-gateway:,oam-dev:,password:,passwords-from:,passwords-from-stdin,mode:,graphical,sudo,size:,iso:,output: -n "$PROGNAME" -- "$@") || cmdline_error
+    temp=$(getopt -o hf4w:W:e:p:P:Sm:gs:i:o: --long help,force,ipv4,ipv4-default-gateway:,ipv6-default-gateway:,oam-dev:,password:,passwords-from:,passwords-from-stdin,mode:,graphical,sudo,size:,iso:,output:,aws -n "$PROGNAME" -- "$@") || cmdline_error
     eval set -- "$temp"
     while true ; do
         case "$1" in
@@ -301,6 +363,10 @@ init() {
             -o|--output)
                 IMG_FILE="$2"
                 shift 2
+                ;;
+            --aws)
+                AWS_COMPATIBLE=1
+                shift
                 ;;
             --)
                 shift
@@ -372,6 +438,10 @@ if [[ $SUDO == 1 ]] ; then
     cmd+=(sudo)
 fi
 cmd+=("$UPDATE_ISO" -i "$BOOTIMAGE_ISO" -o "$auto_iso" -d "$menu_item" -t 3)
+
+if [[ $AWS_COMPATIBLE == 1 ]] ; then
+    cmd+=(-p rdloaddriver=ena)
+fi
 
 # generate a kickstart add-on
 ks_addon="$TEMPFILES_DIR/ks_addon.sh"
@@ -450,6 +520,11 @@ else
   grub2-mkconfig -o /boot/grub2/grub.cfg
 fi
 _END
+fi
+
+# Add necessary setup work for an aws image to the ks_addon script
+if [[ $AWS_COMPATIBLE == 1 ]] ; then
+    add_aws_setup $ks_addon
 fi
 
 echo "#### end ks-addon.cfg" >>"$ks_addon"
