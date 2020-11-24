@@ -1238,7 +1238,7 @@ for GIT_ROOT in $GIT_LIST; do
        continue
    fi
 
-   for p in $(cat $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
+   for p in $(sed 's/#.*//' $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
       src_dir="$GIT_ROOT/$p"
       if [ -d $src_dir ]; then
          if [ -d $src_dir/${DISTRO} ]; then
