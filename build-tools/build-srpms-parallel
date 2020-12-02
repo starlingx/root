@@ -1374,7 +1374,7 @@ for GIT_ROOT in $GIT_LIST; do
        continue
    fi
 
-   for p in $(cat $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
+   for p in $(sed 's/#.*//' $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
       if [ $STOP_SCHEDULING -eq 1 ]; then
           break;
       fi
