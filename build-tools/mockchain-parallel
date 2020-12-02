@@ -24,16 +24,10 @@ interpreter_path () {
 
 get__version__ () {
     local path=${1}
-    local var=""
     if [ ! -f ${path} ]; then
         return 1
     fi
-    if file ${path} | grep -q 'Python script'; then
-        ver=$(grep __VERSION__= ${path} | cut -d '=' -f 2 | sed 's/"//g')
-    else
-        ver=$(${path} --version 2> /dev/null)
-    fi
-    echo $ver
+    grep __VERSION__= ${path} | cut -d '=' -f 2 | sed 's/"//g'
 }
 
 VC_LESS_THAN=0
