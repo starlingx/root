@@ -442,6 +442,28 @@ fi
 ORIG_CMD=$(docker inspect --format='{{.Config.Cmd}}' ${FROM} | sed -e 's/^\[//' -e 's/\]$//')
 ORIG_ENTRYPOINT=$(docker inspect --format='{{.Config.Entrypoint}}' ${FROM} | sed -e 's/^\[//' -e 's/\]$//')
 
+# Format the CMD and ENTRYPOINT to be valid for docker commit change
+FORMATTED_ORIG_CMD=""
+FORMATTED_ORIG_ENTRYPOINT=""
+
+for token in ${ORIG_CMD}; do
+    FORMATTED_ORIG_CMD="${FORMATTED_ORIG_CMD}, \"${token}\""
+done
+if [ -z "${FORMATTED_ORIG_CMD}" ]; then
+    FORMATTED_ORIG_CMD="[\"\"]"
+else
+    FORMATTED_ORIG_CMD="[${FORMATTED_ORIG_CMD:2}]"
+fi
+
+for token in ${ORIG_ENTRYPOINT}; do
+    FORMATTED_ORIG_ENTRYPOINT="${FORMATTED_ORIG_ENTRYPOINT}, \"${token}\""
+done
+if [ -z "${FORMATTED_ORIG_ENTRYPOINT}" ]; then
+    FORMATTED_ORIG_ENTRYPOINT="[\"\"]"
+else
+    FORMATTED_ORIG_ENTRYPOINT="[${FORMATTED_ORIG_ENTRYPOINT:2}]"
+fi
+
 # Get the OS NAME from /etc/os-release
 OS_NAME=$(docker run --entrypoint /bin/bash --rm ${FROM} -c 'source /etc/os-release && echo ${NAME}')
 
@@ -457,7 +479,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Commit the updated image
-docker commit --change="CMD ${ORIG_CMD}" --change="ENTRYPOINT ${ORIG_ENTRYPOINT}" ${UPDATE_CONTAINER} ${UPDATED_IMAGE}
+docker commit --change="CMD ${FORMATTED_ORIG_CMD}" --change="ENTRYPOINT ${FORMATTED_ORIG_ENTRYPOINT}" ${UPDATE_CONTAINER} ${UPDATED_IMAGE}
 if [ $? -ne 0 ]; then
     echo "Failed to commit updated image: ${UPDATE_CONTAINER}" >&2
     docker rm ${UPDATE_CONTAINER} >/dev/null
