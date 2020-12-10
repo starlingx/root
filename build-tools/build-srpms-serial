@@ -47,8 +47,16 @@ FILES_PATH="$DISTRO/files"
 PATCHES_PATH="$DISTRO/patches"
 ORIG_SPECS_PATH="$DISTRO"
 SRPM_LIST_PATH="$DISTRO/srpm_path"
-MIRROR_ROOT="$MY_REPO/cgcs-${DISTRO}-repo"
-THIRD_PARTY_ROOT="$MY_REPO/cgcs-3rd-party-repo"
+
+MIRROR_ROOT="$MY_REPO/${DISTRO}-repo"
+if [ ! -d ${MIRROR_ROOT} ]; then
+    # Old value... a temporary measure for backward compatibility
+    MIRROR_ROOT="$MY_REPO/cgcs-${DISTRO}-repo"
+    if [ ! -d ${MIRROR_ROOT} ]; then
+        MIRROR_ROOT="$MY_REPO/${DISTRO}-repo"
+    fi
+fi
+
 REPO_DOWNLOADS_ROOT="$MY_REPO"
 SRPM_REBUILT_LIST=""
 SRPM_FAILED_REBUILD_LIST=""
@@ -255,6 +263,7 @@ export CCACHE_DIR="$BUILD_ROOT/.ccache"
 export SRC_BASE="$SRC_ROOT"
 export STX_BASE="$SRC_BASE/stx"
 export CGCS_BASE="$STX_BASE"
+export DISTRO_REPO_BASE=$MIRROR_ROOT
 export SPECS_BASE="$ORIG_SPECS_PATH"
 export FILES_BASE="$FILES_PATH"
 export PATCHES_BASE="$PATCHES_PATH"
@@ -379,9 +388,6 @@ build_dir () {
       # If "mirror:" is specified, then we search for the file relateive to
       # $MIRROR_ROOT 
       #
-      # If "3rd_party:" is specified, then we search for the file relateive to
-      # $THIRD_PARTY_ROOT 
-      #
       # An absolute path is parsed as an absolute path (mainly intended for
       # developer/experimental use without checking in files or messing with
       # your git repos)
@@ -398,11 +404,6 @@ build_dir () {
          if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
             # handle repo: definitions
             echo "$p" | grep "^repo:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^repo:%$REPO_DOWNLOADS_ROOT/%")
-         fi
-
-         if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
-            # handle 3rd_party: definitions
-            echo "$p" | grep "^3rd_party:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^3rd_party:%$THIRD_PARTY_ROOT/%")
          fi
 
          if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
@@ -628,15 +629,9 @@ build_dir_srpm () {
       # Load data from build_srpm.data
       #
       export DATA="$DATA_PATH/$SRPM_DATA"
-      local COPY_LIST
-      local COPY_LIST_TO_TAR
-      local SRC_DIR
-      local TIS_PATCH_VER
-      local BUILD_IS_BIG=0
-      local BUILD_IS_SLOW=0
 
-      if [ -f $DATA ]; then
-          srpm_source_build_data $DATA
+      if [ -f "$DATA" ]; then
+          srpm_source_build_data "$DATA" "$SRC_BUILD_TYPE_SRPM" "$ORIG_SRPM_PATH"
           if [ $? -ne 0 ]; then
               echo "ERROR: $FUNCNAME (${LINENO}): failed to source $DATA"
               return 1
@@ -730,8 +725,8 @@ build_dir_srpm () {
             return 1
          fi
 
-         echo "srpm_extract_to_git '$ORIG_SRPM_PATH' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER'"
-         srpm_extract_to_git $ORIG_SRPM_PATH $PKG_BASE $ROOT_DIR $BUILD_DIR $PKG_NAME_VER $NO_META_PATCH_FLAG $TIS_PATCH_VER
+         echo "srpm_extract_to_git '$ORIG_SRPM_PATH' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER' '$PBR_VERSION'"
+         srpm_extract_to_git $ORIG_SRPM_PATH $PKG_BASE $ROOT_DIR $BUILD_DIR $PKG_NAME_VER $NO_META_PATCH_FLAG $TIS_PATCH_VER $PBR_VERSION
          RC=$?
          if [ $RC -ne 0 ]; then
             if [ $RC -eq 1 ]; then
@@ -797,7 +792,7 @@ build_dir_srpm () {
          done
       fi
 
-      srpm_assemble $FULL_BUILD_DIR $TIS_PATCH_VER
+      srpm_assemble $FULL_BUILD_DIR $TIS_PATCH_VER $PBR_VERSION
       if [ $? -ne 0 ]; then
          echo "ERROR: $FUNCNAME (${LINENO}): failed to assemble srpm for '$PKG_NAME_VER'"
          SRPM_FAILED_REBUILD_LIST="$SRPM_FAILED_REBUILD_LIST $TARGET_FOUND"
@@ -943,16 +938,9 @@ build_dir_spec () {
          #
          # Load data from build_srpm.data
          #
-         local COPY_LIST
-         local COPY_LIST_TO_TAR
-         local SRC_DIR
-         local OPT_DEP_LIST
-         local TIS_PATCH_VER
-         local BUILD_IS_BIG=0
-         local BUILD_IS_SLOW=0
 
-         if [ -f $DATA ]; then
-             srpm_source_build_data $DATA
+         if [ -f "$DATA" ]; then
+             srpm_source_build_data "$DATA" "$SRC_BUILD_TYPE_SPEC" "$SPEC"
              if [ $? -ne 0 ]; then
                  echo "ERROR: $FUNCNAME (${LINENO}): failed to source $DATA"
                  return 1
@@ -1035,8 +1023,8 @@ build_dir_spec () {
                return 1
             fi
 
-            echo "tar_and_spec_extract_to_git '$SPEC' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER'"
-            tar_and_spec_extract_to_git "$SPEC" "$PKG_BASE" "$ROOT_DIR" "$BUILD_DIR" "$PKG_NAME_VER" "$NO_META_PATCH_FLAG" "$TIS_PATCH_VER"
+            echo "tar_and_spec_extract_to_git '$SPEC' '$PKG_BASE' '$ROOT_DIR' '$BUILD_DIR' '$PKG_NAME_VER' '$NO_META_PATCH_FLAG' '$TIS_PATCH_VER' '$PBR_VERSION'"
+            tar_and_spec_extract_to_git "$SPEC" "$PKG_BASE" "$ROOT_DIR" "$BUILD_DIR" "$PKG_NAME_VER" "$NO_META_PATCH_FLAG" "$TIS_PATCH_VER" "$PBR_VERSION"
             RC=$?
             if [ $RC -ne 0 ]; then
                if [ $RC -eq 1 ]; then
@@ -1061,8 +1049,13 @@ build_dir_spec () {
          fi
 
 
+         export SRC_BUILD_TYPE="$SRC_BUILD_TYPE_SPEC"
+         export SRPM_OR_SPEC_PATH="$SPEC"
+
          echo "MAKE_SRPM=$MAKE_SRPM"
          echo "DATA=$DATA"
+         echo "SRC_BUILD_TYPE=$SRC_BUILD_TYPE"
+         echo "SRPM_OR_SPEC_PATH=$SRPM_OR_SPEC_PATH"
    
          if [ -d "$RPMBUILD_BASE/SRPMS" ]; then
              clean_srpm_dir "$RPMBUILD_BASE/SRPMS" 1
@@ -1245,7 +1238,7 @@ for GIT_ROOT in $GIT_LIST; do
        continue
    fi
 
-   for p in $(cat $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
+   for p in $(sed 's/#.*//' $GIT_ROOT/$PKG_DIRS_FILE 2>> /dev/null); do
       src_dir="$GIT_ROOT/$p"
       if [ -d $src_dir ]; then
          if [ -d $src_dir/${DISTRO} ]; then
@@ -1323,11 +1316,6 @@ if [ $ALL -eq 1 ]; then
                            if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
                               # handle repo: definitions
                               echo "$p" | grep "^repo:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^repo:%$REPO_DOWNLOADS_ROOT/%")
-                           fi
-
-                           if [ "${ORIG_SRPM_PATH}x" == "x" ]; then
-                              # handle 3rd_party: definitions
-                              echo "$p" | grep "^3rd_party:" >/dev/null && ORIG_SRPM_PATH=$(echo $p | sed "s%^3rd_party:%$THIRD_PARTY_ROOT/%")
                            fi
 
                            if [ "${ORIG_SRPM_PATH}x" == "x" ]; then

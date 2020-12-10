@@ -17,6 +17,10 @@ RUN set -ex ;\
     yum install --disablerepo=* ${REPO_OPTS} -y \
         qemu-img \
         openssh-clients \
+        python3 \
+        python3-pip \
+        python3-wheel \
+        rh-python36-mod_wsgi \
         ;\
     rm -rf \
         /var/log/* \

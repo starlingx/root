@@ -8,10 +8,10 @@
 
 #
 # Create a RPM dependency cache frpm the RPMS found in
-# 1) $MY_REPO/cgcs-centos-repo
+# 1) $MY_REPO/centos-repo
 # 2) $MY_WORKSPACE/$BUILD_TYPE/rpmbuild/
 #
-# Cache files are written to $MY_REPO/cgcs-tis-repo/dependancy-cache
+# Cache files are written to $MY_REPO/local-repo/dependancy-cache
 # unless an alternate path is supplied.
 #
 # The cache is a set of files that are easily digested by 
@@ -41,6 +41,7 @@
 import xml.etree.ElementTree as ET
 import fnmatch
 import os
+import shutil
 import gzip
 import sys
 import string
@@ -65,8 +66,8 @@ if not os.path.isdir(repodata_dir):
         print("ERROR: directory not found %s" % repodata_dir)
         sys.exit(1)
 
-publish_cache_dir="%s/cgcs-tis-repo/dependancy-cache" % os.environ['MY_REPO']
-centos_repo_dir="%s/cgcs-centos-repo" % os.environ['MY_REPO']
+old_cache_dir="%s/cgcs-tis-repo/dependancy-cache" % os.environ['MY_REPO']
+publish_cache_dir="%s/local-repo/dependancy-cache" % os.environ['MY_REPO']
 
 workspace_repo_dirs={}
 for rt in rpm_types:
@@ -78,9 +79,15 @@ if not os.path.isdir(os.environ['MY_REPO']):
     print("ERROR: directory not found MY_REPO=%s" % os.environ['MY_REPO'])
     sys.exit(1)
 
+centos_repo_dir="%s/centos-repo" % os.environ['MY_REPO']
 if not os.path.isdir(centos_repo_dir):
-    print("ERROR: directory not found %s" % centos_repo_dir)
-    sys.exit(1)
+    # Test for the old path
+    centos_repo_dir="%s/cgcs-centos-repo" % os.environ['MY_REPO']
+    if not os.path.isdir(centos_repo_dir):
+        # That doesn't exist either
+        centos_repo_dir="%s/centos-repo" % os.environ['MY_REPO']
+        print("ERROR: directory not found %s" % centos_repo_dir)
+        sys.exit(1)
 
 bin_rpm_mirror_roots = ["%s/Binary" % centos_repo_dir]
 src_rpm_mirror_roots = ["%s/Source" % centos_repo_dir]
@@ -110,8 +117,13 @@ if options.third_party_repo_dir:
 
 # Create directory if required
 if not os.path.isdir(publish_cache_dir):
-    print("Creating directory: %s" % publish_cache_dir)
-    os.makedirs(publish_cache_dir, 0o755)
+    if os.path.isdir(old_cache_dir):
+        print("Relocating old dependency directory: %s -> %s" % (old_cache_dir, publish_cache_dir))
+        os.makedirs(os.path.abspath(os.path.join(publish_cache_dir, os.pardir)))
+        shutil.move(old_cache_dir, publish_cache_dir)
+    else:
+        print("Creating directory: %s" % publish_cache_dir)
+        os.makedirs(publish_cache_dir, 0o755)
 
 # The Main data structure
 pkg_data={}

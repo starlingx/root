@@ -155,8 +155,9 @@ srpm_create_raw_extract_script () {
    local TIS_PATCH_VER=$5
    local RAW_SCRIPT=$6
    local TAR_DIR=$7
+   local PBR_VERSION=${8:-0}
 
-   echo "SPEC_FILE=$SPEC_FILE  ROOT_DIR=$ROOT_DIR  RPMBUILD_DIR=$RPMBUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  RAW_SCRIPT=$RAW_SCRIPT  TAR_DIR=$TAR_DIR"
+   echo "SPEC_FILE=$SPEC_FILE  ROOT_DIR=$ROOT_DIR  RPMBUILD_DIR=$RPMBUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  RAW_SCRIPT=$RAW_SCRIPT  TAR_DIR=$TAR_DIR PBR_VERSION=$PBR_VERSION"
    local BUILD_DIR="$RPMBUILD_DIR/BUILD"
    local ApplyPatchCount=0
 
@@ -184,11 +185,12 @@ srpm_create_raw_extract_script () {
    local SAME=0
 
    # Build the srpm as though for std build, for naming consistency
-   echo "stdbuf -oL -eL rpmbuild -bp $SPEC_FILE --root $ROOT_DIR --define='%_topdir $RPMBUILD_DIR' --define='_tis_dist .tis' --define='tis_patch_ver $TIS_PATCH_VER' --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG"
+   echo "stdbuf -oL -eL rpmbuild -bp $SPEC_FILE --root $ROOT_DIR --define='%_topdir $RPMBUILD_DIR' --define='_tis_dist .tis' --define='tis_patch_ver $TIS_PATCH_VER' --define='pbr_version $PBR_VERSION' --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG"
    stdbuf -oL -eL rpmbuild -bp $SPEC_FILE --root $ROOT_DIR \
       --define="%_topdir $RPMBUILD_DIR" \
       --define='_tis_dist .tis' \
       --define="tis_patch_ver $TIS_PATCH_VER" \
+      --define="pbr_version $PBR_VERSION" \
       --define="_tis_build_type $BUILD_TYPE" \
       --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG
    if [ $? -ne 0 ]; then
@@ -204,7 +206,7 @@ srpm_create_raw_extract_script () {
       SAME=1
    fi
 
-   let -i COUNT=0
+   let COUNT=0
    while [ $SAME -eq 0 ]; do
       \cp -f $STDOUT_LOG $PREV_STDOUT_LOG
       \cp -f $STDERR_LOG $PREV_STDERR_LOG
@@ -212,6 +214,7 @@ srpm_create_raw_extract_script () {
          --define="%_topdir $RPMBUILD_DIR" \
          --define='_tis_dist .tis' \
          --define="tis_patch_ver $TIS_PATCH_VER" \
+         --define="pbr_version $PBR_VERSION" \
          --define="_tis_build_type $BUILD_TYPE" \
          --nodeps --target $TARGET_ARCH > $STDOUT_LOG 2> $STDERR_LOG
       if [ $? -ne 0 ]; then
@@ -223,7 +226,7 @@ srpm_create_raw_extract_script () {
       if [ $? -eq 0 ]; then
          SAME=1
       fi
-      let -i COUNT++
+      let COUNT++
       if [ $COUNT -ge 20 ]; then 
          break; 
       fi
@@ -1230,6 +1233,7 @@ srpm_build_std_dictionary () {
 srpm_assemble () {
    local FULL_BUILD_DIR=$1
    local TIS_PATCH_VER=$2
+   local PBR_VERSION=$3
 
    local SPEC_PATH
    local SPEC
@@ -1257,7 +1261,7 @@ srpm_assemble () {
           fi
       fi
 
-      RELEASE=$(spec_find_tag Release "$SPEC_PATH" "$(dirname $(dirname $SPEC_PATH))" "$TIS_PATCH_VER" 2>> /dev/null)
+      RELEASE=$(spec_find_tag Release "$SPEC_PATH" "$(dirname $(dirname $SPEC_PATH))" "$TIS_PATCH_VER" "$PBR_VERSION" 2>> /dev/null)
       if [ $? -ne 0 ]; then
           echo "ERROR: $FUNCNAME (${LINENO}): 'Release' not found in '$SPEC_PATH'"
           RELEASE="0"
@@ -1286,9 +1290,11 @@ srpm_assemble () {
           echo "SPEC file: $SPEC_PATH"
           echo "SRPM build directory: $FULL_BUILD_DIR"
           echo "TIS_PATCH_VER: $TIS_PATCH_VER"
+          echo "PBR_VERSION: $PBR_VERSION"
 
           sed -i -e "1 i%define _tis_build_type $BUILD_TYPE" $SPEC_PATH
           sed -i -e "1 i%define tis_patch_ver $TIS_PATCH_VER" $SPEC_PATH
+          sed -i -e "1 i%define pbr_version $PBR_VERSION" $SPEC_PATH
 
           # Build the srpm as though for std build, for naming consistency
           if [ "x$PLATFORM_RELEASE" == "x" ]; then
@@ -1647,9 +1653,10 @@ tarball_extract () {
    local TIS_PATCH_VER="${12}"
    local OUTPUT_FILE="${13}"
    local NO_META_PATCH=${14}
+   local PBR_VERSION=${15}
    # BUILD_TYPE exported from higher layers 
 
-   echo "tarball_extract  SPEC_DIR=$SPEC_DIR  SPEC=$SPEC  SPEC_GIT=$SPEC_GIT  SOURCE_DIR=$SOURCE_DIR  BRANCH=$BRANCH  ORIG_BRANCH=$ORIG_BRANCH  TAR_DIR=$TAR_DIR  ROOT_DIR=$ROOT_DIR  PKG_DIR=$PKG_DIR  BUILD_DIR=$BUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  OUTPUT_FILE=$OUTPUT_FILE  NO_META_PATCH=$NO_META_PATCH"
+   echo "tarball_extract  SPEC_DIR=$SPEC_DIR  SPEC=$SPEC  SPEC_GIT=$SPEC_GIT  SOURCE_DIR=$SOURCE_DIR  BRANCH=$BRANCH  ORIG_BRANCH=$ORIG_BRANCH  TAR_DIR=$TAR_DIR  ROOT_DIR=$ROOT_DIR  PKG_DIR=$PKG_DIR  BUILD_DIR=$BUILD_DIR  TARGET_ARCH=$TARGET_ARCH  TIS_PATCH_VER=$TIS_PATCH_VER  OUTPUT_FILE=$OUTPUT_FILE  NO_META_PATCH=$NO_META_PATCH PBR_VERSION=$PBR_VERSION"
 
    if [ -f $OUTPUT_FILE ]; then
       \rm -f $OUTPUT_FILE
@@ -1706,8 +1713,8 @@ tarball_extract () {
 
        RAW_SCRIPT=$ROOT_DIR/$PKG_DIR/raw_script
        EXTRACT_SCRIPT=$ROOT_DIR/$PKG_DIR/extract_script
-       echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT' '$TAR_DIR'"
-       srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR" "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT" "$TAR_DIR"
+       echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT' '$TAR_DIR' '$PBR_VERSION'"
+       srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR" "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT" "$TAR_DIR" "$PBR_VERSION"
        if [ $? -ne 0 ]; then
            echo "ERROR: $FUNCNAME (${LINENO}): srpm_create_raw_extract_script failed"
            cd $ORIG_DIR
@@ -2194,6 +2201,7 @@ tar_and_spec_extract_to_git () {
    local BRANCH=$5
    local NO_META_PATCH=$6
    local TIS_PATCH_VER=$7
+   local PBR_VERSION=$8
    local USE_GIT=1
    local TARGET_ARCH=x86_64
 
@@ -2344,7 +2352,7 @@ tar_and_spec_extract_to_git () {
       local RPMBUILD_BUILD_DIR=""
       local OUTPUT_FILE="$ROOT_DIR/$PKG_DIR/tarball_extract_result"
 
-      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER"  "$OUTPUT_FILE"
+      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER"  "$OUTPUT_FILE" "$NO_META_PATCH" "$PBR_VERSION"
       if [ $? -ne 0 ]; then
          echo "ERROR: $FUNCNAME (${LINENO}): tarball_extract failed while extracting '$SPEC_PATH'"
          cd $ORIG_DIR
@@ -2375,7 +2383,8 @@ srpm_extract_to_git () {
    local BUILD_DIR=$4
    local BRANCH=$5
    local NO_META_PATCH=$6
-   local TIS_PATCH_VER=$7
+   local TIS_PATCH_VER=${7:-0}
+   local PBR_VERSION=${8:-0}
    local USE_GIT=1
    local TARGET_ARCH=x86_64
 
@@ -2491,7 +2500,7 @@ srpm_extract_to_git () {
       local RPMBUILD_BUILD_DIR=""
       local OUTPUT_FILE="$ROOT_DIR/$PKG_DIR/tarball_extract_result"
 
-      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER" "$OUTPUT_FILE" "$NO_META_PATCH"
+      tarball_extract  "$SPEC_DIR"  "$SPEC"  "$SPEC_GIT"  "$SOURCE_DIR"  "$BRANCH"  "$ORIG_BRANCH"  "$TAR_DIR"  "$ROOT_DIR"  "$PKG_DIR"  "$BUILD_DIR"  "$TARGET_ARCH"  "$TIS_PATCH_VER" "$OUTPUT_FILE" "$NO_META_PATCH" "$PBR_VERSION"
       if [ $? -ne 0 ]; then
          echo "ERROR: $FUNCNAME (${LINENO}): tarball_extract failed while extracting '$ORIG_SRPM_PATH'"
          cd $ORIG_DIR
@@ -2580,8 +2589,8 @@ srpm_extract_to_git () {
             fi
             mkdir -p $RPMBUILD_BUILD_DIR2
 
-            echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT'  '$TAR_DIR'"
-            srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR"  "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT"  "$TAR_DIR"
+            echo "srpm_create_raw_extract_script '$SPEC_DIR/$SPEC' '$ROOT_DIR/$PKG_DIR'  '$ROOT_DIR/$BUILD_DIR'  '$TARGET_ARCH' '$TIS_PATCH_VER' '$RAW_SCRIPT'  '$TAR_DIR' '$PBR_VERSION'"
+            srpm_create_raw_extract_script "$SPEC_DIR/$SPEC" "$ROOT_DIR/$PKG_DIR"  "$ROOT_DIR/$BUILD_DIR"  "$TARGET_ARCH" "$TIS_PATCH_VER" "$RAW_SCRIPT"  "$TAR_DIR" "$PBR_VERSION"
             if [ $? -ne 0 ]; then
                echo "ERROR: $FUNCNAME (${LINENO}): srpm_create_raw_extract_script post meta-patches failed"
                cd $ORIG_DIR
@@ -3197,18 +3206,308 @@ srpm_git_revision_count_pkg () {
     return 0
 }
 
+srpm_pbr_version () {
+    local SRC_DIR=$1
+    local VER
+
+    pushd $SRC_DIR > /dev/null
+    VER=$(python setup.py -q rpm_version)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+    popd > /dev/null
+
+    echo $VER
+    return 0
+}
+
+srpm_git_revision_count_list () {
+    local SRC_DIR="${1}" ; shift
+    local BASE_SRCREV="${1}" ; shift
+    local -i COUNT=0
+    local -i DIRTY=0
+
+    if [ $# -eq 0 ]; then
+        echo 0
+        return 0
+    fi
+
+    pushd $SRC_DIR > /dev/null
+    if [ -z "${BASE_SRCREV}" ]; then
+        COUNT=$(git rev-list --count HEAD -- $@)
+    else
+        COUNT=$(git rev-list --count $BASE_SRCREV..HEAD -- $@)
+    fi
+    if [ $? -ne 0 ]; then
+        popd > /dev/null
+        return 1
+    fi
+    DIRTY=$(git status --porcelain $@ | wc -l)
+    if [ "$DIRTY" -ne 0 ]; then
+        # add an extra value for uncommitted work.
+        COUNT=$((COUNT+1))
+    fi
+    popd > /dev/null
+
+    echo $COUNT
+    return 0
+}
+
+srpm_canonical_path_single () {
+    local path="$1"
+    local canonical_path
+
+    if [[ "${path}" =~ /stx/downloads/|/centos-repo/|/cgcs-centos-repo/ ]]; then
+        # Expand all but final symlink.
+        # These symlinks often point outside of the source code repository.
+        canonical_path="$(readlink -f "$(dirname "${path}")")"
+        if [ $? -ne 0 ]; then
+            >&2  echo "ERROR: $FUNCNAME (${LINENO}): readlink -f '${path}'"
+            return 1
+        fi
+        canonical_path+="/$(basename "${path}")"
+    else
+        # expand all symlinks
+        canonical_path="$(readlink -f "${path}")"
+        if [ $? -ne 0 ]; then
+            >&2  echo "ERROR: $FUNCNAME (${LINENO}): readlink -f '${path}'"
+            return 1
+        fi
+    fi
+
+    echo "${canonical_path}"
+}
+
+srpm_canonical_path () {
+    local path
+    if [ $# -eq 0 ] ; then
+        while IFS= read -r path; do
+            srpm_canonical_path_single "${path}" || return 1
+        done
+    else
+        while [ $# -ne 0 ] ; do
+            srpm_canonical_path_single "${1}" || return 1
+            shift
+        done
+    fi
+}
+
+#
+# Write to a file the list of input for a package.
+# Assumes PKG_BASE is defined, and build_srpm.data file has been sourced.
+#
+srpm_source_list () {
+    local SRC_BUILD_TYPE="$1"
+    local SRPM_OR_SPEC_PATH="$2"
+    local INPUT_FILES_SORTED="$3"
+
+    local INPUT_FILES
+
+    if [ -z "${INPUT_FILES_SORTED}" ]; then
+        >&2  echo "ERROR: $FUNCNAME (${LINENO}): missing arguement"
+        return 1
+    fi
+
+    INPUT_FILES="$(mktemp --tmpdir input_files_XXXXXX)"
+
+    # Create lists of input files (INPUT_FILES) and symlinks (INPUT_LINKS).
+    # First elements are absolute paths...
+    srpm_canonical_path "${PKG_BASE}" > "${INPUT_FILES}"
+    if [ $? -ne 0 ]; then
+        >&2  echo "ERROR: $FUNCNAME (${LINENO}): srpm_canonical_path PKG_BASE='${PKG_BASE}'"
+        \rm "${INPUT_FILES}"
+        return 1
+    fi
+
+    if [ "${SRC_BUILD_TYPE}" == "${SRC_BUILD_TYPE_SRPM}" ]; then
+        srpm_canonical_path "${SRPM_OR_SPEC_PATH}" >> "${INPUT_FILES}"
+        if [ $? -ne 0 ]; then
+            >&2  echo "ERROR: $FUNCNAME (${LINENO}): srpm_canonical_path SRPM_OR_SPEC_PATH='$SRPM_OR_SPEC_PATH'"
+            \rm "${INPUT_FILES}"
+            return 1
+        fi
+    fi
+
+    # ...additional elements are based on values already sourced from
+    # build_srpm.data (COPY_LIST, SRC_DIR, COPY_LIST_TO_TAR, OPT_DEP_LIST)
+    # and may be relative to $PKG_BASE
+    #
+    # Use a subshell so any directory changes have no lasting effect.
+
+    (
+        cd "${PKG_BASE}"
+        if [ "x${COPY_LIST}" != "x" ]; then
+            srpm_canonical_path ${COPY_LIST} >> "${INPUT_FILES}"
+            if [ $? -ne 0 ]; then
+                >&2  echo "ERROR: $FUNCNAME (${LINENO}): srpm_canonical_path COPY_LIST='${COPY_LIST}'"
+                return 1
+            fi
+        fi
+
+        if [ "${SRC_BUILD_TYPE}" == "${SRC_BUILD_TYPE_SPEC}" ]; then
+            if [ "x${SRC_DIR}" != "x" ]; then
+                srpm_canonical_path "${SRC_DIR}" >> "${INPUT_FILES}"
+            fi
+
+            if [ "x${COPY_LIST_TO_TAR}" != "x" ]; then
+                srpm_canonical_path ${COPY_LIST_TO_TAR} >> "${INPUT_FILES}"
+                if [ $? -ne 0 ]; then
+                    >&2  echo "ERROR: $FUNCNAME (${LINENO}): srpm_canonical_path COPY_LIST_TO_TAR='${COPY_LIST_TO_TAR}'"
+                    return 1
+                fi
+            fi
+        fi
+
+        if [ "x${OPT_DEP_LIST}" != "x" ]; then
+            srpm_canonical_path ${OPT_DEP_LIST} >> "${INPUT_FILES}" 2> /dev/null || true
+        fi
+
+        if [ "x$BUILD_TYPE" != "x" ]; then
+            if [ "x${OPT_DEP_LIST_FOR_BUILD_TYPE[$BUILD_TYPE]}" != "x" ]; then
+                srpm_canonical_path ${OPT_DEP_LIST_FOR_BUILD_TYPE[$BUILD_TYPE]} >> "${INPUT_FILES}" 2> /dev/null || true
+            fi
+        fi
+    )
+
+    if [ $? -ne 0 ]; then
+        \rm "${INPUT_FILES}"
+        return 1
+    fi
+
+    # Create sorted, unique list of canonical paths
+    cat "${INPUT_FILES}" | sort --unique > "${INPUT_FILES_SORTED}"
+
+    \rm "${INPUT_FILES}"
+}
+
+
+#
+# Write to a file the list of input files for a package.
+# Assumes PKG_BASE is defined, and build_srpm.data file has been sourced.
+#
+srpm_source_file_list () {
+    local SRC_BUILD_TYPE="$1"
+    local SRPM_OR_SPEC_PATH="$2"
+    local INPUT_FILES_SORTED="$3"
+
+    LINK_FILTER='\([/]stx[/]downloads[/]\|[/]centos-repo[/]\|[/]cgcs-centos-repo[/]\)'
+    local INPUT_FILES
+    local INPUT_LINKS
+    local INPUT_SOURCES
+    local path
+
+    if [ -z "${INPUT_FILES_SORTED}" ]; then
+        >&2  echo "ERROR: $FUNCNAME (${LINENO}): missing arguement"
+        return 1
+    fi
+
+
+    INPUT_SOURCES="$(mktemp --tmpdir input_sources_XXXXXX)"
+    INPUT_FILES="$(mktemp --tmpdir input_files_XXXXXX)"
+    INPUT_LINKS="$(mktemp --tmpdir input_links_XXXXXX)"
+
+    srpm_source_list "${SRC_BUILD_TYPE}" "${SRPM_OR_SPEC_PATH}" "${INPUT_SOURCES}"
+
+    # Create lists of input files (INPUT_FILES) and symlinks (INPUT_LINKS).
+    # First elements are absolute paths...
+    while read path; do
+        find "${path}" -type f | grep -v -e '[/][.]git$' -e '[/][.]git[/]'  -e '[/][.]tox[/]' >> $INPUT_FILES
+        find "${path}" -type l | grep -v -e '[/][.]git$' -e '[/][.]git[/]'  -e '[/][.]tox[/]' >> $INPUT_LINKS
+    done < "${INPUT_SOURCES}"
+
+    # Create sorted, unique list of canonical paths
+    (
+        while IFS= read -r path; do
+            srpm_canonical_path "${path}"
+        done < "${INPUT_FILES}"
+
+        while IFS= read -r path; do
+            link_path="$(srpm_canonical_path "${path}")"
+            # only report the path if it points to a file
+            if [ -f ${link_path} ]; then
+                echo "${link_path}"
+            fi
+        done < "${INPUT_LINKS}"
+    ) | sort --unique > "${INPUT_FILES_SORTED}"
+
+    \rm "${INPUT_FILES}" "${INPUT_SOURCES}"
+}
+
 srpm_source_build_data () {
-    local DATA_FILE=$1
+    local DATA_FILE="$1"
+    local SRC_BUILD_TYPE="$2"
+    local SRPM_OR_SPEC_PATH="$3"
+
     if [ ! -f $DATA_FILE ]; then
         >&2 echo "ERROR: $FUNCNAME (${LINENO}): $DATA_FILE not found"
         return 1
     fi
+
+    unset SRC_DIR
+    unset COPY_LIST
+    unset COPY_LIST_TO_TAR
+    unset OPT_DEP_LIST
+    unset OPT_DEP_LIST_FOR_BUILD_TYPE
+
+    unset TIS_PATCH_VER
+    unset PBR_VERSION
+    unset BUILD_IS_BIG
+    unset BUILD_IS_SLOW
+
+    unset PKG_BASE_SRCREV
+    unset SRC_BASE_SRCREV
+    unset TIS_BASE_SRCREV
+    unset BASE_SRCREV_FOR_PATH
+    unset ABS_BASE_SRCREV_FOR_PATH
+
+    declare -g SRC_DIR
+    declare -g COPY_LIST
+    declare -g COPY_LIST_TO_TAR
+    declare -g OPT_DEP_LIST
+    declare -g -A OPT_DEP_LIST_FOR_BUILD_TYPE
+
+    declare -g TIS_PATCH_VER
+    declare -g PBR_VERSION
+    declare -g BUILD_IS_BIG
+    declare -g BUILD_IS_SLOW
+
+    declare -g PKG_BASE_SRCREV
+    declare -g SRC_BASE_SRCREV
+    declare -g TIS_BASE_SRCREV
+    declare -g -A BASE_SRCREV_FOR_PATH
+    declare -g -A ABS_BASE_SRCREV_FOR_PATH
+
+    BUILD_IS_BIG=0
+    BUILD_IS_SLOW=0
+
     source $DATA_FILE
 
+    # Hope to phase out TIS_BASE_SRCREV in favor of SRC_BASE_SRCREV,
+    # but will need this for backward compatibility during the transition.
+    if [ -z ${SRC_BASE_SRCREV} ] && ! [ -z ${TIS_BASE_SRCREV} ]; then
+        SRC_BASE_SRCREV=${TIS_BASE_SRCREV}
+    fi
+
+    for path in ${!BASE_SRCREV_FOR_PATH[@]}; do
+        abs_path="$(readlink -f "${path}")"
+        ABS_BASE_SRCREV_FOR_PATH[${abs_path}]=${BASE_SRCREV_FOR_PATH[${path}]}
+    done
+
     # TIS_PATCH_VER is mandatory
-    if [ -z "$TIS_PATCH_VER" ]; then
-        >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_PATCH_VER must be set in $DATA_FILE"
+    if [ -z "$TIS_PATCH_VER" ] && [ -z "$PBR_VERSION" ]; then
+        >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_PATCH_VER or PBR_VERSION must be set in $DATA_FILE"
         return 1
+    elif [[ "$PBR_VERSION" == "auto" ]]; then
+       TIS_PATCH_VER="0"
+       if [ ! -d "$SRC_DIR" ]; then
+          >&2 echo "ERROR: $FUNCNAME (${LINENO}): SRC_DIR must specify a subgit root path"
+          return 1
+       fi
+       PBR_VERSION=$(srpm_pbr_version $SRC_DIR)
+       if [ $? -ne 0 ] || [ "$PBR_VERSION" == "" ]; then
+          >&2 echo "ERROR: $FUNCNAME (${LINENO}): Invalid PBR_VERSION '$PBR_VERSION'"
+          return 1
+       fi
     elif [[ "${TIS_PATCH_VER}" =~ [^0-9] ]]; then
         # Expand TIS_PATCH_VER with supported variables
         local -i PKG_GITREVCOUNT=0
@@ -3223,18 +3522,86 @@ srpm_source_build_data () {
                     >&2 echo "ERROR: $FUNCNAME (${LINENO}): Failed to calculate PKG_GITREVCOUNT"
                     return 1
                 fi
-            elif [ "${varname}" = "GITREVCOUNT" ]; then
+            elif [ "${varname}" = "GITREVCOUNT" ] || [ "${varname}" = "SRC_GITREVCOUNT" ]; then
                 # Calculate GITREVCOUNT
-                if [ -z "$TIS_BASE_SRCREV" ]; then
-                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): TIS_BASE_SRCREV must be set in $DATA_FILE"
+                if [ -z "$SRC_BASE_SRCREV" ]; then
+                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): SRC_BASE_SRCREV must be set in $DATA_FILE"
                     return 1
                 fi
 
-                GITREVCOUNT=$(srpm_git_revision_count $SRC_DIR $TIS_BASE_SRCREV)
+                SRC_GITREVCOUNT=$(srpm_git_revision_count $SRC_DIR $SRC_BASE_SRCREV)
                 if [ $? -ne 0 ]; then
-                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): Failed to calculate GITREVCOUNT"
+                    >&2 echo "ERROR: $FUNCNAME (${LINENO}): Failed to calculate ${varname}"
                     return 1
                 fi
+
+                GITREVCOUNT=${SRC_GITREVCOUNT}
+            elif [ "${varname}" = "OTHER_GITREVCOUNT" ]; then
+                OTHER_GITREVCOUNT=0
+                local git_root
+
+                local temp_list
+                local temp_list_filtered
+                local temp_list_git_filtered
+
+                temp_list="$(mktemp --tmpdir srpm_src_list_XXXXXX)"
+                temp_list_filtered="$(mktemp --tmpdir srpm_src_list_filtered_XXXXXX)"
+                temp_list_git_filtered="$(mktemp --tmpdir srpm_src_list_git_filtered_XXXXXX)"
+
+                # Collect a list of inputs files and directories
+                srpm_source_list "${SRC_BUILD_TYPE}" "${SRPM_OR_SPEC_PATH}" "${temp_list}"
+
+                # Create a filtered list of input files and directoies, excluding stuff under $PKG_BASE and $SRC_DIR
+                if [ "${SRC_DIR}" == "" ]; then
+                    grep -v "^$(readlink -f "${PKG_BASE}")" "${temp_list}" > "${temp_list_filtered}"
+                else
+                    grep -v "^$(readlink -f "${PKG_BASE}")" "${temp_list}" | grep -v "^$(readlink -f "${SRC_DIR}")" > "${temp_list_filtered}"
+                fi
+
+                for git_root in $GIT_LIST; do
+                    local abs_git_root
+                    local SRCREV=""
+                    local path
+                    local git_rev_count=0
+
+                    # Further filter the list of inputs to just those from a particular git
+                    abs_git_root="$(readlink -f "${git_root}")"
+                    cat "${temp_list_filtered}" | grep "^${abs_git_root}" > "${temp_list_git_filtered}"
+
+                    # If not inputs for this git, skip to the next git
+                    if [ $(cat "${temp_list_git_filtered}" | wc -l) -eq 0 ]; then
+                        continue
+                    fi
+
+                    # If there is exactly one input listed for the git, then there are a few special options.
+                    # If the path matches a dictionary key of BASE_SRCREV_FOR_PATH, then pull the SRCREV
+                    # from BASE_SRCREV_FOR_PATH.  Further, if that SRCREV is "OTHER_PKG_BASE_SRCREV", then
+                    # assume that path is a PKG_BASE for another package, and try to extract the
+                    # PKG_BASE_SRCREV=xxx value from the build_srpm.data of that package.
+                    if [ $(cat "${temp_list_git_filtered}" | wc -l) -eq 1 ]; then
+                        path=$(head -n 1 "${temp_list_git_filtered}")
+                        SRCREV=${ABS_BASE_SRCREV_FOR_PATH[${path}]}
+                        if [ "${SRCREV}" == "OTHER_PKG_BASE_SRCREV" ] && [ -f ${path}/${DISTRO}/build_srpm.data ] ; then
+                            SRCREV=$(grep PKG_BASE_SRCREV= ${path}/${DISTRO}/build_srpm.data | sed 's#PKG_BASE_SRCREV=##')
+                            if [ -z ${SRCREV} ]; then
+                                >&2 echo "ERROR: $FUNCNAME (${LINENO}): Tried to evaluate 'OTHER_PKG_BASE_SRCREV', but failed to extract 'PKG_BASE_SRCREV' from '${path}/${DISTRO}/build_srpm.data'"
+                                return 1
+                            fi
+                        fi
+                    fi
+
+                    if [ -z "${SRCREV}" ]; then
+                        SRCREV=${ABS_BASE_SRCREV_FOR_PATH[${abs_git_root}]}
+                    fi
+
+                    git_rev_count=$(srpm_git_revision_count_list "${abs_git_root}" "${SRCREV}" $(cat "${temp_list_git_filtered}"))
+                    OTHER_GITREVCOUNT=$((OTHER_GITREVCOUNT+git_rev_count))
+                done
+
+                \rm "${temp_list}"
+                \rm "${temp_list_filtered}"
+                \rm "${temp_list_git_filtered}"
+
             elif [[ "${varname}" =~ [^0-9] ]]; then
                 # TIS_PATCH_VER has some unsupported var or characters
                 >&2 echo "ERROR: $FUNCNAME (${LINENO}): Unsupported value in TIS_PATCH_VER: ${varname}"
@@ -3251,6 +3618,9 @@ srpm_source_build_data () {
         #
         TIS_PATCH_VER=$((TIS_PATCH_VER))
     fi
+
+     # to avoid mockbuild error
+     PBR_VERSION=${PBR_VERSION:=NA}
 
     return 0
 }

@@ -4,6 +4,16 @@
 # Start an edit session for packages to be upgraded - pre upgrade version
 #
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 usage () {
     echo ""
     echo "Step 1: Start an edit session for packages to be upgraded - pre upgrade version"
@@ -11,7 +21,7 @@ usage () {
     echo "Usage: "
     echo "   patch_rebase_1 [--origin_branch <branch>] [--working_branch <branch>] [--upversion_data <file>]"
     echo ""
-    echo "Assumes cgcs-centos-repo already has a working_branch commit that sets the new symlinks."
+    echo "Assumes $(basename ${CENTOS_REPO}) already has a working_branch commit that sets the new symlinks."
     echo ""
     echo "The upversion_data file has data on all the src.rpm being updated in the format:"
     echo "  export UPVERSION_DATA=$MY_WORKSPACE/upversion.log"
@@ -85,7 +95,7 @@ if [ "$WORKING_BRANCH" == "" ]; then
 fi
 
 # One step back to see the old symlinks
-cd $MY_REPO/cgcs-centos-repo
+cd ${CENTOS_REPO}
 git checkout $WORKING_BRANCH
 if [ $? != 0 ]; then
    echo "ERROR: Can't checkout branch '$WORKING_BRANCH' in directory '$(pwd)'"
@@ -119,7 +129,7 @@ for dat in $(cat $UPVERSION_LOG); do
    echo "$?   <=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<="
 done
 
-cd $MY_REPO/cgcs-centos-repo
+cd ${CENTOS_REPO}
 git checkout $WORKING_BRANCH
 
 if [ "$FAILED" != "" ]; then

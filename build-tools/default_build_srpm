@@ -12,10 +12,14 @@ if [ "x$DATA" == "x" ]; then
    exit 1
 fi
 
-srpm_source_build_data $DATA
+srpm_source_build_data "$DATA" "$SRC_BUILD_TYPE" "$SRPM_OR_SPEC_PATH"
 if [ $? -ne 0 ]; then
     echo "ERROR: default_build_srpm (${LINENO}): Failed to source build data from $DATA"
     exit 1
+fi
+
+if [ "x$PBR_VERSION" != "x" ] && [ "x$PBR_VERSION" != "xNA" ]; then
+    VERSION=$PBR_VERSION
 fi
 
 if [ "x$VERSION" == "x" ]; then
@@ -253,9 +257,11 @@ for SPEC in `ls -1 $BUILD_DIR/SPECS`; do
         echo "SPEC file: $SPEC_PATH"
         echo "SRPM build directory: $BUILD_DIR"
         echo "TIS_PATCH_VER: $TIS_PATCH_VER"
+        echo "PBR_VERSION: $PBR_VERSION"
 
         sed -i -e "1 i%define _tis_build_type $BUILD_TYPE" $SPEC_PATH
         sed -i -e "1 i%define tis_patch_ver $TIS_PATCH_VER" $SPEC_PATH
+        sed -i -e "1 i%define pbr_version $PBR_VERSION" $SPEC_PATH
         rpmbuild -bs $SPEC_PATH --define="%_topdir $BUILD_DIR"  --undefine=dist --define="_tis_dist .tis"
     else
         echo "SRPM build not needed"

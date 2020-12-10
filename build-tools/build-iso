@@ -184,6 +184,14 @@ function init_vars {
    # Generate an error if the output file is below this threshold
    MINIMUM_EXPECTED_SIZE=500000000
 
+   # For backward compatibility.  Old repo location or new?
+   CENTOS_REPO=${MY_REPO}/centos-repo
+   if [ ! -d ${CENTOS_REPO} ]; then
+      CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+      if [ ! -d ${CENTOS_REPO} ]; then
+         CENTOS_REPO=${MY_REPO}/centos-repo
+      fi
+   fi
 
    # report variables
    REPORT_FILE=$OUTPUT_DIR/report.txt
@@ -231,6 +239,11 @@ function check_vars {
 
    if [ -z "$INTERNAL_REPO_ROOT" ] ; then
       printf "  Error -- could not locate cgcs-root repo.\n"
+      exit 1
+   fi
+
+   if [ ! -z "${CENTOS_REPO}" ] && [ ! -d ${CENTOS_REPO} ]; then
+      echo "  Error -- directory '${CENTOS_REPO}' not found."
       exit 1
    fi
 
@@ -711,11 +724,12 @@ printf   "*************************\n\n"
 init_vars
 check_vars
 DISTRO="centos"
+
 PKGLIST_MINIMAL="${INTERNAL_REPO_ROOT}/build-tools/build_iso/minimal_rpm_list.txt"
 PKGLIST_STX="${OUTPUT_DIR}/image.inc"
 PKGLIST_DEV="${OUTPUT_DIR}/image-dev.inc"
 PKGLIST_THIS_LAYER="${OUTPUT_DIR}/image-layer.inc"
-PKGLIST_LOWER_LAYER_DIR="${MY_REPO}/cgcs-centos-repo/layer_image_inc"
+PKGLIST_LOWER_LAYER_DIR="${CENTOS_REPO}/layer_image_inc"
 
 PKGLIST_LOWER_LAYER_LIST=""
 if [ -d ${PKGLIST_LOWER_LAYER_DIR} ]; then

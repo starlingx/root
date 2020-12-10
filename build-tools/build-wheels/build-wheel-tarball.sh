@@ -21,10 +21,12 @@ SUPPORTED_OS_ARGS=('centos')
 OS=centos
 OS_VERSION=7.5.1804
 BUILD_STREAM=stable
-CURRENT_STABLE_OPENSTACK=train
+CURRENT_STABLE_OPENSTACK=ussuri
 VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PUSH=no
-PROXY=""
+HTTP_PROXY=""
+HTTPS_PROXY=""
+NO_PROXY=""
 CLEAN=no
 DOCKER_USER=${USER}
 declare -i MAX_ATTEMPTS=1
@@ -56,7 +58,9 @@ Options:
     --os-version: Specify OS version
     --stream:     Build stream, stable or dev (default: stable)
     --push:       Push to docker repo
-    --proxy:      Set proxy <URL>:<PORT>
+    --http_proxy: Set http proxy <URL>:<PORT>, urls splitted by ","
+    --https_proxy: Set https proxy <URL>:<PORT>, urls splitted by ","
+    --no_proxy:   Set bypass list for proxy <URL>, urls splitted by ","
     --user:       Docker repo userid
     --version:    Version for pushed image (if used with --push)
     --attempts:   Max attempts, in case of failure (default: 1)
@@ -64,7 +68,7 @@ Options:
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,proxy:,version:,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -107,8 +111,16 @@ while true; do
             BUILD_STREAM=$2
             shift 2
             ;;
-        --proxy)
-            PROXY=$2
+        --http_proxy)
+            HTTP_PROXY=$2
+            shift 2
+            ;;
+        --https_proxy)
+            HTTPS_PROXY=$2
+            shift 2
+            ;;
+        --no_proxy)
+            NO_PROXY=$2
             shift 2
             ;;
         --version)
@@ -147,8 +159,16 @@ fi
 # Build the base wheels and retrieve the StarlingX wheels
 declare -a BUILD_BASE_WL_ARGS
 BUILD_BASE_WL_ARGS+=(--os ${OS} --os-version ${OS_VERSION} --stream ${BUILD_STREAM})
-if [ ! -z "$PROXY" ]; then
-    BUILD_BASE_WL_ARGS+=(--proxy ${PROXY})
+if [ ! -z "$HTTP_PROXY" ]; then
+    BUILD_BASE_WL_ARGS+=(--http_proxy ${HTTP_PROXY})
+fi
+
+if [ ! -z "$HTTPS_PROXY" ]; then
+    BUILD_BASE_WL_ARGS+=(--https_proxy ${HTTPS_PROXY})
+fi
+
+if [ ! -z "$NO_PROXY" ]; then
+    BUILD_BASE_WL_ARGS+=(--no_proxy ${NO_PROXY})
 fi
 
 ${MY_SCRIPT_DIR}/build-base-wheels.sh ${BUILD_BASE_WL_ARGS[@]} --attempts ${MAX_ATTEMPTS}
@@ -185,17 +205,13 @@ else
     OPENSTACK_BRANCH=stable/${CURRENT_STABLE_OPENSTACK}
 fi
 
-# Locking down requirements as a temporary fix for build issues, until images move to python3 - LP: 1863957
-#with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/global-requirements.txt
-with_retries ${MAX_ATTEMPTS} wget https://opendev.org/openstack/requirements/raw/commit/2da5c5045118b0e36fb14427872e4b9b37335071/global-requirements.txt
+with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/global-requirements.txt
 if [ $? -ne 0 ]; then
     echo "Failed to download global-requirements.txt" >&2
     exit 1
 fi
 
-# Locking down constraints as a temporary fix for build issues, until images move to python3 - LP: 1863957
-#with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/upper-constraints.txt
-with_retries ${MAX_ATTEMPTS} wget https://opendev.org/openstack/requirements/raw/commit/2da5c5045118b0e36fb14427872e4b9b37335071/upper-constraints.txt
+with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/upper-constraints.txt
 if [ $? -ne 0 ]; then
     echo "Failed to download upper-constraints.txt" >&2
     exit 1

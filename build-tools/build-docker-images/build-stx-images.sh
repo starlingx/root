@@ -26,17 +26,24 @@ IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PREFIX=dev
 LATEST_PREFIX=""
 PUSH=no
-PROXY=""
+CONFIG_FILE=""
+HTTP_PROXY=""
+HTTPS_PROXY=""
+NO_PROXY=""
 DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 BASE=
 WHEELS=
+WHEELS_ALTERNATE=
+DEFAULT_CONFIG_FILE_DIR="${MY_REPO}/build-tools/build-docker-images"
+DEFAULT_CONFIG_FILE_PREFIX="docker-image-build"
 CLEAN=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
 declare -a ONLY
 declare -a SKIP
+declare -a SERVICES_ALTERNATE
 declare -i MAX_ATTEMPTS=1
 
 function usage {
@@ -50,8 +57,11 @@ Options:
     --stream:     Build stream, stable or dev (default: stable)
     --base:       Specify base docker image (required option)
     --wheels:     Specify path to wheels tarball or image, URL or docker tag (required option)
+    --wheels-alternate: Specify path to alternate wheels tarball or image, URL or docker tag
     --push:       Push to docker repo
-    --proxy:      Set proxy <URL>:<PORT>
+    --http_proxy: Set proxy <URL>:<PORT>, urls splitted with ","
+    --https_proxy: Set proxy <URL>:<PORT>, urls splitted with ","
+    --no_proxy: Set proxy <URL>, urls splitted with ","
     --user:       Docker repo userid
     --registry:   Docker registry
     --prefix:     Prefix on the image tag (default: dev)
@@ -65,6 +75,7 @@ Options:
                      can be specified with a comma-separated list, or with
                      multiple --skip arguments.
     --attempts:   Max attempts, in case of failure (default: 1)
+    --config-file:Specify a path to a config file which will specify additional arguments to be passed into the the command
 
 
 EOF
@@ -84,6 +95,63 @@ function is_in {
 
 function is_empty {
     test $# -eq 0
+}
+
+function get_args_from_file {
+    # get additional build args from specified file.
+    local -a config_items
+
+    echo "Get args from file: $1"
+    for i in $(cat $1)
+    do
+        config_items=($(echo $i | sed s/=/\ /g))
+        echo "--${config_items[0]} ${config_items[1]}"
+        case ${config_items[0]} in
+            base)
+                if [ -z "${BASE}" ]; then
+                    BASE=${config_items[1]}
+                fi
+                ;;
+            user)
+                if [ -z "${DOCKER_USER}" ]; then
+                    DOCKER_USER=${config_items[1]}
+                fi
+                ;;
+            proxy)
+                if [ -z "${PROXY}" ]; then
+                    PROXY=${config_items[1]}
+                fi
+                ;;
+            registry)
+                if [ -z "${DOCKER_REGISTRY}" ]; then
+                    # Add a trailing / if needed
+                    DOCKER_REGISTRY="${config_items[1]%/}/"
+                fi
+                ;;
+            only)
+                # Read comma-separated values into array
+                if [ -z "${ONLY}" ]; then
+                    # Read comma-separated values into array
+                    ONLY=(`echo ${config_items[1]} | sed s/,/\ /g`)
+                fi
+                ;;
+            wheels)
+                if [ -z "${WHEELS}" ]; then
+                    WHEELS=${config_items[1]}
+                fi
+                ;;
+            wheels_alternate)
+                if [ -z "${WHEELS_ALTERNATE}" ]; then
+                    WHEELS_ALTERNATE=${config_items[1]}
+                    echo "WHEELS_ALTERNATE: ${WHEELS_ALTERNATE}" >&2
+                fi
+                ;;
+            services_alternate)
+                SERVICES_ALTERNATE=(`echo ${config_items[1]} | sed s/,/\ /g`)
+                echo "SERVICES_ALTERNATE: ${SERVICES_ALTERNATE[@]}" >&2
+                ;;
+        esac
+    done
 }
 
 #
@@ -165,7 +233,7 @@ function get_git {
 
 function get_loci {
     # Use a specific HEAD of loci, to provide a stable builder
-    local LOCI_REF="432503259f5e624afdabd9dacc9d9b367dd95e96"
+    local LOCI_REF="f022ecba553903df3df72d3668e143e9eb9ceded"
     local LOCI_REPO="https://github.com/openstack/loci.git"
 
     local ORIGWD=${PWD}
@@ -223,7 +291,20 @@ function post_build {
 
 
     if [ -n "${CUSTOMIZATION}" ]; then
-        docker run --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
+        local -a PROXY_ARGS=
+        if [ ! -z "$HTTP_PROXY" ]; then
+            PROXY_ARGS+=(--env http_proxy=$HTTP_PROXY)
+        fi
+
+        if [ ! -z "$HTTPS_PROXY" ]; then
+            PROXY_ARGS+=(--env https_proxy=$HTTPS_PROXY)
+        fi
+
+        if [ ! -z "$NO_PROXY" ]; then
+            PROXY_ARGS+=(--env no_proxy=$NO_PROXY)
+        fi
+
+        docker run ${PROXY_ARGS[@]} --entrypoint /bin/bash --name ${USER}_update_img ${build_image_name} -c "${CUSTOMIZATION}"
         if [ $? -ne 0 ]; then
             echo "Failed to add customization for ${LABEL}... Aborting"
             RESULTS_FAILED+=(${LABEL})
@@ -310,6 +391,8 @@ function build_image_loci {
     DIST_PACKAGES=$(source ${image_build_file} && echo ${DIST_PACKAGES})
     local PROFILES
     PROFILES=$(source ${image_build_file} && echo ${PROFILES})
+    local PYTHON3
+    PYTHON3=$(source ${image_build_file} && echo ${PYTHON3})
 
     if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
         echo "Skipping ${LABEL}"
@@ -327,9 +410,25 @@ function build_image_loci {
     BUILD_ARGS=(--build-arg PROJECT=${PROJECT})
     BUILD_ARGS+=(--build-arg PROJECT_REPO=${PROJECT_REPO})
     BUILD_ARGS+=(--build-arg FROM=${BASE})
-    BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
-    if [ ! -z "$PROXY" ]; then
-        BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
+
+    if is_in ${LABEL} ${SERVICES_ALTERNATE[@]}; then
+        echo "Python2 service ${LABEL}"
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_ALTERNATE})
+    else
+        echo "Python3 service ${LABEL}"
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
+    fi
+
+    if [ ! -z "$HTTP_PROXY" ]; then
+        BUILD_ARGS+=(--build-arg http_proxy=$HTTP_PROXY)
+    fi
+
+    if [ ! -z "$HTTPS_PROXY" ]; then
+        BUILD_ARGS+=(--build-arg https_proxy=$HTTPS_PROXY)
+    fi
+
+    if [ ! -z "$NO_PROXY" ]; then
+        BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
     fi
 
     if [ -n "${PROJECT_REF}" ]; then
@@ -346,6 +445,10 @@ function build_image_loci {
 
     if [ -n "${PROFILES}" ]; then
         BUILD_ARGS+=(--build-arg PROFILES="${PROFILES}")
+    fi
+
+    if [ -n "${PYTHON3}" ]; then
+        BUILD_ARGS+=(--build-arg PYTHON3="${PYTHON3}")
     fi
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
@@ -402,6 +505,10 @@ function build_image_docker {
     #
     local LABEL
     LABEL=$(source ${image_build_file} && echo ${LABEL})
+    local DOCKER_CONTEXT
+    DOCKER_CONTEXT=$(source ${image_build_file} && echo ${DOCKER_CONTEXT})
+    local DOCKER_FILE
+    DOCKER_FILE=$(source ${image_build_file} && echo ${DOCKER_FILE})
     local DOCKER_REPO
     DOCKER_REPO=$(source ${image_build_file} && echo ${DOCKER_REPO})
     local DOCKER_REF
@@ -423,10 +530,10 @@ function build_image_docker {
 
     echo "Building ${LABEL}"
 
-    local docker_src
-    if [ -z "${DOCKER_REPO}" ]; then
-        docker_src=$(dirname ${image_build_file})/docker
-    else
+    local real_docker_context
+    local real_docker_file
+
+    if [ -n "${DOCKER_REPO}" ]; then
         local ORIGWD=${PWD}
 
         echo "get_git '${DOCKER_REPO}' '${DOCKER_REF}' '${DOCKER_PATCHES}'"
@@ -437,31 +544,53 @@ function build_image_docker {
             return 1
         fi
 
-        local DOCKER_FILE="${PWD}/Dockerfile"
-        if [ ! -f ${DOCKER_FILE} ]; then
-            DOCKER_FILE=$(find ${PWD} -type f -name Dockerfile | head -n 1)
+        real_docker_file="${PWD}/Dockerfile"
+        if [ ! -f ${real_docker_file} ]; then
+            real_docker_file=$(find ${PWD} -type f -name Dockerfile | head -n 1)
         fi
-        docker_src=$(dirname ${DOCKER_FILE})
+        real_docker_context=$(dirname ${real_docker_file})
         cd ${ORIGWD}
+    else
+        if [ -n "${DOCKER_CONTEXT}" ]; then
+            real_docker_context=$(dirname ${image_build_file})/${DOCKER_CONTEXT}
+        else
+            real_docker_context=$(dirname ${image_build_file})/docker
+        fi
+
+        if [ -n "${DOCKER_FILE}" ]; then
+            real_docker_file=$(dirname ${image_build_file})/${DOCKER_FILE}
+        else
+            real_docker_file=${real_docker_context}/Dockerfile
+        fi
     fi
 
     # Check for a Dockerfile
-    if [ ! -f ${docker_src}/Dockerfile ]; then
-        echo "${docker_src}/Dockerfile not found" >&2
+    if [ ! -f ${real_docker_file} ]; then
+        echo "${real_docker_file} not found" >&2
         RESULTS_FAILED+=(${LABEL})
         return 1
     fi
 
-    # Possible design option: Make a copy of the docker_src dir in BUILDDIR
+    # Possible design option: Make a copy of the real_docker_context dir in BUILDDIR
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
     local -a BASE_BUILD_ARGS
-    BASE_BUILD_ARGS+=(${docker_src} --no-cache)
+    BASE_BUILD_ARGS+=(${real_docker_context} --no-cache)
+    BASE_BUILD_ARGS+=(--file ${real_docker_file})
     BASE_BUILD_ARGS+=(--build-arg "BASE=${BASE}")
-    if [ ! -z "$PROXY" ]; then
-        BASE_BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
+    if [ ! -z "$HTTP_PROXY" ]; then
+        BASE_BUILD_ARGS+=(--build-arg http_proxy=$HTTP_PROXY)
     fi
+
+    if [ ! -z "$HTTPS_PROXY" ]; then
+        BASE_BUILD_ARGS+=(--build-arg https_proxy=$HTTPS_PROXY)
+    fi
+
+    if [ ! -z "$NO_PROXY" ]; then
+        BASE_BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
+    fi
+
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
     with_retries ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
 
@@ -544,7 +673,7 @@ function build_image_script {
     cp $(dirname ${image_build_file})/${SCRIPT} ${SCRIPT}
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
+    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $HTTP_PROXY $HTTPS_PROXY $NO_PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -586,7 +715,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,proxy:,user:,registry:,base:,wheels:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -613,6 +742,10 @@ while true; do
             WHEELS=$2
             shift 2
             ;;
+        --wheels-alternate)
+            WHEELS_ALTERNATE=$2
+            shift 2
+            ;;
         --version)
             IMAGE_VERSION=$2
             shift 2
@@ -637,8 +770,16 @@ while true; do
             PUSH=yes
             shift
             ;;
-        --proxy)
-            PROXY=$2
+        --http_proxy)
+            HTTP_PROXY=$2
+            shift 2
+            ;;
+        --https_proxy)
+            HTTPS_PROXY=$2
+            shift 2
+            ;;
+        --no_proxy)
+            NO_PROXY=$2
             shift 2
             ;;
         --user)
@@ -672,6 +813,10 @@ while true; do
             MAX_ATTEMPTS=$2
             shift 2
             ;;
+        --config-file)
+            CONFIG_FILE=$2
+            shift 2
+            ;;
         -h | --help )
             usage
             exit 1
@@ -697,8 +842,29 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE_DIR}/${DEFAULT_CONFIG_FILE_PREFIX}-${OS}-${BUILD_STREAM}.cfg"
+
+# Read additional arguments from config file if it exists.
+if [[ -z "$CONFIG_FILE" ]] && [[ -f ${DEFAULT_CONFIG_FILE} ]]; then
+    CONFIG_FILE=${DEFAULT_CONFIG_FILE}
+fi
+if [[ ! -z  ${CONFIG_FILE} ]]; then
+    if [[ -f ${CONFIG_FILE} ]]; then
+        get_args_from_file ${CONFIG_FILE}
+    else
+        echo "Config file not found: ${CONFIG_FILE}"
+        exit 1
+    fi
+fi
+
 if [ -z "${WHEELS}" ]; then
     echo "Path to wheels tarball must be specified with --wheels option." >&2
+    exit 1
+fi
+
+if [ ${#SERVICES_ALTERNATE[@]} -ne 0 ] && [ -z "${WHEELS_ALTERNATE}" ]; then
+    echo "Path to wheels-alternate tarball must be specified with --wheels-alternate option"\
+         "if python2 based services need to be build!" >&2
     exit 1
 fi
 
@@ -758,6 +924,13 @@ get_loci
 if [ $? -ne 0 ]; then
     # Error is reported by the function already
     exit 1
+fi
+
+# Replace mod_wsgi dependency and add rh_python36_mod_wsgi in loci/bindep.txt for python3 package
+# refer to patch https://review.opendev.org/#/c/718603/
+sed -i 's/mod_wsgi                    \[platform\:rpm apache\]/mod_wsgi                    \[platform\:rpm apache \!python3\]/g'  ${WORKDIR}/loci/bindep.txt
+if ! (grep -q rh-python36-mod_wsgi ${WORKDIR}/loci/bindep.txt); then
+    echo 'rh-python36-mod_wsgi        [platform:rpm !platform:suse (apache python3)]' >>  ${WORKDIR}/loci/bindep.txt
 fi
 
 # Find the directives files

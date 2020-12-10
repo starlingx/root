@@ -24,7 +24,9 @@ KEEP_CONTAINER=no
 OS=centos
 OS_VERSION=7.5.1804
 BUILD_STREAM=stable
-PROXY=""
+HTTP_PROXY=""
+HTTPS_PROXY=""
+NO_PROXY=""
 declare -i MAX_ATTEMPTS=1
 
 function usage {
@@ -37,14 +39,16 @@ Options:
     --os-version:     Specify OS version
     --keep-image:     Skip deletion of the wheel build image in docker
     --keep-container: Skip deletion of container used for the build
-    --proxy:          Set proxy <URL>:<PORT>
+    --http_proxy:     Set http proxy <URL>:<PORT>, urls splitted by ","
+    --https_proxy:    Set https proxy <URL>:<PORT>, urls splitted by ","
+    --no_proxy:       Set bypass list for proxy <URL>, urls splitted by ","
     --stream:         Build stream, stable or dev (default: stable)
     --attempts:       Max attempts, in case of failure (default: 1)
 
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,proxy:,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -83,8 +87,16 @@ while true; do
             BUILD_STREAM=$2
             shift 2
             ;;
-        --proxy)
-            PROXY=$2
+        --http_proxy)
+            HTTP_PROXY=$2
+            shift 2
+            ;;
+        --https_proxy)
+            HTTPS_PROXY=$2
+            shift 2
+            ;;
+        --no_proxy)
+            NO_PROXY=$2
             shift 2
             ;;
         --attempts)
@@ -212,10 +224,18 @@ BASE_IMAGE_PRESENT=$?
 declare -a BUILD_ARGS
 BUILD_ARGS+=(--build-arg RELEASE=${OS_VERSION})
 BUILD_ARGS+=(--build-arg BUILD_STREAM=${BUILD_STREAM})
-if [ ! -z "$PROXY" ]; then
-    BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
-    BUILD_ARGS+=(--build-arg https_proxy=$PROXY)
+if [ ! -z "$HTTP_PROXY" ]; then
+    BUILD_ARGS+=(--build-arg http_proxy=$HTTP_PROXY)
 fi
+
+if [ ! -z "$HTTPS_PROXY" ]; then
+    BUILD_ARGS+=(--build-arg https_proxy=$HTTPS_PROXY)
+fi
+
+if [ ! -z "$NO_PROXY" ]; then
+    BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
+fi
+
 BUILD_ARGS+=(-t ${BUILD_IMAGE_NAME})
 BUILD_ARGS+=(-f ${DOCKER_PATH}/${OS}-dockerfile ${DOCKER_PATH})
 
@@ -233,10 +253,16 @@ if [ "${KEEP_CONTAINER}" = "no" ]; then
 fi
 
 declare -a RUN_ARGS
-if [ ! -z "$PROXY" ]; then
-    RUN_ARGS+=(--env http_proxy=$PROXY)
-    RUN_ARGS+=(--env https_proxy=$PROXY)
+if [ ! -z "$HTTP_PROXY" ]; then
+    RUN_ARGS+=(--env http_proxy=$HTTP_PROXY)
 fi
+if [ ! -z "$HTTPS_PROXY" ]; then
+    RUN_ARGS+=(--env https_proxy=$HTTPS_PROXY)
+fi
+if [ ! -z "$NO_PROXY" ]; then
+    RUN_ARGS+=(--env no_proxy=$NO_PROXY)
+fi
+
 RUN_ARGS+=(${RM_OPT} -v ${BUILD_OUTPUT_PATH}:/wheels ${BUILD_IMAGE_NAME} /docker-build-wheel.sh)
 
 # Run container to build wheels

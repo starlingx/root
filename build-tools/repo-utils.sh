@@ -122,7 +122,7 @@ repo_project_list () {
     else
         for remote in ${remote_list[@]}; do
             repo forall -c \
-                'if [ "$REPO_REMOTE" == "'${remote}'" ]; then echo $REPO_PROJECT; fi' \
+                'if [ "$REPO_REMOTE" = "'${remote}'" ]; then echo $REPO_PROJECT; fi' \
                 | sort --unique
         done
     fi

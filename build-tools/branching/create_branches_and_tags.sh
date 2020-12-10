@@ -100,7 +100,15 @@ if [ $MANIFEST -eq 1 ]; then
         exit 1
     fi
 
-    new_manifest="$(dirname $manifest)/${branch}-$(basename $manifest)"
+    # String the leading feature (f/) or branch (b/) from the
+    # branch name so we have a valid branch prefix
+    if [[ ${branch} =~ .*/.*$ ]]; then
+        manifest_prefix="$(basename ${branch})"
+    else
+        manifest_prefix="${branch}"
+    fi
+
+    new_manifest="$(dirname $manifest)/$manifest_prefix-$(basename $manifest)"
     if [ -f $new_manifest ]; then
         echo_stderr "branched manifest file already present '$new_manifest'."
         exit 1

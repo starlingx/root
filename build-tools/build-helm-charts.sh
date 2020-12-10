@@ -139,16 +139,12 @@ function build_image_versions_to_manifest {
         #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-dev-latest
         #
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
-        for image_reference in $(cat ${image_record}); do
-            image_name=$(echo ${image_reference} | sed -n 's/.*\/\(.*\):.*$/\1/p')
-            old_image_reference="\([a-zA-Z0-9.:-]*\|[0-9.:]*\)\/.*${image_name}:.*"
-
-            sed -i "s#${old_image_reference}#${image_reference}#" ${manifest_file}
-            if [ $? -ne 0 ]; then
-                echo "Failed to update manifest file" >&2
-                exit 1
-            fi
-        done
+        $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
+        if [ $? -ne 0 ]; then
+            echo "Failed to update manifest file" >&2
+            exit 1
+        fi
+        \mv -f ${manifest_file}.tmp ${manifest_file}
     done
 }
 
@@ -187,7 +183,7 @@ function extract_chartfile {
             # Bash globbing does not handle [^-] like regex
             # so grep needed to be used
             chartfile=$(find_chartfile ${helm_rpm})
-            if [ ! -f ${chartfile} ]; then
+            if [ -z ${chartfile} ] || [ ! -f ${chartfile} ]; then
                 echo "Failed to find helm package: ${helm_rpm}" >&2
                 exit 1
             else
@@ -266,6 +262,10 @@ function build_application_tarball {
             echo "  - ${patch}" >> metadata.yaml
         done
     fi
+    # Add the tarball build date: For consistency with tooling that might use
+    # this metadata, match the date format used for BUILD_DATE in
+    # /etc/build.info
+    echo "build_date: $(date '+%Y-%m-%d %H:%M:%S %z')" >> metadata.yaml
 
     # Add an md5
     find . -type f ! -name '*.md5' -print0 | xargs -0 md5sum > checksum.md5
@@ -297,29 +297,32 @@ function parse_yaml {
     # Create a new yaml file based on sequentially merging a list of given yaml files
     local yaml_script="
 import sys
-import yaml
+import collections
+import ruamel.yaml as yaml
 
 yaml_files = sys.argv[2:]
 yaml_output = sys.argv[1]
 
-def merge_yaml(yaml_old, yaml_new):
-    merged_dict = {}
-    merged_dict = yaml_old.copy()
+def merge_yaml(yaml_merged, yaml_new):
     for k in yaml_new.keys():
         if not isinstance(yaml_new[k], dict):
-            merged_dict[k] = yaml_new[k]
-        elif k not in yaml_old:
-            merged_dict[k] = merge_yaml({}, yaml_new[k])
+            yaml_merged[k] = yaml_new[k]
+        elif k not in yaml_merged:
+            yaml_merged[k] = yaml_new[k]
         else:
-            merged_dict[k] = merge_yaml(yaml_old[k], yaml_new[k])
-    return merged_dict
+            merge_yaml(yaml_merged[k], yaml_new[k])
 
-yaml_out = {}
+yaml_out = collections.OrderedDict()
 for yaml_file in yaml_files:
-    for document in yaml.load_all(open(yaml_file)):
+    print 'Merging yaml from file: %s' % yaml_file
+    for document in yaml.load_all(open(yaml_file), Loader=yaml.RoundTripLoader, preserve_quotes=True, version=(1, 1)):
         document_name = (document['schema'], document['metadata']['schema'], document['metadata']['name'])
-        yaml_out[document_name] = merge_yaml(yaml_out.get(document_name, {}), document)
-yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), default_flow_style=False)
+        if document_name in yaml_out:
+            merge_yaml(yaml_out[document_name], document)
+        else:
+            yaml_out[document_name] = document
+print 'Writing merged yaml file: %s' % yaml_output
+yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), Dumper=yaml.RoundTripDumper, default_flow_style=False)
     "
     python -c "${yaml_script}" ${@}
 }
@@ -449,8 +452,18 @@ if [ ${#IMAGE_RECORDS[@]} -ne 0 ]; then
     fi
 fi
 
+# For backward compatibility.  Old repo location or new?
+CENTOS_REPO=${MY_REPO}/centos-repo
+if [ ! -d ${CENTOS_REPO} ]; then
+    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+    if [ ! -d ${CENTOS_REPO} ]; then
+        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+        exit 1
+    fi
+fi
+
 # Extract helm charts and app version from the application rpm
-RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${MY_REPO}/cgcs-centos-repo/Binary/noarch"
+RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary/noarch"
 FIND_GLOB="*.tis.noarch.rpm"
 
 extract_application_rpms

@@ -138,11 +138,11 @@ for build_type in std rt; do
    sleep 1
    rsync -r ${JENKINSURL}/$build_type/rpmbuild/SRPMS/* $MY_WORKSPACE/$build_type/rpmbuild/SRPMS
    sleep 1
+   rsync ${JENKINSURL}/$build_type/centos-repo.last_head $MY_WORKSPACE/$build_type
    rsync ${JENKINSURL}/$build_type/cgcs-centos-repo.last_head $MY_WORKSPACE/$build_type
-   rsync ${JENKINSURL}/$build_type/cgcs-3rd-party-repo.last_head $MY_WORKSPACE/$build_type
    if [ "$build_type" == "std" ]; then
+      cp $MY_WORKSPACE/$build_type/centos-repo.last_head $MY_REPO/centos-repo/.last_head
       cp $MY_WORKSPACE/$build_type/cgcs-centos-repo.last_head $MY_REPO/cgcs-centos-repo/.last_head
-      cp $MY_WORKSPACE/$build_type/cgcs-3rd-party-repo.last_head $MY_REPO/cgcs-3rd-party-repo/.last_head
    fi
    sleep 1
    rsync -r ${JENKINSURL}/$build_type/results $build_type/

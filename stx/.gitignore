@@ -33,9 +33,12 @@ installer-prebuilt
 /openstack-armada-app
 /platform-armada-app
 /portieris-armada-app
+/rook-ceph
+/snmp-armada-app
 /stx-puppet
 /test
 /update
 /upstream
 /utilities
+/vault-armada-app
 /zuul-jobs

@@ -53,8 +53,7 @@ function usage() {
 function extract_pkg_from_patch_repo() {
    local repodir=${BUILDDIR}/patches
    local pkgname=$1
-
-   local pkgfile=$(repoquery --repofrompath local,${repodir} --location -q ${pkgname})
+   local pkgfile=$(repoquery --disablerepo=* --repofrompath local,${repodir} --enablerepo=local --location -q ${pkgname})
    if [ -z "${pkgfile}" ]; then
       return 1
    fi
@@ -148,7 +147,7 @@ function check_requirements {
         which ${req} >&/dev/null
         if [ $? -ne 0 ]; then
             echo "Unable to find required utility: ${req}" >&2
-            let -i missing++
+            let missing++
         fi
     done
 
@@ -300,15 +299,6 @@ if [ $? -eq 0 ]; then
         exit 1
     fi
 
-    for f in pxeboot/EFI/centos/x86_64-efi/*; do
-        \rm -f ${BUILDDIR}/${f}
-    done
-    \cp --preserve=all pxeboot/EFI/centos/x86_64-efi/* ${BUILDDIR}/pxeboot/EFI/centos/x86_64-efi/
-    if [ $? -ne 0 ]; then
-        echo "Error: Could not copy all files from installer"
-        exit 1
-    fi
-
     \rm -f ${BUILDDIR}/LiveOS/squashfs.img &&
     \cp --preserve=all www/pages/feed/rel-*/LiveOS/squashfs.img ${BUILDDIR}/LiveOS/
     if [ $? -ne 0 ]; then
@@ -340,15 +330,51 @@ fi
 
 \mkdir extract
 \cd extract
-extract_pkg_from_patch_repo grub2-x64-efi-pxeboot
+extract_pkg_from_patch_repo grub2-efi-x64-pxeboot
 if [ $? -eq 0 ]; then
     # Replace files
     \rm -f ${BUILDDIR}/pxeboot/EFI/grubx64.efi &&
     \cp --preserve=all pxeboot/EFI/grubx64.efi ${BUILDDIR}/pxeboot/EFI/
     if [ $? -ne 0 ]; then
-        echo "Error: Failed to copy grub2-x64-efi-pxeboot files"
+        echo "Error: Failed to copy grub2-efi-x64-pxeboot files"
         exit 1
     fi
+fi
+\cd ${WORKDIR}
+\rm -rf extract
+
+\mkdir extract
+\cd extract
+extract_pkg_from_patch_repo grub2-common
+if [ $? -eq 0 ]; then
+    # Replace files
+    for f in usr/lib/grub/x86_64-efi/*; do
+        f_base=$(basename $f)
+        \rm -f ${BUILDDIR}/pxeboot/EFI/$f_base &&
+        \cp --preserve=all ${f} ${BUILDDIR}/pxeboot/EFI/
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to copy grub2-common files"
+            exit 1
+        fi
+    done
+fi
+\cd ${WORKDIR}
+\rm -rf extract
+
+\mkdir extract
+\cd extract
+extract_pkg_from_patch_repo grub2-efi-x64-modules
+if [ $? -eq 0 ]; then
+    # Replace files
+    for f in usr/lib/grub/x86_64-efi/*; do
+        f_base=$(basename $f)
+        \rm -f ${BUILDDIR}/pxeboot/EFI/$f_base &&
+        \cp --preserve=all ${f} ${BUILDDIR}/pxeboot/EFI/
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to copy grub2-efi-x64-modules files"
+            exit 1
+        fi
+    done
 fi
 \cd ${WORKDIR}
 \rm -rf extract
