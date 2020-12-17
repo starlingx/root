@@ -765,7 +765,7 @@ build_dir_srpm () {
                if [ "x$PATH_LIST" == "x" ]; then
                   echo "0"
                else
-                  AGE2=$(find $PATH_LIST -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
+                  AGE2=$(find -L $PATH_LIST -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
                   echo  "$AGE2"
                fi
                )
@@ -1115,7 +1115,7 @@ build_dir_spec () {
                   if [ "x$PATH_LIST" == "x" ]; then
                      echo "0"
                   else
-                     AGE2=$(find $PATH_LIST -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
+                     AGE2=$(find -L $PATH_LIST -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
                      echo  "$AGE2"
                   fi
                   )
