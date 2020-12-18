@@ -17,6 +17,7 @@ installer-prebuilt
 /distributedcloud-client
 /docs
 /downloads
+/downloads-backup*
 /fault
 /git
 /gui
