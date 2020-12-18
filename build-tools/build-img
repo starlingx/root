@@ -243,6 +243,10 @@ add_aws_setup(){
     AWS_OAM_IF=ens5
     AWS_MGMT_IF=ens6
     cat >>"$ks_addon" <<_END
+
+# Comment out deprecated virtio by-path rules to avoid duplicate symlinks
+sed -i 's/^\(KERNEL.*disk\/by-path\/virtio\)/#\1/' /usr/lib/udev/rules.d/60-persistent-storage.rules
+
 cat >/etc/modules-load.d/ena.conf <<END
 ena
 END
