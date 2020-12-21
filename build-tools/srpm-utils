@@ -3411,8 +3411,8 @@ srpm_source_file_list () {
     # Create lists of input files (INPUT_FILES) and symlinks (INPUT_LINKS).
     # First elements are absolute paths...
     while read path; do
-        find "${path}" -type f | grep -v -e '[/][.]git$' -e '[/][.]git[/]'  -e '[/][.]tox[/]' >> $INPUT_FILES
-        find "${path}" -type l | grep -v -e '[/][.]git$' -e '[/][.]git[/]'  -e '[/][.]tox[/]' >> $INPUT_LINKS
+        find "${path}" ! -path '*/.git/*' ! -path '*/.tox/*' -type f >> $INPUT_FILES
+        find "${path}" ! -path '*/.git/*' ! -path '*/.tox/*' -type l >> $INPUT_LINKS
     done < "${INPUT_SOURCES}"
 
     # Create sorted, unique list of canonical paths

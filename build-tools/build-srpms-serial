@@ -747,7 +747,7 @@ build_dir_srpm () {
       # Find age of youngest input file.
       # We will apply this as the creation/modification timestamp of the src.rpm we produce.
       #
-      AGE=$(find $PKG_BASE $ORIG_SRPM_PATH -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
+      AGE=$(find $PKG_BASE $ORIG_SRPM_PATH ! -path '*/.git/*' ! -path '*/.tox/*' -type f -exec stat --format '%Y' "{}" \; | sort -nr | head -n 1)
       if [ -f $PKG_BASE/$DATA ]; then
          AGE2=$(
                cd $PKG_BASE
@@ -765,7 +765,7 @@ build_dir_srpm () {
                if [ "x$PATH_LIST" == "x" ]; then
                   echo "0"
                else
-                  AGE2=$(find -L $PATH_LIST -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
+                  AGE2=$(find -L $PATH_LIST ! -path '*/.git/*' ! -path '*/.tox/*' -type f -exec stat --format '%Y' "{}" \; | sort -nr | head -n 1)
                   echo  "$AGE2"
                fi
                )
@@ -1093,7 +1093,7 @@ build_dir_spec () {
          # Find age of youngest input file.
          # We will apply this as the creation/modification timestamp of the src.rpm we produce.
          #
-         AGE=$(find $PKG_BASE -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
+         AGE=$(find $PKG_BASE ! -path '*/.git/*' ! -path '*/.tox/*' -type f -exec stat --format '%Y' "{}" \; | sort -nr | head -n 1)
          if [ -f $PKG_BASE/$DATA ]; then
             AGE2=$(
                   cd $PKG_BASE
@@ -1115,7 +1115,7 @@ build_dir_spec () {
                   if [ "x$PATH_LIST" == "x" ]; then
                      echo "0"
                   else
-                     AGE2=$(find -L $PATH_LIST -type f -exec stat --format '%Y' "{}" \; | grep -v '[/][.]git$' | grep -v '[/][.]git[/]' | sort -nr | head -n 1)
+                     AGE2=$(find -L $PATH_LIST ! -path '*/.git/*' ! -path '*/.tox/*' -type f -exec stat --format '%Y' "{}" \; | sort -nr | head -n 1)
                      echo  "$AGE2"
                   fi
                   )
