@@ -20,6 +20,7 @@ TEMPFILES_DIR=
 SUDO=0
 GRAPHICAL=0
 TTY_SETTINGS=
+RPM_ADDON_LIST=()
 
 # Print out the help message
 usage() {
@@ -87,6 +88,8 @@ Create a QCOW2/QEMU image with StarlingX pre-installed
  --aws
                    Prepare an image that can be loaded onto an AWS EC2
                    instance
+ --addon
+                   Specify additional rpms to add to the qcow2 image
 
 ENVIRONMENT
 
@@ -299,7 +302,7 @@ _END
 # Process command line
 init() {
     local temp
-    temp=$(getopt -o hf4w:W:e:p:P:Sm:gs:i:o: --long help,force,ipv4,ipv4-default-gateway:,ipv6-default-gateway:,oam-dev:,password:,passwords-from:,passwords-from-stdin,mode:,graphical,sudo,size:,iso:,output:,aws -n "$PROGNAME" -- "$@") || cmdline_error
+    temp=$(getopt -o hf4w:W:e:p:P:Sm:gs:i:o: --long help,force,ipv4,ipv4-default-gateway:,ipv6-default-gateway:,oam-dev:,password:,passwords-from:,passwords-from-stdin,mode:,graphical,sudo,size:,iso:,output:,aws,addon: -n "$PROGNAME" -- "$@") || cmdline_error
     eval set -- "$temp"
     while true ; do
         case "$1" in
@@ -372,6 +375,10 @@ init() {
                 AWS_COMPATIBLE=1
                 shift
                 ;;
+            --addon)
+                RPM_ADDON_LIST+=("$2")
+                shift 2
+                ;;
             --)
                 shift
                 break
@@ -410,6 +417,13 @@ UPDATE_ISO=$MY_REPO/stx/utilities/utilities/platform-util/scripts/update-iso.sh
 
 # make sure input ISO file exists
 : <"$BOOTIMAGE_ISO" || exit 1
+
+# make sure patch_build.sh exists
+PATCH_BUILD=$MY_REPO/stx/update/extras/scripts/patch_build.sh
+: <"$PATCH_BUILD" || exit 1
+
+# find patch-iso
+which patch-iso >/dev/null || exit 1
 
 # find QEMU/KVM
 find_kvm
@@ -488,6 +502,13 @@ echo "default via $IPV6_GW_ADDR dev $OAM_DEV metric 1" >/etc/sysconfig/network-s
 _END
 fi
 
+# Disable cloud-init networking if cloud-init is installed
+cat >>"$ks_addon" <<_END
+if [ -d /etc/cloud/cloud.cfg.d/ ]; then
+    echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-disable-networking.cfg
+fi
+_END
+
 # Set passwords
 for user in "${!PASSWORDS[@]}" ; do
     encrypted=$(encrypt_password "${PASSWORDS[$user]}")
@@ -537,6 +558,24 @@ cmd+=(-a "$ks_addon")
 # execute update_iso.sh
 echo "${cmd[@]}"
 "${cmd[@]}" || exit 1
+
+# patch the iso if additional rpms are specified
+if [ ${#RPM_ADDON_LIST[@]} -gt 0 ] ; then
+    patch_file="PATCH.img-addon"
+    patched_iso="$TEMPFILES_DIR/bootimage_${AUTO_MODE}${GRAPHICAL_SUFFIX}_patched.iso"
+    cmd=("$PATCH_BUILD" --id "${patch_file}" --summary "additional packages for qcow2 image" --desc "Adds customizations to qcow2 image")
+    for rpm_addon in "${RPM_ADDON_LIST[@]}"; do
+        cmd+=(--all-nodes "${rpm_addon}")
+    done
+    # create the patch file
+    echo "${cmd[@]}"
+    "${cmd[@]}" || exit 1
+    cmd=(patch-iso -i "$auto_iso" -o "$patched_iso" "${MY_WORKSPACE}/${patch_file}.patch")
+    # execute patch-iso
+    echo "${cmd[@]}"
+    "${cmd[@]}" || exit 1
+    mv ${patched_iso} ${auto_iso}
+fi
 
 # create a blank image file
 rm -f "$IMG_FILE.tmp"
