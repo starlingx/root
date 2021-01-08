@@ -2,3 +2,5 @@
 #
 # They are exceptional packages only to be included in developer builds
 enable-dev-patch
+fio
+dstat
