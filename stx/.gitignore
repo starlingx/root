@@ -34,6 +34,7 @@ installer-prebuilt
 /openstack-armada-app
 /platform-armada-app
 /portieris-armada-app
+/ptp-notification-armada-app
 /rook-ceph
 /SDO-rv-service
 /snmp-armada-app
