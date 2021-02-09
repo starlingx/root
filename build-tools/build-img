@@ -561,6 +561,9 @@ echo "${cmd[@]}"
 
 # patch the iso if additional rpms are specified
 if [ ${#RPM_ADDON_LIST[@]} -gt 0 ] ; then
+    # Patch build will drop the generated patch file into the current directory.
+    # We want that to be $MY_WORKSPACE.
+    pushd $MY_WORKSPACE
     patch_file="PATCH.img-addon"
     patched_iso="$TEMPFILES_DIR/bootimage_${AUTO_MODE}${GRAPHICAL_SUFFIX}_patched.iso"
     cmd=("$PATCH_BUILD" --id "${patch_file}" --summary "additional packages for qcow2 image" --desc "Adds customizations to qcow2 image")
@@ -575,6 +578,7 @@ if [ ${#RPM_ADDON_LIST[@]} -gt 0 ] ; then
     echo "${cmd[@]}"
     "${cmd[@]}" || exit 1
     mv ${patched_iso} ${auto_iso}
+    popd
 fi
 
 # create a blank image file
