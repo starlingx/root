@@ -81,14 +81,14 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/2b370655a7f9a506ea139cfffa6c466d1a82cce4
     tag: stx.5.0-v1.0.0
   - name: docker.io/starlingx/notificationservice-base
-    src_build_tag: master-centos-stable-20210209T020052Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/f4344963f509ca58d4d3e10e0eb63e01d06e49f4
-    tag: stx.5.0-v1.0.2
+    src_build_tag: master-centos-stable-20210217T173034Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/b618223d037b0d720fbaa38e032145a72f2a7359
+    tag: stx.5.0-v1.0.3
   - name: docker.io/starlingx/locationservice-base
     src_build_tag: master-centos-stable-20210204T224209Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/545e6b6bb093235c2f8dab8d171f30c6ae8682d3
     tag: stx.5.0-v1.0.1
   - name: docker.io/starlingx/notificationclient-base
-    src_build_tag: master-centos-stable-20210204T224209Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/545e6b6bb093235c2f8dab8d171f30c6ae8682d3
-    tag: stx.5.0-v1.0.1
+    src_build_tag: master-centos-stable-20210217T173034Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/435d2df181b4bc5dcdf65690858027faa742968c
+    tag: stx.5.0-v1.0.2
