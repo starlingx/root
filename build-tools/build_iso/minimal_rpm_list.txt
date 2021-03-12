@@ -73,8 +73,8 @@ gobject-introspection
 gpgme
 grep
 groff-base
-grub2
 grub2-efi-x64
+grub2-pc
 grub2-tools
 grubby
 gsettings-desktop-schemas
