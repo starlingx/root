@@ -89,6 +89,6 @@ images:
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/545e6b6bb093235c2f8dab8d171f30c6ae8682d3
     tag: stx.5.0-v1.0.1
   - name: docker.io/starlingx/notificationclient-base
-    src_build_tag: master-centos-stable-20210217T173034Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/435d2df181b4bc5dcdf65690858027faa742968c
-    tag: stx.5.0-v1.0.2
+    src_build_tag: master-centos-stable-20210314T171252Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/5eb6e432dde2993e5e99025ba7f4be8b899cef12
+    tag: stx.5.0-v1.0.3
