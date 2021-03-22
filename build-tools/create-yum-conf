@@ -66,8 +66,8 @@ if [ ! -f "$MY_YUM_CONF" ]; then
         sed -i "s%LOCAL_BASE%file://%g"                  "$MY_YUM_CONF"
         sed -i "s%MIRROR_BASE%file:///import/mirrors%g"  "$MY_YUM_CONF"
         sed -i "s%BUILD_ENV%$MY_BUILD_ENVIRONMENT%g"     "$MY_YUM_CONF"
-        sed -i "s%/MY_BUILD_DIR%$MY_BUILD_DIR%g"         "$MY_YUM_CONF"
-        sed -i "s%/MY_REPO_DIR%$MY_REPO%g"               "$MY_YUM_CONF"
+        sed -i "s%/*MY_BUILD_DIR%$MY_BUILD_DIR%g"        "$MY_YUM_CONF"
+        sed -i "s%/*MY_REPO_DIR%$MY_REPO%g"              "$MY_YUM_CONF"
     else
         echo "ERROR: Could not find yum.conf or MOCK_CFG_PROTO"
         exit 1

@@ -86,8 +86,8 @@ if [ ! -f $FILE ]; then
    sed -i "s%LOCAL_BASE%http://127.0.0.1:8088%g"  "$FILE"
    sed -i "s%MIRROR_BASE%http://127.0.0.1:8088%g" "$FILE"
    sed -i "s%BUILD_ENV%$MY_BUILD_ENVIRONMENT%g"   "$FILE"
-   sed -i "s%/MY_BUILD_DIR%$MY_BUILD_DIR_TOP%g"   "$FILE"
-   sed -i "s%/MY_REPO_DIR%$MY_REPO%g"             "$FILE"
+   sed -i "s%/*MY_BUILD_DIR%$MY_BUILD_DIR_TOP%g"  "$FILE"
+   sed -i "s%/*MY_REPO_DIR%$MY_REPO%g"            "$FILE"
 
    # Disable all local-* repos for the build-types other than the current one
    for bt in std rt; do
