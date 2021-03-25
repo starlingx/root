@@ -83,11 +83,16 @@ if [ ! -f $FILE ]; then
       exit 1
    fi
 
+   # eg: LOCAL_BASE/MY_BUILD_DIR => http://127.0.0.1:8088/MY_BUILD_DIR
    sed -i "s%LOCAL_BASE%http://127.0.0.1:8088%g"  "$FILE"
    sed -i "s%MIRROR_BASE%http://127.0.0.1:8088%g" "$FILE"
    sed -i "s%BUILD_ENV%$MY_BUILD_ENVIRONMENT%g"   "$FILE"
+   # eg http://127.0.0.1:8088/MY_BUILD_DIR => http://12.0.0.1:8088/localdisk/loadbuild/...
    sed -i "s%/MY_BUILD_DIR%$MY_BUILD_DIR_TOP%g"   "$FILE"
    sed -i "s%/MY_REPO_DIR%$MY_REPO%g"             "$FILE"
+   # eg = MY_BUILD_DIR/xyz => /localdisk/loadbuild/.../xyz
+   sed -i "s%MY_BUILD_DIR%$MY_BUILD_DIR_TOP%g"    "$FILE"
+   sed -i "s%MY_REPO_DIR%$MY_REPO%g"              "$FILE"
 
    # Disable all local-* repos for the build-types other than the current one
    for bt in std rt; do

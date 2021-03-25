@@ -63,11 +63,16 @@ if [ ! -f "$MY_YUM_CONF" ]; then
         mock_cfg_to_yum_conf.py "$MOCK_CFG_PROTO"      > "$MY_YUM_CONF"
         sed -i "s%\[main\]%&\ncachedir=$YUM_CACHE%"      "$MY_YUM_CONF"
         sed -i "s%logfile=.*%logfile=$YUM_DIR/yum.log%"  "$MY_YUM_CONF"
+        # eg: LOCAL_BASE/MY_BUILD_DIR => file:///MY_BUILD_DIR
         sed -i "s%LOCAL_BASE%file://%g"                  "$MY_YUM_CONF"
         sed -i "s%MIRROR_BASE%file:///import/mirrors%g"  "$MY_YUM_CONF"
         sed -i "s%BUILD_ENV%$MY_BUILD_ENVIRONMENT%g"     "$MY_YUM_CONF"
+        # eg: file:///MY_BUILD_DIR => file:///localdisk/loadbuild/...
         sed -i "s%/MY_BUILD_DIR%$MY_BUILD_DIR%g"         "$MY_YUM_CONF"
         sed -i "s%/MY_REPO_DIR%$MY_REPO%g"               "$MY_YUM_CONF"
+        # eg = MY_BUILD_DIR/xyz => /localdisk/loadbuild/.../xyz
+        sed -i "s%MY_BUILD_DIR%$MY_BUILD_DIR%g"          "$MY_YUM_CONF"
+        sed -i "s%MY_REPO_DIR%$MY_REPO%g"                "$MY_YUM_CONF"
     else
         echo "ERROR: Could not find yum.conf or MOCK_CFG_PROTO"
         exit 1
