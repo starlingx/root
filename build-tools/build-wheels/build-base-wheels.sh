@@ -114,8 +114,6 @@ while true; do
     esac
 done
 
-BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base
-
 BUILD_IMAGE_NAME="${USER}-$(basename ${MY_WORKSPACE})-wheelbuilder:${OS}-${BUILD_STREAM}"
 
 # BUILD_IMAGE_NAME can't have caps if it's passed to docker build -t $BUILD_IMAGE_NAME.
@@ -123,7 +121,6 @@ BUILD_IMAGE_NAME="${USER}-$(basename ${MY_WORKSPACE})-wheelbuilder:${OS}-${BUILD
 BUILD_IMAGE_NAME="${BUILD_IMAGE_NAME,,}"
 
 DOCKER_FILE=${DOCKER_PATH}/${OS}-dockerfile
-WHEELS_CFG=${DOCKER_PATH}/${BUILD_STREAM}-wheels.cfg
 
 function supported_os_list {
     for f in ${DOCKER_PATH}/*-dockerfile; do
@@ -137,40 +134,75 @@ if [ ! -f ${DOCKER_FILE} ]; then
     exit 1
 fi
 
-if [ ! -f ${WHEELS_CFG} ]; then
-    echo "Required file does not exist: ${WHEELS_CFG}" >&2
-    exit 1
-fi
+# Print a loud message
+function notice {
+    (
+        set +x
+        echo
+        echo ======================================
+        for s in "$@" ; do
+            echo "$s"
+        done
+        echo ======================================
+        echo
+    ) 2>&1
+}
 
-#
-# Check build output directory for unexpected files,
-# ie. wheels from old builds that are no longer in wheels.cfg
-#
-if [ -d ${BUILD_OUTPUT_PATH} ]; then
+# prefix each line of a command's output
+# also redirects command's STDERR to STDOUT
+log_prefix() {
+    local prefix="$1" ; shift
+    "$@" 2>&1 | awk -v prefix="$prefix" '{print prefix $0}'
+    # return false if the command (rather than awk) failed
+    [ ${PIPESTATUS[0]} -eq 0 ]
+}
 
-    for f in ${BUILD_OUTPUT_PATH}/*; do
-        grep -q "^$(basename $f)|" ${WHEELS_CFG}
-        if [ $? -ne 0 ]; then
-            echo "Deleting stale file: $f"
-            rm -f $f
-        fi
-    done
-else
-    mkdir -p ${BUILD_OUTPUT_PATH}
-    if [ $? -ne 0 ]; then
-        echo "Failed to create directory: ${BUILD_OUTPUT_PATH}" >&2
+
+# Make sure a file exists, exit otherwise
+function require_file {
+    if [ ! -f "${1}" ]; then
+        echo "Required file does not exist: ${1}" >&2
         exit 1
     fi
-fi
+}
 
-# Check to see if we need to build anything
-BUILD_NEEDED=no
-for wheel in $(cat ${WHEELS_CFG} | sed 's/#.*//' | awk -F '|' '{print $1}'); do
-    if [[ "${wheel}" =~ \* || ! -f ${BUILD_OUTPUT_PATH}/${wheel} ]]; then
-        BUILD_NEEDED=yes
-        break
+# Check build output directory for unexpected files,
+# ie. wheels from old builds that are no longer in wheels.cfg
+function prepare_output_dir {
+    local output_dir="$1"
+    local wheels_cfg="$2"
+    if [ -d ${output_dir} ]; then
+        local f
+        for f in ${output_dir}/*; do
+            if [ -f $f ] ; then
+                grep -q "^$(basename $f)|" ${wheels_cfg}
+                if [ $? -ne 0 ]; then
+                    echo "Deleting stale file: $f"
+                    rm -f $f
+                fi
+            fi
+        done
+    else
+        mkdir -p ${output_dir}
+        if [ $? -ne 0 ]; then
+            echo "Failed to create directory: ${output_dir}" >&2
+            exit 1
+        fi
     fi
-done
+}
+
+BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base
+BUILD_OUTPUT_PATH_PY2=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base-py2
+WHEELS_CFG=${DOCKER_PATH}/${BUILD_STREAM}-wheels.cfg
+WHEELS_CFG_PY2=${DOCKER_PATH}/${BUILD_STREAM}-wheels-py2.cfg
+
+# make sure .cfg files exist
+require_file "${WHEELS_CFG}"
+require_file "${WHEELS_CFG_PY2}"
+
+# prepare output directories
+prepare_output_dir "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}"
+prepare_output_dir "${BUILD_OUTPUT_PATH_PY2}" "${WHEELS_CFG_PY2}"
 
 if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
     # Download the master wheel from loci, so we're only building pieces not covered by it
@@ -194,15 +226,29 @@ if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
     docker run --name ${USER}_inspect_wheels ${MASTER_WHEELS_IMAGE} noop 2>/dev/null
 
     echo "Extracting wheels from ${MASTER_WHEELS_IMAGE}"
-    docker export ${USER}_inspect_wheels | tar x -C ${BUILD_OUTPUT_PATH} '*.whl'
+    rm -rf "${BUILD_OUTPUT_PATH}-loci"
+    mkdir -p "$BUILD_OUTPUT_PATH-loci"
+    docker export ${USER}_inspect_wheels | tar x -C "${BUILD_OUTPUT_PATH}-loci" '*.whl'
     if [ ${PIPESTATUS[0]} -ne 0 -o ${PIPESTATUS[1]} -ne 0 ]; then
         echo "Failed to extract wheels from ${MASTER_WHEELS_IMAGE}" >&2
         docker rm ${USER}_inspect_wheels
         if [ ${MASTER_WHEELS_PRESENT} -ne 0 ]; then
             docker image rm ${MASTER_WHEELS_IMAGE}
         fi
+        rm -rf "${BUILD_OUTPUT_PATH}-loci"
         exit 1
     fi
+
+    # copy loci wheels in base and base-py2 directories
+    if ! cp "${BUILD_OUTPUT_PATH}-loci"/*.whl "${BUILD_OUTPUT_PATH}"/ ; then
+        echo "Failed to copy wheels to ${BUILD_OPUTPUT_PATH}" >&2
+        exit 1
+    fi
+    if ! cp "${BUILD_OUTPUT_PATH}-loci"/*.whl "${BUILD_OUTPUT_PATH_PY2}"/ ; then
+        echo "Failed to copy wheels to ${BUILD_OPUTPUT_PATH_PY2}" >&2
+        exit 1
+    fi
+    rm -rf "${BUILD_OUTPUT_PATH}-loci"
 
     docker rm ${USER}_inspect_wheels
 
@@ -211,7 +257,21 @@ if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
     fi
 fi
 
-if [ "${BUILD_NEEDED}" = "no" ]; then
+# check if there are any wheels missing
+function all_wheels_exist {
+    local output_dir="$1"
+    local wheels_cfg="$2"
+    local wheel
+    for wheel in $(cat "${wheels_cfg}" | sed 's/#.*//' | awk -F '|' '{print $1}'); do
+        if [[ "${wheel}" =~ \* || ! -f ${output_dir}/${wheel} ]]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+if all_wheels_exist "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}" && \
+   all_wheels_exist "${BUILD_OUTPUT_PATH_PY2}" "${WHEELS_CFG_PY2}" ; then
     echo "All base wheels are already present. Skipping build."
     exit 0
 fi
@@ -247,12 +307,10 @@ if [ $? -ne 0 ]; then
 fi
 
 # Run the image, executing the build-wheel.sh script
-RM_OPT=
-if [ "${KEEP_CONTAINER}" = "no" ]; then
-    RM_OPT="--rm"
-fi
-
 declare -a RUN_ARGS
+if [ "${KEEP_CONTAINER}" = "no" ]; then
+    RUN_ARGS+=(--rm)
+fi
 if [ ! -z "$HTTP_PROXY" ]; then
     RUN_ARGS+=(--env http_proxy=$HTTP_PROXY)
 fi
@@ -262,11 +320,23 @@ fi
 if [ ! -z "$NO_PROXY" ]; then
     RUN_ARGS+=(--env no_proxy=$NO_PROXY)
 fi
-
-RUN_ARGS+=(${RM_OPT} -v ${BUILD_OUTPUT_PATH}:/wheels ${BUILD_IMAGE_NAME} /docker-build-wheel.sh)
+RUN_ARGS+=(--env DISPLAY_RESULT=no)
 
 # Run container to build wheels
-with_retries ${MAX_ATTEMPTS} docker run ${RUN_ARGS[@]}
+rm -f ${BUILD_OUTPUT_PATH}/failed.lst
+rm -f ${BUILD_OUTPUT_PATH_PY2}/failed.lst
+
+notice "building python3 wheels"
+log_prefix "[python3] " \
+    with_retries ${MAX_ATTEMPTS} \
+        docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH}:/wheels ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
+BUILD_STATUS=$?
+
+notice "building python2 wheels"
+log_prefix "[python2] " \
+    with_retries ${MAX_ATTEMPTS} \
+        docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH_PY2}:/wheels --env PYTHON=python2 ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
+BUILD_STATUS_PY2=$?
 
 if [ "${KEEP_IMAGE}" = "no" ]; then
     # Delete the builder image
@@ -287,8 +357,52 @@ if [ "${KEEP_IMAGE}" = "no" ]; then
 fi
 
 # Check for failures
-if [ -f ${BUILD_OUTPUT_PATH}/failed.lst ]; then
-    # Failures would already have been reported
+check_result() {
+    local python="$1"
+    local status="$2"
+    local dir="$3"
+
+    # There's a failed images list
+    if [ -f "${dir}/failed.lst" ]; then
+        let failures=$(cat "${dir}/failed.lst" | wc -l)
+
+        cat <<EOF
+
+############################################################
+The following ${python} module(s) failed to build:
+$(cat ${dir}/failed.lst)
+
+Summary:
+${failures} build failure(s).
+
+EOF
+        return 1
+    fi
+
+    # No failed images list, but build script failed nonetheless
+    if [ "${status}" != 0 ] ; then
+        cat <<EOF
+
+############################################################
+Build script failed for ${python}
+
+EOF
+        return 1
+    fi
+
+    # success
+    cat <<EOF
+
+############################################################
+All ${python} wheels have been successfully built.
+
+EOF
+    return 0
+}
+
+if ! check_result "python3" "${BUILD_STATUS}" "${BUILD_OUTPUT_PATH}" || \
+   ! check_result "python2" "${BUILD_STATUS_PY2}" "${BUILD_OUTPUT_PATH_PY3}" ; then
     exit 1
 fi
+exit 0
 

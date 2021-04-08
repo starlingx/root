@@ -21,7 +21,6 @@ SUPPORTED_OS_ARGS=('centos')
 OS=centos
 OS_VERSION=7.5.1804
 BUILD_STREAM=stable
-CURRENT_STABLE_OPENSTACK=ussuri
 VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PUSH=no
 HTTP_PROXY=""
@@ -30,6 +29,13 @@ NO_PROXY=""
 CLEAN=no
 DOCKER_USER=${USER}
 declare -i MAX_ATTEMPTS=1
+PYTHON2=no
+
+# Requirement/constraint URLs -- these will be read from openstack.cfg
+STABLE_OPENSTACK_REQ_URL=
+MASTER_OPENSTACK_REQ_URL=
+STABLE_OPENSTACK_REQ_URL_PY2=
+MASTER_OPENSTACK_REQ_URL_PY2=
 
 # List of top-level services for images, which should not be listed in upper-constraints.txt
 SKIP_CONSTRAINTS=(
@@ -47,6 +53,7 @@ SKIP_CONSTRAINTS=(
     nova
     panko
 )
+SKIP_CONSTRAINTS_PY2=("${SKIP_CONSTRAINTS_PY[@]}")
 
 function usage {
     cat >&2 <<EOF
@@ -64,11 +71,12 @@ Options:
     --user:       Docker repo userid
     --version:    Version for pushed image (if used with --push)
     --attempts:   Max attempts, in case of failure (default: 1)
+    --python2:    Build a python2 tarball
 
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2 -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -131,6 +139,10 @@ while true; do
             MAX_ATTEMPTS=$2
             shift 2
             ;;
+        --python2)
+            PYTHON2=yes
+            shift
+            ;;
         -h | --help )
             usage
             exit 1
@@ -154,6 +166,15 @@ if [ ${VALID_OS} -ne 0 ]; then
     echo "Unsupported OS specified: ${OS}" >&2
     echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
     exit 1
+fi
+
+# Read openstack URLs
+source "${MY_SCRIPT_DIR}/openstack.cfg" || exit 1
+
+# Set python version-specific variables
+if [ "${PYTHON2}" = "yes" ]; then
+    SKIP_CONSTRAINTS=("${SKIP_CONSTRAINTS_PY2[@]}")
+    PY_SUFFIX="-py2"
 fi
 
 # Build the base wheels and retrieve the StarlingX wheels
@@ -183,7 +204,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/tarball
+BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/tarball${PY_SUFFIX}
 if [ -d ${BUILD_OUTPUT_PATH} ]; then
     # Wipe out the existing dir to ensure there are no stale files
     rm -rf ${BUILD_OUTPUT_PATH}
@@ -191,7 +212,7 @@ fi
 mkdir -p ${BUILD_OUTPUT_PATH}
 cd ${BUILD_OUTPUT_PATH}
 
-IMAGE_NAME=stx-${OS}-${BUILD_STREAM}-wheels
+IMAGE_NAME=stx-${OS}-${BUILD_STREAM}-wheels${PY_SUFFIX}
 
 TARBALL_FNAME=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/${IMAGE_NAME}.tar
 if [ -f ${TARBALL_FNAME} ]; then
@@ -199,19 +220,27 @@ if [ -f ${TARBALL_FNAME} ]; then
 fi
 
 # Download the global-requirements.txt and upper-constraints.txt files
-if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
-    OPENSTACK_BRANCH=master
+if [ "${PYTHON2}" = "yes" ]; then
+    if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
+        OPENSTACK_REQ_URL="${MASTER_OPENSTACK_REQ_URL_PY2}"
+    else
+        OPENSTACK_REQ_URL="${STABLE_OPENSTACK_REQ_URL_PY2}"
+    fi
 else
-    OPENSTACK_BRANCH=stable/${CURRENT_STABLE_OPENSTACK}
+    if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
+        OPENSTACK_REQ_URL="${MASTER_OPENSTACK_REQ_URL}"
+    else
+        OPENSTACK_REQ_URL="${STABLE_OPENSTACK_REQ_URL}"
+    fi
 fi
 
-with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/global-requirements.txt
+with_retries ${MAX_ATTEMPTS} wget "${OPENSTACK_REQ_URL}/global-requirements.txt"
 if [ $? -ne 0 ]; then
     echo "Failed to download global-requirements.txt" >&2
     exit 1
 fi
 
-with_retries ${MAX_ATTEMPTS} wget https://raw.githubusercontent.com/openstack/requirements/${OPENSTACK_BRANCH}/upper-constraints.txt
+with_retries ${MAX_ATTEMPTS} wget "${OPENSTACK_REQ_URL}/upper-constraints.txt"
 if [ $? -ne 0 ]; then
     echo "Failed to download upper-constraints.txt" >&2
     exit 1
@@ -230,7 +259,7 @@ done
 shopt -s nullglob
 
 # Copy the base and stx wheels, updating upper-constraints.txt as necessary
-for wheel in ../base/*.whl ../stx/wheels/*.whl; do
+for wheel in ../base${PY_SUFFIX}/*.whl ../stx/wheels/*.whl; do
     # Get the wheel name and version from the METADATA
     METADATA=$(unzip -p ${wheel} '*/METADATA')
     name=$(echo "${METADATA}" | grep '^Name:' | awk '{print $2}')

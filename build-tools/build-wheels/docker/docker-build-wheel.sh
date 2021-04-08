@@ -10,8 +10,14 @@
 
 CFGFILE=/wheels.cfg
 OUTPUTDIR=/wheels
-FAILED_LOG=$OUTPUTDIR/failed.lst
+FAILED_LOG="${OUTPUTDIR}/failed.lst"
+: ${DISPLAY_RESULT=yes}
 declare -i MAX_ATTEMPTS=5
+: ${PYTHON=python3}
+if [[ "${PYTHON}" == "python2" ]] ; then
+    CFGFILE=/wheels-py2.cfg
+    FAILED_LOG="${OUTPUTDIR}/failed-py2.lst"
+fi
 
 #
 # Function to log the start of a build
@@ -184,7 +190,7 @@ function from_git {
         fi
 
         # Build the wheel
-        python3 setup.py bdist_wheel
+        ${PYTHON} setup.py bdist_wheel
         if [ -f dist/$wheelname ]; then
             cp dist/$wheelname $OUTPUTDIR || echo $wheelname >> $FAILED_LOG
         else
@@ -244,7 +250,7 @@ function from_tar {
         fi
 
         # Build the wheel
-        python3 setup.py bdist_wheel
+        ${PYTHON} setup.py bdist_wheel
         if [ -f dist/$wheelname ]; then
             cp dist/$wheelname $OUTPUTDIR || echo $wheelname >> $FAILED_LOG
         else
@@ -295,7 +301,7 @@ function from_zip {
         fi
 
         # Build the wheel
-        python3 setup.py bdist_wheel
+        ${PYTHON} setup.py bdist_wheel
         if [ -f dist/$wheelname ]; then
             cp dist/$wheelname $OUTPUTDIR || echo $wheelname >> $FAILED_LOG
         else
@@ -339,24 +345,28 @@ from_tar
 from_zip
 from_pypi
 
-if [ -f $FAILED_LOG ]; then
-    let failures=$(cat $FAILED_LOG | wc -l)
+if [ -f "${FAILED_LOG}" ]; then
+    if [ "${DISPLAY_RESULT}" = yes ] ; then
+        let failures=$(cat "${FAILED_LOG}" | wc -l)
 
-    cat <<EOF
+        cat <<EOF
 ############################################################
-The following module(s) failed to build:
-$(cat $FAILED_LOG)
+The following ${PYTHON} module(s) failed to build:
+$(cat ${FAILED_LOG})
 
 Summary:
 ${failures} build failure(s).
 EOF
+    fi
     exit 1
 fi
 
-cat <<EOF
+if [ "${DISPLAY_RESULT}" = yes ] ; then
+    cat <<EOF
 ############################################################
-All wheels have been successfully built.
+All ${PYTHON} wheels have been successfully built.
 EOF
+fi
 
 exit 0
 
