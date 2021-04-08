@@ -79,3 +79,7 @@ kata-runtime
 
 # For nvme disk firmware update
 nvme-cli
+
+# Add openscap tools
+openscap
+openscap-scanner
