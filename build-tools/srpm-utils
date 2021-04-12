@@ -714,27 +714,40 @@ raw_create_tarballs_extract_script () {
                     STATE="TAR"
                     ;;
                 "tar -xf -"|\
+                "tar -xof -"|\
                 "tar -xvf -"|\
+                "tar -xvof -"|\
                 "tar -xvvf -"|\
+                "tar -xvvof -"|\
                 "tar -xo -f -"|\
                 "/usr/bin/tar -xf -"|\
+                "/usr/bin/tar -xof -"|\
                 "/usr/bin/tar -xvf -"|\
+                "/usr/bin/tar -xvof -"|\
                 "/usr/bin/tar -xvvf -"|\
+                "/usr/bin/tar -xvvof -"|\
                 "/usr/bin/tar -xo -f -") 
                     LINE="$LINE --exclude .git"
                     STATE="REVERSE_TAR"
                     ;;
                 "tar -xf "*|\
+                "tar -xof "*|\
                 "tar -xvf "*|\
+                "tar -xvof "*|\
                 "tar -xvvf "*|\
+                "tar -xvvof "*|\
                 "tar -xo -f "*|\
                 "/usr/bin/tar -xf "*|\
+                "/usr/bin/tar -xof "*|\
                 "/usr/bin/tar -xvf "*|\
+                "/usr/bin/tar -xvof "*|\
                 "/usr/bin/tar -xvvf "*|\
+                "/usr/bin/tar -xvvof "*|\
                 "/usr/bin/tar -xo -f "*)
                     echo "$LINE --exclude .git" >> $EXTRACT_SCRIPT
                     if [ $FIRST_TAR -eq 0 ]; then
-                       TAR_ARGS=$(echo $LINE | sed -e 's#^/usr/bin/tar ##' -e 's#^tar ##' -e 's#^-xf ##' -e 's#^-xvf ##' -e 's#^-xvvf ##' -e 's#^-xo -f ##')
+                       TAR_ARGS=$(echo $LINE | sed -e 's#^/usr/bin/tar ##' -e 's#^tar ##' -e 's#^-xf ##' -e 's#^-xof ##' \
+                                  -e 's#^-xvf ##' -e 's#^-xvof ##' -e 's#^-xvvf ##' -e 's#^-xvvof ##' -e 's#^-xo -f ##')
                        EXTRACT_DIR=$(dirname $EXTRACT_SCRIPT)/extract_dir
                        EXTRACT_TAR_DIR=$(dirname $EXTRACT_SCRIPT)/tar_dir
                        EXTRACT_TAR_DIR_NOW=$(tar_cmd_common_dir "tar -tvf $TAR_ARGS")
@@ -863,12 +876,18 @@ raw_create_tarballs_extract_script () {
          TAR)
             case "$LINE" in
                 "tar -xf -"|\
+                "tar -xof -"|\
                 "tar -xvf -"|\
+                "tar -xvof -"|\
                 "tar -xvvf -"|\
+                "tar -xvvof -"|\
                 "tar -xo -f -"|\
                 "/usr/bin/tar -xf -"|\
+                "/usr/bin/tar -xof -"|\
                 "/usr/bin/tar -xvf -"|\
+                "/usr/bin/tar -xvof -"|\
                 "/usr/bin/tar -xvvf -"|\
+                "/usr/bin/tar -xvvof -"|\
                 "/usr/bin/tar -xo -f -")
                     STATE="PRE_PATCH"
                     echo "$LAST_LINE | $LINE --exclude .git" >> $EXTRACT_SCRIPT
@@ -1007,26 +1026,39 @@ raw_create_tarballs_extract_script_post_metapatch () {
                     STATE="TAR"
                     ;;
                 "tar -xf -"|\
+                "tar -xof -"|\
                 "tar -xvf -"|\
+                "tar -xvof -"|\
                 "tar -xvvf -"|\
+                "tar -xvvof -"|\
                 "tar -xo -f -"|\
                 "/usr/bin/tar -xf -"|\
+                "/usr/bin/tar -xof -"|\
                 "/usr/bin/tar -xvf -"|\
+                "/usr/bin/tar -xvof -"|\
                 "/usr/bin/tar -xvvf -"|\
+                "/usr/bin/tar -xvvof -"|\
                 "/usr/bin/tar -xo -f -") 
                     STATE="REVERSE_TAR"
                     ;;
                 "tar -xf "*|\
+                "tar -xof "*|\
                 "tar -xvf "*|\
+                "tar -xvof "*|\
                 "tar -xvvf "*|\
+                "tar -xvvof "*|\
                 "tar -xo -f "*|\
                 "/usr/bin/tar -xf "*|\
+                "/usr/bin/tar -xof "*|\
                 "/usr/bin/tar -xvf "*|\
+                "/usr/bin/tar -xvof "*|\
                 "/usr/bin/tar -xvvf "*|\
+                "/usr/bin/tar -xvvof "*|\
                 "/usr/bin/tar -xo -f "*)
                     LINE="$LINE --exclude .git"
                     if [ $FIRST_TAR -eq 0 ]; then
-                       TAR_ARGS=$(echo $LINE | sed -e 's#^/usr/bin/tar ##' -e 's#^-xf ##' -e 's#^-xvf ##' -e 's#^-xvvf ##' -e 's#^-xo -f ##')
+                       TAR_ARGS=$(echo $LINE | sed -e 's#^/usr/bin/tar ##' -e 's#^tar ## '-e 's#^-xf ##' -e 's#^-xof ##' \
+                                  -e 's#^-xvf ##' -e 's#^-xvof ##' -e 's#^-xvvf ##' -e 's#^-xvvof ##' -e 's#^-xo -f ##')
                        EXTRACT_DIR=$(dirname $EXTRACT_SCRIPT)/extract_dir
                        EXTRACT_TAR_DIR=$(dirname $EXTRACT_SCRIPT)/tar_dir
                        EXTRACT_TAR_DIR_NOW=$(tar_cmd_common_dir "tar -tvf $TAR_ARGS")
@@ -1096,12 +1128,18 @@ raw_create_tarballs_extract_script_post_metapatch () {
          TAR)
             case "$LINE" in
                 "tar -xf -"|\
+                "tar -xof -"|\
                 "tar -xvf -"|\
+                "tar -xvof -"|\
                 "tar -xvvf -"|\
+                "tar -xvvof -"|\
                 "tar -xo -f -"|\
                 "/usr/bin/tar -xf -"|\
+                "/usr/bin/tar -xof -"|\
                 "/usr/bin/tar -xvf -"|\
+                "/usr/bin/tar -xvof -"|\
                 "/usr/bin/tar -xvvf -"|\
+                "/usr/bin/tar -xvvof -"|\
                 "/usr/bin/tar -xo -f -")
                     LINE="$LINE --exclude .git"
                     STATE="PRE_PATCH"
