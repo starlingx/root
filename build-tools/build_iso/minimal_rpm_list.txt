@@ -177,6 +177,7 @@ ncurses-libs
 nettle
 newt
 python3-newt
+nscd
 nspr
 nss
 nss-softokn
