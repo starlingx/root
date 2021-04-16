@@ -141,6 +141,50 @@ repo_is_project () {
 
 
 #
+# manifest_get_revision_of_project <manifest> <project-name>
+#
+# Extract the revision of a project within the manifest.
+# The default revision is supplied in the absence
+# of an explicit project revision.
+#
+#    manifest = Path to manifest.
+#    project-name = name of project.
+#
+manifest_get_revision_of_project () {
+    local manifest="${1}"
+    local project="${2}"
+
+    local default_revision=""
+    local revision=""
+
+    default_revision=$(manifest_get_default_revision "${manifest}")
+    revision=$(grep '<project' "${manifest}" | \
+                grep -e "name=${project}" -e "name=\"${project}\"" | \
+                grep 'revision=' | \
+                sed -e 's#.*revision=\([^ ]*\).*#\1#' -e 's#"##g' -e "s#'##g")
+    if [ "${revision}" != "" ]; then
+        echo "${revision}"
+    elif [ "${default_revision}" != "" ]; then
+        echo "${default_revision}"
+    else
+        return 1
+    fi
+}
+
+#
+# manifest_get_default_revision <manifest>
+#
+# Extract the default revision of the manifest, if any.
+#
+#    manifest = Path to manifest.
+#
+manifest_get_default_revision () {
+    local manifest="${1}"
+
+    grep '<default' $manifest |sed -e 's#.*revision=\([^ ]*\).*#\1#' -e 's#"##g' -e "s#'##g"
+}
+
+#
 # manifest_set_revision <old_manifest> <new_manifest> <revision> <lock_down> <project-list>
 #
 #    old_manifest = Path to original manifest.
@@ -149,8 +193,10 @@ repo_is_project () {
 #    revision     = A branch, tag ,or sha.  Branch and SHA can be used
 #                   directly, but repo requires that a tag be in the form
 #                   "refs/tags/<tag-name>".
-#    lock_down    = 0 or 1.  If 1, set a revision on all other non-listed
+#    lock_down    = 0,1 or 2.  If 2, set a revision on all other non-listed
 #                   projects to equal the SHA of the current git head.
+#                   If 1, similar to 2, but only if the project doesn't have
+#                   some other form of revision specified.
 #    project-list = A space seperated list of projects.  Listed projects
 #                   will have their revision set to the provided revision
 #                   value.
@@ -160,9 +206,11 @@ manifest_set_revision () {
     local new_manifest="${2}"
     local revision="${3}"
     local lock_down="${4}"
-    shift 4
+    local set_default="${5}"
+    shift 5
     local projects="${@}"
 
+    local old_default_revision=""
     local repo_root_dir=""
     local line=""
     local FOUND=0
@@ -192,11 +240,32 @@ manifest_set_revision () {
         return 1
     fi
 
+    old_default_revision=$(manifest_get_default_revision "${old_manifest}")
+    if [ ${set_default} -eq 1 ] && [ "${old_default_revision}" == "" ]; then
+        # We only know how to alter an existing default revision, not set a
+        # new one, so continue without setting a default.
+        set_default=0
+    fi
+
     while IFS= read -r line; do
         echo "${line}" | grep -q '<project'
         if [ $? -ne 0 ]; then
-            # Line does not define a project, do not modify
-            echo "${line}"
+            # Line does not define a project
+            if [ ${set_default} -eq 0 ] || [ "${old_default_revision}" == "" ]; then
+                # No further processing, do not modify
+                echo "${line}"
+                continue
+            fi
+
+            # ok setting the default
+            echo "${line}" | grep -q '<default'
+            if [ $? -ne 0 ]; then
+                # Line does not set defaults, do not modify
+                echo "${line}"
+                continue
+            fi
+
+            echo "${line}" | sed "s#${old_default_revision}#${revision}#"
             continue
         fi
 
@@ -211,15 +280,58 @@ manifest_set_revision () {
         done
 
         rev=${revision}
+        old_rev=$(echo "${line}" | grep 'revision=' | sed -e 's#.*revision=\([^ ]*\).*#\1#' -e 's#"##g' -e "s#'##g")
         if [ $FOUND -eq 0 ]; then
             # A non-selected project
-            if [ ${lock_down} -eq 0 ]; then
-                echo "${line}"
+            if [ ${lock_down} -eq 2 ]; then
+                # Hard lock-down
+                # Set the revision to current HEAD SHA.
+                path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
+                rev=$(cd "${path}"; git rev-parse HEAD)
+            elif [ ${lock_down} -eq 1 ] && [ "${old_rev}" == "" ]; then
+                # Soft lock-down but no revision is currently set on the project.
+                # Set the revision to current HEAD SHA.
+                path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
+                rev=$(cd "${path}"; git rev-parse HEAD)
+            elif [ ${lock_down} -eq 1 ] && [ "${old_rev}" == "master" ]; then
+                # Soft lock-down and project has revision set to 'master' which is definitly unstable.
+                # Set the revision to current HEAD SHA.
+                path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
+                rev=$(cd "${path}"; git rev-parse HEAD)
+            else
+                if [ ${set_default} -eq 0 ] || [ "${old_default_revision}" == "${revision}" ]; then
+                    # default revision unchanged, leave it be
+                    echo "${line}"
+                    continue
+                fi
+
+                if [ "${old_rev}" != "" ]; then
+                    # Non-selected project has an explicit revision, leave it be
+                    echo "${line}"
+                    continue
+                fi
+
+                # The default revision will change, but this project, which
+                # relied on the old default, is not supposed to change,
+                # so it's revision must now be explicitly set to point to
+                # the old default revision.
+                rev="${old_default_revision}"
+            fi
+        else
+            # A selected project
+            if [ ${set_default} -eq 1 ]; then
+                # Selected project does not need to set a revision.
+                # The revision will come from the default
+                if [ "${old_rev}" == "" ]; then
+                    # project has no revision to delete
+                    echo "${line}"
+                    continue
+                fi
+
+                # delete any revision present
+                echo "${line}" | sed 's#\(.*\)revision=[^ ]*\(.*\)#\1\2#'
                 continue
             fi
-
-            path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
-            rev=$(cd "${path}"; git rev-parse HEAD)
         fi
 
         # Need to set revision on selected project
