@@ -334,8 +334,45 @@ function build_image_loci {
     PROFILES=$(source ${image_build_file} && echo ${PROFILES})
     local PYTHON3
     PYTHON3=$(source ${image_build_file} && echo ${PYTHON3})
+    local MIRROR_LOCAL
+    MIRROR_LOCAL=$(source ${image_build_file} && echo ${MIRROR_LOCAL})
 
     echo "Building ${LABEL}"
+
+    local ORIGWD=${PWD}
+
+    if [ "${MIRROR_LOCAL}" = "yes" ]; then
+        # Setup a local mirror of PROJECT_REPO
+
+        local BARE_CLONES=${WORKDIR}/bare_clones
+        mkdir -p ${BARE_CLONES}
+        if [ $? -ne 0 ]; then
+            echo "Failed to create ${BARE_CLONES}" >&2
+            RESULTS_FAILED+=(${LABEL})
+            return 1
+        fi
+
+        local CLONE_DIR=${BARE_CLONES}/${PROJECT}.git
+
+        # Remove prior clone dir, if it exists
+        \rm -rf ${CLONE_DIR}
+
+        echo "Creating bare clone of ${PROJECT_REPO} for ${LABEL} build..."
+        git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
+            && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
+            && chmod a+x ${CLONE_DIR}/hooks/post-update \
+            && cd ${CLONE_DIR} \
+            && git update-server-info \
+            && cd ${ORIGWD}
+        if [ $? -ne 0 ]; then
+            echo "Failed to clone ${PROJECT_REPO}... Aborting ${LABEL} build"
+            RESULTS_FAILED+=(${LABEL})
+            cd ${ORIGWD}
+            return 1
+        fi
+
+        PROJECT_REPO=http://${HOSTNAME}:8088/${CLONE_DIR}
+    fi
 
     local -a BUILD_ARGS=
     BUILD_ARGS=(--build-arg PROJECT=${PROJECT})
