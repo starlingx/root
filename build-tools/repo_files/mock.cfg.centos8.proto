@@ -30,6 +30,7 @@ baseurl=LOCAL_BASE/MY_BUILD_DIR/std/rpmbuild/RPMS
 enabled=1
 skip_if_unavailable=1
 metadata_expire=0
+module_hotfixes=1
 
 [local-rt]
 name=local-rt
@@ -37,6 +38,7 @@ baseurl=LOCAL_BASE/MY_BUILD_DIR/rt/rpmbuild/RPMS
 enabled=1
 skip_if_unavailable=1
 metadata_expire=0
+module_hotfixes=1
 
 [local-installer]
 name=local-installer
@@ -44,6 +46,7 @@ baseurl=LOCAL_BASE/MY_BUILD_DIR/installer/rpmbuild/RPMS
 enabled=1
 skip_if_unavailable=1
 metadata_expire=0
+module_hotfixes=1
 
 [StxCentos8Distro]
 name=Stx-Centos-8-Distro
