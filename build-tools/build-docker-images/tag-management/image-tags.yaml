@@ -55,9 +55,9 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/d46c9c55a9a9b7ea09e8d0fe66c8cfbeeb9ac75f
     tag: stx.5.0-v1.0.0
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-centos-stable-20210420T000040Z.0
-    src_ref: https://opendev.org/starlingx/distcloud-client/commit/859864c21dadf0fc1888f5df94853a3c6d5472ac
-    tag: stx.5.0-v1.4.2
+    src_build_tag: master-centos-stable-20210512T053357Z.0
+    src_ref: https://opendev.org/starlingx/distcloud-client/commit/d52a9080082db5fda2e77fb9e342f812ea8c17e1
+    tag: stx.5.0-v1.4.3
   - name: docker.io/starlingx/stx-vault-manager
     src_build_tag: master-centos-stable-20200722T035334Z.0
     src_ref: https://opendev.org/starlingx/vault-armada-app/commit/2cd206d6703cc2733e39ecad4539c0d5f1600550
