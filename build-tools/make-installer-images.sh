@@ -153,6 +153,40 @@ patch usr/lib/net-lib.sh <<EOF
          cnt=\$((\$cnt+1))
 EOF
 
+echo "-->patch usr/lib/dracut/hooks/pre-trigger/03-lldpad.sh with rd.fcoe disabling support"
+patch usr/lib/dracut/hooks/pre-trigger/03-lldpad.sh <<EOF
+--- ../initrd.orig/usr/lib/dracut/hooks/pre-trigger/03-lldpad.sh	2021-05-12 16:32:44.007007124 -0400
++++ usr/lib/dracut/hooks/pre-trigger/03-lldpad.sh	2021-05-12 16:35:31.321509139 -0400
+@@ -1,5 +1,10 @@
+ #!/bin/bash
+ 
++if ! getargbool 0 rd.fcoe -d -n rd.nofcoe; then
++    info "rd.fcoe=0: skipping lldpad activation"
++    return 0
++fi
++
+ # Note lldpad will stay running after switchroot, the system initscripts
+ # are to kill it and start a new lldpad to take over. Data is transfered
+ # between the 2 using a shm segment
+EOF
+
+echo "-->patch usr/lib/dracut/hooks/cmdline/99-parse-fcoe.sh with rd.fcoe disabling support"
+patch usr/lib/dracut/hooks/cmdline/99-parse-fcoe.sh <<EOF
+--- ../initrd.orig/usr/lib/dracut/hooks/cmdline/99-parse-fcoe.sh	2021-05-12 16:32:44.008007121 -0400
++++ usr/lib/dracut/hooks/cmdline/99-parse-fcoe.sh	2021-05-12 16:36:56.874254504 -0400
+@@ -20,6 +20,10 @@
+ # If it's not set we don't continue
+ [ -z "$fcoe" ] && return
+ 
++if ! getargbool 0 rd.fcoe -d -n rd.nofcoe; then
++    info "rd.fcoe=0: skipping fcoe"
++    return 0
++fi
+ 
+ # BRCM: Later, should check whether bnx2x is loaded first before loading bnx2fc so do not load bnx2fc when there are no Broadcom adapters
+ [ -e /sys/bus/fcoe/ctlr_create ] || modprobe -b -a fcoe || die "FCoE requested but kernel/initrd does not support FCoE"
+EOF
+
 echo "--> Rebuild the initrd"
 if [ -f $output_dir/new-initrd.img ]; then
     mv -f $output_dir/new-initrd.img $output_dir/initrd.img-backup-$timestamp
