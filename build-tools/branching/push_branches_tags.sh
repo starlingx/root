@@ -17,6 +17,7 @@
 PUSH_BRANCHES_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 
 source "${PUSH_BRANCHES_TAGS_SH_DIR}/../git-repo-utils.sh"
+source "${PUSH_BRANCHES_TAGS_SH_DIR}/../url_utils.sh"
 
 usage () {
     echo "push_branches_tags.sh --branch=<branch> [--tag=<tag>] [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest ]"
@@ -151,6 +152,8 @@ for subgit in $SUBGITS; do
     (
     cd $subgit
 
+    git fetch --all
+
     branch_check=$(git branch -a --list $branch)
     if [ -z "$branch_check" ]; then
         echo_stderr "ERROR: Expected branch '$branch' to exist in ${subgit}"
@@ -169,21 +172,49 @@ for subgit in $SUBGITS; do
         exit 1
     fi
 
-    if [ "${review_method}" == "gerrit" ]; then
-        remote=$(git_repo_review_remote)
-    else
-        remote=$(git_repo_remote)
+    remote=$(git_remote)
+    if [ "${remote}" == "" ]; then
+        echo_stderr "ERROR: Failed to determine remote in ${manifest_dir}"
+        exit 1
     fi
 
-    if [ "${remote}" == "" ]; then
-        echo_stderr "ERROR: Failed to determine remote in ${subgit}"
+    if [ "${review_method}" == "gerrit" ]; then
+        review_remote=$(git_repo_review_remote)
+    else
+        review_remote=${remote}
+    fi
+
+    if [ "${review_remote}" == "" ]; then
+        echo_stderr "ERROR: Failed to determine review_remote in ${subgit}"
         exit 1
+    fi
+
+    branch_check=$(git branch -a --list $remote/$branch)
+    if [ "${branch_check}" != "" ]; then
+        echo "Branch $branch already exists in ${subgit}"
+        exit 0
     fi
 
     echo "Pushing branch $branch in ${subgit}"
     if [ "${review_method}" == "gerrit" ]; then
-        echo "git push --tags ${remote} ${branch}"
-        git push --tags ${remote} ${branch}
+        url=$(git_repo_review_url)
+        if [ "${review_remote}" == "" ]; then
+            echo_stderr "ERROR: Failed to determine review_url in ${subgit}"
+            exit 1
+        fi
+
+        host=$(url_server "${url}")
+        port=$(url_port "${url}")
+        path=$(url_path "${url}")
+        if [ "${host}" == "review.opendev.org" ]; then
+            git push ${review_remote} ${tag} && \
+            ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag} && \
+            git config --local --replace-all "branch.${branch}.merge" refs/heads/${branch} && \
+            git review --topic="${branch}"
+        else
+            echo "git push --tags ${remote} ${branch}"
+            git push --tags ${remote} ${branch}
+        fi
     else
         echo "git push --tags --set-upstream ${remote} ${branch}"
         git push --tags --set-upstream ${remote} ${branch}
@@ -232,23 +263,44 @@ if [ $MANIFEST -eq 1 ]; then
         exit 1
     fi
 
-
-    remote=$(git_review_remote)
+    remote=$(git_remote)
     if [ "${remote}" == "" ]; then
         echo_stderr "ERROR: Failed to determine remote in ${manifest_dir}"
+        exit 1
+    fi
+
+    review_remote=$(git_review_remote)
+    if [ "${review_remote}" == "" ]; then
+        echo_stderr "ERROR: Failed to determine review_remote in ${manifest_dir}"
         exit 1
     fi
 
     echo "Pushing branch $branch in ${manifest_dir}"
     if [ "${review_method}" == "gerrit" ]; then
         # Is a reviewless push possible as part of creating a new branch in gerrit?
-        git push --tags ${remote} ${branch}
+        url=$(git_review_url)
+        if [ "${review_remote}" == "" ]; then
+            echo_stderr "ERROR: Failed to determine review_url in ${subgit}"
+            exit 1
+        fi
+
+        host=$(url_server "${url}")
+        port=$(url_port "${url}")
+        path=$(url_path "${url}")
+        if [ "${host}" == "review.opendev.org" ]; then
+            git push ${review_remote} ${tag} && \
+            ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag} && \
+            git config --local --replace-all "branch.${branch}.merge" refs/heads/${branch} && \
+            git review --yes --topic="${branch}"
+        else
+            git push --tags ${review_remote} ${branch}
+        fi
     else
-        git push --tags --set-upstream ${remote} ${branch}
+        git push --tags --set-upstream ${review_remote} ${branch}
     fi
 
     if [ $? != 0 ] ; then
-        echo_stderr "ERROR: Failed to push tag '${tag}' to remote '${remote}' in  ${manifest_dir}"
+        echo_stderr "ERROR: Failed to push tag '${tag}' to remote '${review_remote}' in  ${manifest_dir}"
         exit 1
     fi
     ) || exit 1
