@@ -92,7 +92,7 @@ function install_deps {
 
     echo "Debug: List of deps to resolve: ${DEP_LIST_ARRAY[@]}"
 
-    if [ ${#DEP_LIST_ARRAYi[@]} -eq 0 ]; then
+    if [ ${#DEP_LIST_ARRAY[@]} -eq 0 ]; then
         return 0
     fi
 
