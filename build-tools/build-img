@@ -566,7 +566,7 @@ if [ ${#RPM_ADDON_LIST[@]} -gt 0 ] ; then
     pushd $MY_WORKSPACE
     patch_file="PATCH.img-addon"
     patched_iso="$TEMPFILES_DIR/bootimage_${AUTO_MODE}${GRAPHICAL_SUFFIX}_patched.iso"
-    cmd=("$PATCH_BUILD" --id "${patch_file}" --summary "additional packages for qcow2 image" --desc "Adds customizations to qcow2 image")
+    cmd=("$PATCH_BUILD" --id "${patch_file}" --summary "additional packages for qcow2 image" --desc "Adds customizations to qcow2 image" --status "REL" --reboot-required "N")
     for rpm_addon in "${RPM_ADDON_LIST[@]}"; do
         cmd+=(--all-nodes "${rpm_addon}")
     done

@@ -5,6 +5,7 @@ config_opts['chroot_setup_cmd'] = 'install @buildsys-build'
 config_opts['dist'] = 'el7'  # only useful for --resultdir variable subst
 config_opts['releasever'] = '7'
 config_opts['package_manager'] = 'yum'
+config_opts['yum_builddep_command'] = 'MY_REPO_DIR/build-tools/yum-builddep-wrapper'
 config_opts['use_bootstrap'] = False
 config_opts['use_bootstrap_image'] = False
 config_opts['rpmbuild_networking'] = False

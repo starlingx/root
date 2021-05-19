@@ -25,7 +25,14 @@
 
 export ME=$(basename "$0")
 CMDLINE="$ME $@"
+BUILD_RPMS_PARALLEL_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 
+# Set PKG_MANAGER for our build environment.
+source "${BUILD_RPMS_PARALLEL_DIR}/pkg-manager-utils.sh"
+
+
+# Build for distribution.  Currently 'centos' is only supported value.
+export DISTRO="centos"
 
 CREATEREPO=$(which createrepo_c)
 if [ $? -ne 0 ]; then
@@ -42,6 +49,7 @@ if [ ! -d ${LOCAL_REPO} ]; then
     fi
 fi
 
+# Make sure we have a dependency cache
 DEPENDANCY_DIR="${LOCAL_REPO}/dependancy-cache"
 SRPM_DIRECT_REQUIRES_FILE="$DEPENDANCY_DIR/SRPM-direct-requires"
 SRPM_TRANSITIVE_REQUIRES_FILE="$DEPENDANCY_DIR/SRPM-transitive-requires"
@@ -118,7 +126,7 @@ create-no-clean-list () {
        local g
 
        for g in $install_groups; do
-           # Find manditory packages in the group.
+           # Find mandatory packages in the group.
            # Discard anything before (and including) 'Mandatory Packages:'
            # and anything after (and including) 'Optional Packages:'.
            # Also discard leading spaces or '+' characters.
@@ -135,7 +143,7 @@ create-no-clean-list () {
 
        while [ $noclean_list_len -gt $noclean_last_list_len ]; do
            noclean_last_list_len=$noclean_list_len
-           noclean_list=$( (dnf -c $MY_YUM_CONF deplist $noclean_list 2>> /dev/null | grep provider: | awk '{ print $2 }' | awk -F . '{ print $1 }'; for p in $noclean_list; do echo $p; done) | sort --uniq)
+           noclean_list=$( (${PKG_MANAGER} -c $MY_YUM_CONF deplist $noclean_list 2>> /dev/null | grep provider: | awk '{ print $2 }' | awk -F . '{ print $1 }'; for p in $noclean_list; do echo $p; done) | sort --uniq)
            noclean_list_len=$(echo $noclean_list | wc -w)
        done
 
@@ -475,7 +483,7 @@ kill_descendents ()
 
     local relevant_recursive_children="$ME"
     local relevant_recursive_promote_children="mock"
-    local relevant_other_children="mockchain-parallel"
+    local relevant_other_children="mockchain-parallel mockchain-parallel-1.3.4 mockchain-parallel-1.4.16 mockchain-parallel-2.6 mockchain-parallel-2.7"
 
     local recursive_promote_children=$(for relevant_child in $relevant_recursive_promote_children; do pgrep -P $kill_pid $relevant_child; done)
     local recursive_children=$(for relevant_child in $relevant_recursive_children; do pgrep -P $kill_pid $relevant_child; done)
@@ -964,7 +972,24 @@ mock_clean_metadata_cfg () {
       return 1
    fi
 
-   CMD=$((cat $CFG; grep config_opts\\[\'yum.conf\'\\\] $CFG | sed 's#\\n#\n#g') | grep '^[[]' | grep -v main | sed 's/[][]//g' | sed 's#^#yum --enablerepo=#' | sed 's#$# clean metadata#' | sort -u | tr '\n' ';')
+   #
+   # From mock config, extract the embedded yum/dnf config.
+   # Then extract the repo definitions,
+   # and convert to a series of yum commands to clean the 
+   # metadata one repo at a time.   e.g.
+   # CMD="yum --disablerepo=* --enablerepo=StxCentos7Distro clean metadata; \
+   #      yum --disablerepo=* --enablerepo=StxCentos7Distro-rt clean metadata;
+   #      ...
+   #     "
+   #
+   CMD=$((grep -e config_opts\\[\'yum.conf\'\\\] $CFG \
+               -e config_opts\\[\'dnf.conf\'\\\] $CFG | \
+          sed 's#\\n#\n#g') | \
+         grep '^[[]' | \
+         grep -v main | \
+         sed -e 's/[][]//g' -e "s#^#${PKG_MANAGER} --disablerepo=* --enablerepo=#" -e 's#$# clean metadata#' | \
+         sort -u | \
+         tr '\n' ';')
    echo "$MOCK --root $CFG --configdir $(dirname $CFG) --chroot bash -c $CMD" &> $TMP
    trapwrap_n $CFG $MOCK --root $CFG --configdir $(dirname $CFG) --chroot "bash -c '($CMD)'" &>>$TMP
    RC=$?
@@ -1129,6 +1154,7 @@ clean_yum_cache_cfg () {
    return $RC
 }
 
+
 clean_yum_cache () {
    echo "${FUNCNAME[0]}: in"
    clean_yum_cache_cfg $BUILD_CFG
@@ -1248,7 +1274,6 @@ while true ; do
         *) echo "Internal error!" ; exit 1 ;;
     esac
 done
-
 
 # Reset variables
 if [ -n "$MY_WORKSPACE" ]; then

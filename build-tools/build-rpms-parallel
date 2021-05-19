@@ -122,6 +122,10 @@ number_of_users () {
     users | tr ' ' '\n' | sort --uniq | wc -l
 }
 
+total_mem_gb () {
+    free -g | grep 'Mem:' | awk '{ print $2 }'
+}
+
 available_mem_gb () {
     free -g | grep 'Mem:' | awk '{ print $7 }'
 }
@@ -238,26 +242,41 @@ compute_resources () {
     local users=$(number_of_users)
     if [ $users -lt 1 ]; then users=1; fi
     local mem=$(available_mem_gb)
+    local total_mem=$(total_mem_gb)
     local disk=$(available_disk_gb)
     local cpus=$(number_of_cpus)
     local num_users=$(sqrt $users)
     local num_build=$(number_of_builds_in_progress)
     num_build=$((num_build+1))
-    echo "compute_resources: total: cpus=$cpus, mem=$mem, disk=$disk, weight=$weight, num_build=$num_build"
+    echo "compute_resources: total: cpus=$cpus, total_mem=$total_mem, avail_mem=$mem, disk=$disk, weight=$weight, num_build=$num_build"
 
     # What fraction of the machine will we use
     local share_factor=$num_users
     if [ $share_factor -gt $((MAX_SHARE_FACTOR+num_build-1)) ]; then share_factor=$((MAX_SHARE_FACTOR+num_build-1)); fi
     if [ $share_factor -lt $num_build ]; then share_factor=$num_build; fi
-    local mem_share_factor=$((share_factor-num_build))
+
+    # What fraction of free memory can we use.  
+    #  e.g.
+    #  We intend to support 4 concurrent builds (share_factor)
+    #  Two builds (excluding ours) are already underway (num_build-1)
+    #  So we should be able to support 2 more builds (mem_share_factor)
+    local mem_share_factor=$((share_factor-(num_build-1)))
     if [ $mem_share_factor -lt 1 ]; then mem_share_factor=1; fi
+
     echo "compute_resources: share_factor=$share_factor mem_share_factor=$mem_share_factor"
 
     # What resources are we permitted to use
+    #   Continuing the example from above ... memory share is the lesser of
+    #   - Half the available memory     (mem/mem_share_factor)
+    #   - A quarter of the total memory (total_mem/share_factor)
     local mem_share=$(((mem-MEMORY_RESERVE)/mem_share_factor))
     if [ $mem_share -lt 0 ]; then mem_share=0; fi
+    local total_mem_share=$(((total_mem-MEMORY_RESERVE)/share_factor))
+    if [ $total_mem_share -lt 0 ]; then total_mem_share=0; fi
+    if [ $mem_share -gt $total_mem_share ]; then mem_share=$total_mem_share; fi
     local disk_share=$((disk/share_factor))
     local cpus_share=$((cpus/share_factor))
+
     echo "compute_resources: our share: cpus=$cpus_share, mem=$mem_share, disk=$disk_share"
 
     # How many build jobs, how many jobs will use tmpfs, and how much mem for each tmpfs
@@ -293,7 +312,7 @@ compute_resources () {
         fi
     done
 
-    # Our output is saved in environmnet variables
+    # Our output is saved in environment variables
     MOCKCHAIN_RESOURCE_ALLOCATION=$(echo $x | sed 's#^:##')
     MAX_WORKERS=$workers
     echo "compute_resources: MAX_WORKERS=$MAX_WORKERS, MOCKCHAIN_RESOURCE_ALLOCATION=$MOCKCHAIN_RESOURCE_ALLOCATION"
@@ -654,7 +673,7 @@ kill_descendents ()
 
     local relevant_recursive_children="$ME"
     local relevant_recursive_promote_children="mock"
-    local relevant_other_children="mockchain-parallel mockchain-parallel-1.3.4 mockchain-parallel-1.4.16"
+    local relevant_other_children="mockchain-parallel mockchain-parallel-1.3.4 mockchain-parallel-1.4.16 mockchain-parallel-2.6 mockchain-parallel-2.7"
 
     local recursive_promote_children=$(for relevant_child in $relevant_recursive_promote_children; do pgrep -P $kill_pid $relevant_child; done)
     local recursive_children=$(for relevant_child in $relevant_recursive_children; do pgrep -P $kill_pid $relevant_child; done)
@@ -1181,14 +1200,24 @@ mock_clean_metadata_cfg () {
       return 1
    fi
 
-   CMD=$((cat $CFG; \
-                 grep config_opts\\[\'yum.conf\'\\\] $CFG | \
-                 sed 's#\\n#\n#g') | \
-                 grep '^[[]' | \
-                 grep -v main | \
-                 sed -e 's/[][]//g' -e "s#^#${PKG_MANAGER} --enablerepo=#" -e 's#$# clean metadata#' | \
-                 sort -u | \
-                 tr '\n' ';')
+   #
+   # From mock config, extract the embedded yum/dnf config.
+   # Then extract the repo definitions,
+   # and convert to a series of yum commands to clean the 
+   # metadata one repo at a time.   e.g.
+   # CMD="yum --disablerepo=* --enablerepo=StxCentos7Distro clean metadata; \
+   #      yum --disablerepo=* --enablerepo=StxCentos7Distro-rt clean metadata;
+   #      ...
+   #     "
+   #
+   CMD=$((grep -e config_opts\\[\'yum.conf\'\\\] $CFG \
+               -e config_opts\\[\'dnf.conf\'\\\] $CFG | \
+          sed 's#\\n#\n#g') | \
+         grep '^[[]' | \
+         grep -v main | \
+         sed -e 's/[][]//g' -e "s#^#${PKG_MANAGER} --disablerepo=* --enablerepo=#" -e 's#$# clean metadata#' | \
+         sort -u | \
+         tr '\n' ';')
    echo "$MOCK --root $CFG --configdir $(dirname $CFG) --chroot bash -c $CMD" &> $TMP
    trapwrap_n $CFG $MOCK --root $CFG --configdir $(dirname $CFG) --chroot "bash -c '($CMD)'" &>>$TMP
    RC=$?
@@ -2338,6 +2367,7 @@ if [ $CAREFUL -eq 1 ]; then
    CMD_OPTIONS="$MOCK_PASSTHROUGH --no-cleanup-after"
 fi
 
+CMD_OPTIONS+=" $MOCK_PASSTHROUGH --enable-plugin=package_state"
 CMD_OPTIONS+=" --log=$MOCKCHAIN_LOG"
 
 echo "CAREFUL=$CAREFUL"

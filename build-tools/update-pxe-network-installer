@@ -100,6 +100,7 @@ find_and_copy_rpm 'e1000e kernel module'             'kmod-e1000e-[0-9]*.x86_64.
 find_and_copy_rpm 'i40e kernel module'               'kmod-i40e-[0-9]*.x86_64.rpm'                  std "$kernel_rpms_std"
 find_and_copy_rpm 'ixgbe kernel module'              'kmod-ixgbe-[0-9]*.x86_64.rpm'                 std "$kernel_rpms_std"
 find_and_copy_rpm 'mlnx-ofa kernel module'           'mlnx-ofa_kernel-modules-[0-9]*.x86_64.rpm'    std "$kernel_rpms_std"
+find_and_copy_rpm 'ice kernel module'                'kmod-ice-[0-9]*.x86_64.rpm'                   std "$kernel_rpms_std"
 echo " -------- successfully found standard kernel rpm and related kernel modules --------"
 echo ""
 

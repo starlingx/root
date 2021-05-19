@@ -20,3 +20,10 @@ RUN set -ex ;\
 COPY docker-build-wheel.sh /
 COPY ${BUILD_STREAM}-wheels.cfg /wheels.cfg
 
+# Python2 packages
+RUN set -ex; \
+    yum -y install python python-devel ;\
+    wget https://bootstrap.pypa.io/pip/2.7/get-pip.py ;\
+    python get-pip.py
+COPY ${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
+

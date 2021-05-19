@@ -26,7 +26,6 @@ IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PREFIX=dev
 LATEST_PREFIX=""
 PUSH=no
-CONFIG_FILE=""
 HTTP_PROXY=""
 HTTPS_PROXY=""
 NO_PROXY=""
@@ -34,16 +33,13 @@ DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 BASE=
 WHEELS=
-WHEELS_ALTERNATE=
-DEFAULT_CONFIG_FILE_DIR="${MY_REPO}/build-tools/build-docker-images"
-DEFAULT_CONFIG_FILE_PREFIX="docker-image-build"
+WHEELS_PY2=
 CLEAN=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
 declare -a ONLY
 declare -a SKIP
-declare -a SERVICES_ALTERNATE
 declare -i MAX_ATTEMPTS=1
 
 function usage {
@@ -52,30 +48,32 @@ Usage:
 $(basename $0)
 
 Options:
-    --os:         Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
-    --version:    Specify version for output image
-    --stream:     Build stream, stable or dev (default: stable)
-    --base:       Specify base docker image (required option)
-    --wheels:     Specify path to wheels tarball or image, URL or docker tag (required option)
-    --wheels-alternate: Specify path to alternate wheels tarball or image, URL or docker tag
-    --push:       Push to docker repo
-    --http_proxy: Set proxy <URL>:<PORT>, urls splitted with ","
-    --https_proxy: Set proxy <URL>:<PORT>, urls splitted with ","
-    --no_proxy: Set proxy <URL>, urls splitted with ","
-    --user:       Docker repo userid
-    --registry:   Docker registry
-    --prefix:     Prefix on the image tag (default: dev)
-    --latest:     Add a 'latest' tag when pushing
+    --os:            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --version:       Specify version for output image
+    --stream:        Build stream, stable or dev (default: stable)
+    --base:          Specify base docker image (required option)
+    --wheels:        Specify path to wheels tarball or image, URL or docker tag
+                     (required when building loci projects)
+    --wheels-py2:    Use this wheels tarball for Python2 projects
+                     (default: work out from --wheels)
+    --wheels-alternate: same as --wheels-py2
+    --push:          Push to docker repo
+    --http_proxy:    Set proxy <URL>:<PORT>, urls splitted with ","
+    --https_proxy:   Set proxy <URL>:<PORT>, urls splitted with ","
+    --no_proxy:      Set proxy <URL>, urls splitted with ","
+    --user:          Docker repo userid
+    --registry:      Docker registry
+    --prefix:        Prefix on the image tag (default: dev)
+    --latest:        Add a 'latest' tag when pushing
     --latest-prefix: Alternative prefix on the latest image tag
-    --clean:      Remove image(s) from local registry
+    --clean:         Remove image(s) from local registry
     --only <image> : Only build the specified image(s). Multiple images
                      can be specified with a comma-separated list, or with
                      multiple --only arguments.
     --skip <image> : Skip building the specified image(s). Multiple images
                      can be specified with a comma-separated list, or with
                      multiple --skip arguments.
-    --attempts:   Max attempts, in case of failure (default: 1)
-    --config-file:Specify a path to a config file which will specify additional arguments to be passed into the the command
+    --attempts:      Max attempts, in case of failure (default: 1)
 
 
 EOF
@@ -95,63 +93,6 @@ function is_in {
 
 function is_empty {
     test $# -eq 0
-}
-
-function get_args_from_file {
-    # get additional build args from specified file.
-    local -a config_items
-
-    echo "Get args from file: $1"
-    for i in $(cat $1)
-    do
-        config_items=($(echo $i | sed s/=/\ /g))
-        echo "--${config_items[0]} ${config_items[1]}"
-        case ${config_items[0]} in
-            base)
-                if [ -z "${BASE}" ]; then
-                    BASE=${config_items[1]}
-                fi
-                ;;
-            user)
-                if [ -z "${DOCKER_USER}" ]; then
-                    DOCKER_USER=${config_items[1]}
-                fi
-                ;;
-            proxy)
-                if [ -z "${PROXY}" ]; then
-                    PROXY=${config_items[1]}
-                fi
-                ;;
-            registry)
-                if [ -z "${DOCKER_REGISTRY}" ]; then
-                    # Add a trailing / if needed
-                    DOCKER_REGISTRY="${config_items[1]%/}/"
-                fi
-                ;;
-            only)
-                # Read comma-separated values into array
-                if [ -z "${ONLY}" ]; then
-                    # Read comma-separated values into array
-                    ONLY=(`echo ${config_items[1]} | sed s/,/\ /g`)
-                fi
-                ;;
-            wheels)
-                if [ -z "${WHEELS}" ]; then
-                    WHEELS=${config_items[1]}
-                fi
-                ;;
-            wheels_alternate)
-                if [ -z "${WHEELS_ALTERNATE}" ]; then
-                    WHEELS_ALTERNATE=${config_items[1]}
-                    echo "WHEELS_ALTERNATE: ${WHEELS_ALTERNATE}" >&2
-                fi
-                ;;
-            services_alternate)
-                SERVICES_ALTERNATE=(`echo ${config_items[1]} | sed s/,/\ /g`)
-                echo "SERVICES_ALTERNATE: ${SERVICES_ALTERNATE[@]}" >&2
-                ;;
-        esac
-    done
 }
 
 #
@@ -393,27 +334,54 @@ function build_image_loci {
     PROFILES=$(source ${image_build_file} && echo ${PROFILES})
     local PYTHON3
     PYTHON3=$(source ${image_build_file} && echo ${PYTHON3})
-
-    if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
-        echo "Skipping ${LABEL}"
-        return 0
-    fi
-
-    if ! is_empty ${ONLY[@]} && ! is_in ${PROJECT} ${ONLY[@]} && ! is_in ${LABEL} ${ONLY[@]}; then
-        echo "Skipping ${LABEL}"
-        return 0
-    fi
+    local MIRROR_LOCAL
+    MIRROR_LOCAL=$(source ${image_build_file} && echo ${MIRROR_LOCAL})
 
     echo "Building ${LABEL}"
+
+    local ORIGWD=${PWD}
+
+    if [ "${MIRROR_LOCAL}" = "yes" ]; then
+        # Setup a local mirror of PROJECT_REPO
+
+        local BARE_CLONES=${WORKDIR}/bare_clones
+        mkdir -p ${BARE_CLONES}
+        if [ $? -ne 0 ]; then
+            echo "Failed to create ${BARE_CLONES}" >&2
+            RESULTS_FAILED+=(${LABEL})
+            return 1
+        fi
+
+        local CLONE_DIR=${BARE_CLONES}/${PROJECT}.git
+
+        # Remove prior clone dir, if it exists
+        \rm -rf ${CLONE_DIR}
+
+        echo "Creating bare clone of ${PROJECT_REPO} for ${LABEL} build..."
+        git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
+            && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
+            && chmod a+x ${CLONE_DIR}/hooks/post-update \
+            && cd ${CLONE_DIR} \
+            && git update-server-info \
+            && cd ${ORIGWD}
+        if [ $? -ne 0 ]; then
+            echo "Failed to clone ${PROJECT_REPO}... Aborting ${LABEL} build"
+            RESULTS_FAILED+=(${LABEL})
+            cd ${ORIGWD}
+            return 1
+        fi
+
+        PROJECT_REPO=http://${HOSTNAME}:8088/${CLONE_DIR}
+    fi
 
     local -a BUILD_ARGS=
     BUILD_ARGS=(--build-arg PROJECT=${PROJECT})
     BUILD_ARGS+=(--build-arg PROJECT_REPO=${PROJECT_REPO})
     BUILD_ARGS+=(--build-arg FROM=${BASE})
 
-    if is_in ${LABEL} ${SERVICES_ALTERNATE[@]}; then
+    if [ "${PYTHON3}" != "yes" ] ; then
         echo "Python2 service ${LABEL}"
-        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_ALTERNATE})
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_PY2})
     else
         echo "Python3 service ${LABEL}"
         BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
@@ -518,16 +486,6 @@ function build_image_docker {
     local DOCKER_PATCHES
     DOCKER_PATCHES=$(source ${image_build_file} && for p in ${DOCKER_PATCHES}; do echo $(dirname ${image_build_file})/${p}; done)
 
-    if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
-        echo "Skipping ${LABEL}"
-        return 0
-    fi
-
-    if ! is_empty ${ONLY[@]} && ! is_in ${PROJECT} ${ONLY[@]} && ! is_in ${LABEL} ${ONLY[@]}; then
-        echo "Skipping ${LABEL}"
-        return 0
-    fi
-
     echo "Building ${LABEL}"
 
     local real_docker_context
@@ -625,16 +583,6 @@ function build_image_script {
     local SOURCE_PATCHES
     SOURCE_PATCHES=$(source ${image_build_file} && for p in ${SOURCE_PATCHES}; do echo $(dirname ${image_build_file})/${p}; done)
 
-    if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
-        echo "Skipping ${LABEL}"
-        return 0
-    fi
-
-    if ! is_empty ${ONLY[@]} && ! is_in ${PROJECT} ${ONLY[@]} && ! is_in ${LABEL} ${ONLY[@]}; then
-        echo "Skipping ${LABEL}"
-        return 0
-    fi
-
     # Validate the COMMAND option
     SUPPORTED_COMMAND_ARGS=('bash')
     local VALID_COMMAND=1
@@ -715,7 +663,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -742,8 +690,8 @@ while true; do
             WHEELS=$2
             shift 2
             ;;
-        --wheels-alternate)
-            WHEELS_ALTERNATE=$2
+        --wheels-alternate|--wheels-py2)
+            WHEELS_PY2=$2
             shift 2
             ;;
         --version)
@@ -813,10 +761,6 @@ while true; do
             MAX_ATTEMPTS=$2
             shift 2
             ;;
-        --config-file)
-            CONFIG_FILE=$2
-            shift 2
-            ;;
         -h | --help )
             usage
             exit 1
@@ -842,36 +786,79 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
-DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE_DIR}/${DEFAULT_CONFIG_FILE_PREFIX}-${OS}-${BUILD_STREAM}.cfg"
-
-# Read additional arguments from config file if it exists.
-if [[ -z "$CONFIG_FILE" ]] && [[ -f ${DEFAULT_CONFIG_FILE} ]]; then
-    CONFIG_FILE=${DEFAULT_CONFIG_FILE}
-fi
-if [[ ! -z  ${CONFIG_FILE} ]]; then
-    if [[ -f ${CONFIG_FILE} ]]; then
-        get_args_from_file ${CONFIG_FILE}
-    else
-        echo "Config file not found: ${CONFIG_FILE}"
-        exit 1
-    fi
-fi
-
-if [ -z "${WHEELS}" ]; then
-    echo "Path to wheels tarball must be specified with --wheels option." >&2
-    exit 1
-fi
-
-if [ ${#SERVICES_ALTERNATE[@]} -ne 0 ] && [ -z "${WHEELS_ALTERNATE}" ]; then
-    echo "Path to wheels-alternate tarball must be specified with --wheels-alternate option"\
-         "if python2 based services need to be build!" >&2
-    exit 1
-fi
-
 if [ -z "${BASE}" ]; then
     echo "Base image must be specified with --base option." >&2
     exit 1
 fi
+
+# Guess WHEELS_PY2 if missing
+if [[ -z "$WHEELS_PY2" && -n "$WHEELS" ]]; then
+    # http://foo/bar.tar?xxx#yyy => http://foo/bar-py2.tar?xxx#yyy
+    WHEELS_PY2="$(echo "$WHEELS" | sed -r 's,^([^#?]*)(\.tar)(\.gz|\.bz2|\.xz)?([#?].*)?$,\1-py2\2\3\4,i')"
+    if [[ "$WHEELS" == "$WHEELS_PY2" ]]; then
+        echo "Unable to guess --wheels-py2, please specify it explicitly" >&2
+        exit 1
+    fi
+fi
+
+# Find the directives files
+IMAGE_BUILD_FILES=()
+function find_image_build_files {
+    local image_build_inc_file image_build_dir image_build_file
+    local -A all_labels
+
+    for image_build_inc_file in $(find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_docker_images.inc"); do
+        basedir=$(dirname ${image_build_inc_file})
+        for image_build_dir in $(sed -e 's/#.*//' ${image_build_inc_file} | sort -u); do
+            for image_build_file in ${basedir}/${image_build_dir}/${OS}/*.${BUILD_STREAM}_docker_image; do
+
+                # reset & read image build directive vars
+                local BUILDER=
+                local PROJECT=
+                local LABEL=
+                local PYTHON3=
+                PROJECT="$(source ${image_build_file} && echo ${PROJECT})"
+                BUILDER="$(source ${image_build_file} && echo ${BUILDER})"
+                LABEL="$(source ${image_build_file} && echo ${LABEL})"
+                PYTHON3="$(source ${image_build_file} && echo ${PYTHON3})"
+
+                # make sure labels are unique
+                if [[ -n "${all_labels["$LABEL"]}" ]] ; then
+                    echo "The following files define the same LABEL $LABEL" >&2
+                    echo "  ${all_labels["$LABEL"]}" >&2
+                    echo "  ${image_build_file}" >&2
+                    exit 1
+                fi
+                all_labels["$LABEL"]="$image_build_file"
+
+                # skip images we don't want to build
+                if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
+                    continue
+                fi
+                if ! is_empty ${ONLY[@]} && ! is_in ${PROJECT} ${ONLY[@]} && ! is_in ${LABEL} ${ONLY[@]}; then
+                    continue
+                fi
+
+                # loci builders require a wheels tarball
+                if [[ "${BUILDER}" == "loci" ]] ; then
+                    # python3 projects require $WHEELS
+                    if [[ "${PYTHON3}" == "yes" && -z "${WHEELS}" ]] ; then
+                        echo "You are building python3 services with loci, but you didn't specify --wheels!" >&2
+                        exit 1
+                    # python2 projects require WHEELS_PY2
+                    elif [[ "${PYTHON3}" != "yes" && -z "${WHEELS_PY2}" ]] ; then
+                        echo "You are building python2 services with loci, but you didn't specify --wheels-py2!" >&2
+                        exit 1
+                    fi
+                fi
+
+                # Save image build file in the global list
+                IMAGE_BUILD_FILES+=("$image_build_file")
+            done
+        done
+    done
+}
+find_image_build_files
 
 IMAGE_TAG="${OS}-${BUILD_STREAM}"
 IMAGE_TAG_LATEST="${IMAGE_TAG}-latest"
@@ -933,15 +920,10 @@ if ! (grep -q rh-python36-mod_wsgi ${WORKDIR}/loci/bindep.txt); then
     echo 'rh-python36-mod_wsgi        [platform:rpm !platform:suse (apache python3)]' >>  ${WORKDIR}/loci/bindep.txt
 fi
 
-# Find the directives files
-for image_build_inc_file in $(find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_docker_images.inc"); do
-    basedir=$(dirname ${image_build_inc_file})
-    for image_build_dir in $(sed -e 's/#.*//' ${image_build_inc_file} | sort -u); do
-        for image_build_file in ${basedir}/${image_build_dir}/${OS}/*.${BUILD_STREAM}_docker_image; do
-            # Failures are reported by the build functions
-            build_image ${image_build_file}
-        done
-    done
+# Build everything
+for image_build_file in "${IMAGE_BUILD_FILES[@]}" ; do
+    # Failures are reported by the build functions
+    build_image ${image_build_file}
 done
 
 if [ "${CLEAN}" = "yes" -a ${#RESULTS_BUILT[@]} -gt 0 ]; then

@@ -2,10 +2,10 @@
 ---
 images:
   - name: docker.io/starlingx/k8s-cni-sriov
-    src_build_tag: master-centos-stable-20191203T153530Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/dac417bd31ed36d455e94db4aabe5916367654d4
-    # Tag determined based on release tag associated with upstream commit
-    tag: stx.4.0-v2.2
+    src_build_tag: master-centos-stable-20210218T003113Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/eccff3b0e661592084d9114a9a41816761e1f9b5
+    # Version determined by running 'git describe --tags' in clone of upstream repo
+    tag: stx.5.0-v2.6-7-gb18123d8
   - name: docker.io/starlingx/k8s-plugins-sriov-network-device
     src_build_tag: master-centos-stable-20200512T184214Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/e2dc5c2dd0042788697ade268ac5c24fe9dc2f8c
@@ -37,10 +37,10 @@ images:
     # Version determined by running 'git describe --tags' in clone of upstream repo
     tag: stx.4.0-v0.11.0-109-gc48c502
   - name: docker.io/starlingx/stx-oidc-client
-    src_build_tag: master-centos-stable-20200901T001315Z.0
-    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/957fc7c2092c7574a0a931012a0ec1cf5bb66429
-    # StarlingX app. Setting version to v1.0.3
-    tag: stx.5.0-v1.0.3
+    src_build_tag: master-centos-stable-20210119T015305Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/70147e64e910e9878dd5bdf464cfd9672894ba18
+    # StarlingX app. Setting version to v1.0.4
+    tag: stx.5.0-v1.0.4
   - name: docker.io/starlingx/dex
     src_build_tag: master-centos-stable-20200204T162546Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/5d6701bdf214e77f460f2e3dd2b6f7d3186830c8
@@ -55,9 +55,9 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/d46c9c55a9a9b7ea09e8d0fe66c8cfbeeb9ac75f
     tag: stx.5.0-v1.0.0
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-centos-stable-20200803T230630Z.0
-    src_ref: https://opendev.org/starlingx/distcloud-client/commit/7036f1fd11cd3bbae743aee89908e8195e4ded40
-    tag: stx.5.0-v1.4.0
+    src_build_tag: master-centos-stable-20210512T053357Z.0
+    src_ref: https://opendev.org/starlingx/distcloud-client/commit/d52a9080082db5fda2e77fb9e342f812ea8c17e1
+    tag: stx.5.0-v1.4.3
   - name: docker.io/starlingx/stx-vault-manager
     src_build_tag: master-centos-stable-20200722T035334Z.0
     src_ref: https://opendev.org/starlingx/vault-armada-app/commit/2cd206d6703cc2733e39ecad4539c0d5f1600550
@@ -68,3 +68,27 @@ images:
     src_ref: https://opendev.org/starlingx/portieris-armada-app/commit/a6123ffebb77f23d5182576be17e69d62fd8d701
     # Tag based on upstream package version
     tag: stx.5.0-v0.7.0
+  - name: docker.io/starlingx/stx-snmp
+    src_build_tag: master-centos-stable-20210105T023146Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/2b370655a7f9a506ea139cfffa6c466d1a82cce4
+    tag: stx.5.0-v1.0.0
+  - name: docker.io/starlingx/stx-fm-subagent
+    src_build_tag: master-centos-stable-20210105T023146Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/2b370655a7f9a506ea139cfffa6c466d1a82cce4
+    tag: stx.5.0-v1.0.0
+  - name: docker.io/starlingx/stx-fm-trap-subagent
+    src_build_tag: master-centos-stable-20210314T171252Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/5aca0dd1661bc87a7927c00cf95e0c8aa6f2e2a0
+    tag: stx.5.0-v1.0.1
+  - name: docker.io/starlingx/notificationservice-base
+    src_build_tag: master-centos-stable-20210504T193232Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/eb4458e37ebe170f4c1289362f9cbc55fb1f32aa
+    tag: stx.5.0-v1.0.4
+  - name: docker.io/starlingx/locationservice-base
+    src_build_tag: master-centos-stable-20210204T224209Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/545e6b6bb093235c2f8dab8d171f30c6ae8682d3
+    tag: stx.5.0-v1.0.1
+  - name: docker.io/starlingx/notificationclient-base
+    src_build_tag: master-centos-stable-20210503T050004Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/6e87c185baf927b28d0bcff6e2763a1e62c8145e
+    tag: stx.5.0-v1.0.4
