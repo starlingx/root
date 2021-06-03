@@ -38,7 +38,7 @@ usage () {
     echo "If lockdown is requested, all other projects get the current"
     echo "HEAD's sha set as the revision."
     echo "If default-revision is selected, then the manifest default revision"
-    wcho "will be set."
+    echo "will be set."
     echo ""
     echo "If a gitreview-default is selected, then all branched projects"
     echo "with a .gitreview file will have a defaultbranch entry added"

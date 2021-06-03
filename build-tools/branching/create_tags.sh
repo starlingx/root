@@ -23,7 +23,7 @@ CREATE_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${CREATE_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "create_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest [ --manifest-prefix <prefix> ] [ --lock-down ]]"
+    echo "create_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest [ --manifest-prefix <prefix> ] [ --lock-down | --soft-lock-down ] [ --default-revision ]]"
     echo " "
     echo "Create a git tag in all listed projects, and all projects"
     echo "hosted by all listed remotes.  Lists are comma separated."
@@ -32,9 +32,11 @@ usage () {
     echo "it will specify the tag as the revision for all tagged projects."
     echo "If lockdown is requested, all non-tagged projects get the current"
     echo "HEAD's sha set as the revision."
+    echo "If default-revision is selected, then the manifest default revision"
+    echo "will be set."
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-prefix:,lock-down,help -n 'create_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,help -n 'create_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -44,6 +46,7 @@ eval set -- "$TEMP"
 HELP=0
 MANIFEST=0
 LOCK_DOWN=0
+SET_DEFAULT_REVISION=0
 remotes=""
 projects=""
 tag=""
@@ -54,15 +57,18 @@ repo_root_dir=""
 
 while true ; do
     case "$1" in
-        -h|--help)         HELP=1 ; shift ;;
-        --remotes)         remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
-        --projects)        projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
-        --tag)             tag=$2; shift 2;;
-        --manifest)        MANIFEST=1 ; shift ;;
-        --manifest-prefix) manifest_prefix=$2; shift 2;;
-        --lock-down)       LOCK_DOWN=1 ; shift ;;
-        --)                shift ; break ;;
-        *)                 usage; exit 1 ;;
+        -h|--help)           HELP=1 ; shift ;;
+        --remotes)           remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --projects)          projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --tag)               tag=$2; shift 2;;
+        --manifest)          MANIFEST=1 ; shift ;;
+        --manifest-prefix)   manifest_prefix=$2; shift 2;;
+        --lock-down)         LOCK_DOWN=2 ; shift ;;
+        --hard-lock-down)    LOCK_DOWN=2 ; shift ;;
+        --soft-lock-down)    LOCK_DOWN=1 ; shift ;;
+        --default-revision)  SET_DEFAULT_REVISION=1 ; shift ;;
+        --)                  shift ; break ;;
+        *)                   usage; exit 1 ;;
     esac
 done
 
@@ -218,7 +224,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 
     echo "Creating manifest ${new_manifest_name}"
-    manifest_set_revision "${manifest}" "${new_manifest}" "refs/tags/$tag" ${LOCK_DOWN} $projects || exit 1
+    manifest_set_revision "${manifest}" "${new_manifest}" "refs/tags/$tag" ${LOCK_DOWN} ${SET_DEFAULT_REVISION} $projects || exit 1
 
     echo "Committing ${new_manifest_name} in ${new_manifest_dir}"
     git add ${new_manifest_name} || exit 1

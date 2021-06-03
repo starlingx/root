@@ -20,7 +20,7 @@ source "${PUSH_BRANCHES_TAGS_SH_DIR}/../git-repo-utils.sh"
 source "${PUSH_BRANCHES_TAGS_SH_DIR}/../url_utils.sh"
 
 usage () {
-    echo "push_branches_tags.sh --branch=<branch> [--tag=<tag>] [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest ]"
+    echo "push_branches_tags.sh --branch=<branch> [--tag=<tag>] [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest ] [ --bypass-gerrit ]"
     echo ""
     echo "Push a pre-existing branch and tag into all listed projects, and all"
     echo "projects hosted by all listed remotes.  Lists are comma separated."
@@ -32,7 +32,7 @@ usage () {
     echo "A manifest push can also be requested.vision."
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,help -n 'push_branches_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,bypass-gerrit,manifest,help -n 'push_branches_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -41,6 +41,7 @@ eval set -- "$TEMP"
 
 HELP=0
 MANIFEST=0
+BYPASS_GERRIT=0
 remotes=""
 projects=""
 branch=""
@@ -51,6 +52,7 @@ repo_root_dir=""
 while true ; do
     case "$1" in
         -h|--help)        HELP=1 ; shift ;;
+        --bypass-gerrit)  BYPASS_GERRIT=1 ; shift ;;
         --remotes)        remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)       projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --branch)         branch=$2; shift 2;;
@@ -196,7 +198,7 @@ for subgit in $SUBGITS; do
     fi
 
     echo "Pushing branch $branch in ${subgit}"
-    if [ "${review_method}" == "gerrit" ]; then
+    if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
         url=$(git_repo_review_url)
         if [ "${review_remote}" == "" ]; then
             echo_stderr "ERROR: Failed to determine review_url in ${subgit}"
@@ -212,8 +214,8 @@ for subgit in $SUBGITS; do
             git config --local --replace-all "branch.${branch}.merge" refs/heads/${branch} && \
             git review --topic="${branch}"
         else
-            echo "git push --tags ${remote} ${branch}"
-            git push --tags ${remote} ${branch}
+            echo "git push --tags ${review_remote} ${branch}"
+            git push --tags ${review_remote} ${branch}
         fi
     else
         echo "git push --tags --set-upstream ${remote} ${branch}"
@@ -276,7 +278,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 
     echo "Pushing branch $branch in ${manifest_dir}"
-    if [ "${review_method}" == "gerrit" ]; then
+    if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
         # Is a reviewless push possible as part of creating a new branch in gerrit?
         url=$(git_review_url)
         if [ "${review_remote}" == "" ]; then

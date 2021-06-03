@@ -19,7 +19,7 @@ PUSH_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${PUSH_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "push_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest [--manifest-prefix <prefix>]]"
+    echo "push_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest [--manifest-prefix <prefix>]] [ --bypass-gerrit ]"
     echo " "
     echo "Push a pre-existing git tag into all listed projects, and all projects"
     echo "hosted by all listed remotes.  Lists are comma separated."
@@ -27,7 +27,7 @@ usage () {
     echo "A manifest push can also be requested."
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-prefix:,help -n 'push_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-prefix:,bypass-gerrit,help -n 'push_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -36,6 +36,7 @@ eval set -- "$TEMP"
 
 HELP=0
 MANIFEST=0
+BYPASS_GERRIT=0
 remotes=""
 projects=""
 tag=""
@@ -47,6 +48,7 @@ repo_root_dir=""
 while true ; do
     case "$1" in
         -h|--help)         HELP=1 ; shift ;;
+        --bypass-gerrit)  BYPASS_GERRIT=1 ; shift ;;
         --remotes)         remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)        projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --tag)             tag=$2; shift 2;;
@@ -145,21 +147,27 @@ for subgit in $SUBGITS; do
         exit 1
     fi
 
-    if [ "${review_method}" == "gerrit" ]; then
-        remote=$(git_repo_review_remote)
-    else
-        remote=$(git_repo_remote)
-    fi
-
+    remote=$(git_repo_review_remote)
     if [ "${remote}" == "" ]; then
         echo_stderr "ERROR: Failed to determine remote in ${subgit}"
         exit 1
     fi
 
-    echo "Pushing tag $tag in ${subgit}"
     if [ "${review_method}" == "gerrit" ]; then
-        echo "git push ${remote} ${tag}"
-        git push ${remote} ${tag}
+        review_remote=$(git_repo_review_remote)
+    else
+        review_remote=${remote}
+    fi
+
+    if [ "${review_remote}" == "" ]; then
+        echo_stderr "ERROR: Failed to determine review_remote in ${subgit}"
+        exit 1
+    fi
+
+    echo "Pushing tag $tag in ${subgit}"
+    if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
+        echo "git push ${review_remote} ${tag}"
+        git push ${review_remote} ${tag}
     else
         echo "git push ${remote} ${tag}"
         git push ${remote} ${tag}
@@ -209,14 +217,20 @@ if [ $MANIFEST -eq 1 ]; then
         exit 1
     fi
 
-    remote=$(git_review_remote)
+    remote=$(git_remote)
     if [ "${remote}" == "" ]; then
         echo_stderr "ERROR: Failed to determine remote in ${new_manifest_dir}"
         exit 1
     fi
 
+    review_remote=$(git_review_remote)
+    if [ "${review_remote}" == "" ]; then
+        echo_stderr "ERROR: Failed to determine review remote in ${new_manifest_dir}"
+        exit 1
+    fi
+
     echo "Pushing tag $tag in ${new_manifest_dir}"
-    if [ "${review_method}" == "gerrit" ]; then
+    if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
         git review
         if [ $? != 0 ] ; then
             echo_stderr "ERROR: Failed to create git review from ${new_manifest_dir}"
@@ -224,7 +238,7 @@ if [ $MANIFEST -eq 1 ]; then
         fi
         echo "When review is merged: please run ..."
         echo "   cd ${new_manifest_dir}"
-        echo "   git push ${remote} ${tag}"
+        echo "   git push ${review_remote} ${tag}"
     else
         git push ${remote} ${local_branch}:${remote_branch}
         git push ${remote} ${tag}:${tag}

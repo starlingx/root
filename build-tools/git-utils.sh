@@ -397,12 +397,41 @@ git_test_context () {
 
 git_local_branch () {
     local result=""
+    local sha=""
+
+    # Older gits don't support this
+    result=$(git branch  --show-current 2> /dev/null)
+    if [ "$result" != "" ]; then
+        echo $result
+        return 0
+    fi
+
+    # Might not work if detached and there are local commits
+    result=$(git branch | grep '^[*] ' | cut -b 3- | grep -v HEAD)
+    if [ "$result" != "" ]; then
+        echo $result
+        return 0
+    fi
+
+    # Find 'nearest' local branch that we detached from and/or added commits to
+    sha=$(git rev-parse HEAD)
+    while [ $? -eq 0 ]; do
+        result=$(git show-ref --head | grep -e "$sha refs/heads/" | sed "s#$sha refs/heads/##" | head -n 1)
+        if [ "$result" != "" ]; then
+            echo $result
+            return 0
+        fi
+
+        sha=$(git rev-parse $sha^ 2> /dev/null)
+    done
+
+    # This used to work on older git versions
     result=$(git name-rev --name-only HEAD)
     if [ "$result" == "" ] || [ "$result" == "undefined" ]; then
         return 1
     fi
 
-    # handle the case where a tag is returned by looking at the parent.
+    # Handle the case where a tag is returned by looking at the parent.
     # This weird case when a local commit is tagged and we were in
     # detached head state, or on 'default' branch.
     while git_is_tag $result; do
