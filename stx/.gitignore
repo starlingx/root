@@ -7,6 +7,7 @@
 *~
 installer-prebuilt
 /ansible-playbooks
+/audit-armada-app
 /cert-manager-armada-app
 /clients
 /compile
@@ -26,6 +27,7 @@ installer-prebuilt
 /integ
 /kernel
 /metal
+/metrics-server-armada-app
 /monitor-armada-app
 /monitoring
 /nfv
