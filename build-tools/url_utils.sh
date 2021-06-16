@@ -265,3 +265,23 @@ url_to_stx_mirror_url () {
     echo "$CENGN_PROTOCOL://$CENGN_HOST:$CENGN_PORT/$CENGN_URL_ROOT/$DISTRO/$URL_PATH"
     return 0
 }
+
+url_to_host () {
+    local URL="${1}"
+
+    # Strip                protocol,          path,         user/pwd,        port
+    echo "${URL}" | sed -e 's#^[^:]*://##' -e 's#/.*$##' -e 's#^[^@]*@##' -e 's#:.*$##'
+}
+
+host_to_domain () {
+    local host="${1}"
+    local elements=0
+
+    elements=$(echo "${host}" | sed 's#[^.]##g' |  wc --chars)
+    if [ $elements -gt 2 ]; then
+        # strip lead element
+        echo "${host}" | sed 's#^[^.]*.##'
+    else
+        echo "${host}"
+    fi
+}

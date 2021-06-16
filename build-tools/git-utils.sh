@@ -40,7 +40,6 @@ export GIT_LIST=$(git_list "$(git_ctx_root_dir)")
 #               as relative paths.
 export GIT_LIST_REL=$(for p in $GIT_LIST; do echo .${p#$(git_ctx_root_dir)}; done)
 
-
 #
 # git_list_containing_branch <dir> <branch>:
 #      Return a list of git root directories found under <dir> and
@@ -472,14 +471,61 @@ git_remote_branch () {
     git config branch.${local_branch}.merge | sed 's#^refs/heads/##'
 }
 
+# Usage: git_set_safe_gerrit_hosts HOST1 HOST2...
+# Set the host names that are safe to push reviews to
+GIT_SAFE_GERRIT_HOSTS=()
+git_set_safe_gerrit_hosts() {
+    GIT_SAFE_GERRIT_HOSTS=()
+    while [ "$#" -gt 0 ] ; do
+        GIT_SAFE_GERRIT_HOSTS+=("$1")
+        shift
+    done
+}
+
+# Usage: git_match_safe_gerrit_host HOSTNAME
+# Return true if given host name is safe to push reviews to
+# You have to call git_set_safe_gerrit_hosts() first
+git_match_safe_gerrit_host() {
+    local review_host="$1"
+    local host
+    for host in "${GIT_SAFE_GERRIT_HOSTS[@]}" ; do
+        if [ "${review_host}" == "${host}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 git_review_method () {
-    local url=""
+    local GIT_DIR
+    local url="" host=""
     url=$(git_remote_url) || exit 1
     if [[ "${url}" =~ "/git.starlingx.io/" || "${url}" =~ "/opendev.org/" ]]; then
         echo 'gerrit'
-    else
-        echo 'default'
+        return 0
     fi
+
+    GIT_DIR=$(git_root ${PWD}) || return 1
+
+    if [ ! -f ${GIT_DIR}/.gitreview ]; then
+        # No .gitreview file
+        echo 'default'
+        return 0
+    fi
+
+    if ! grep -q '\[gerrit\]' ${GIT_DIR}/.gitreview; then
+        # .gitreview file has no gerrit entry
+        echo 'default'
+        return 0
+    fi
+
+    review_host="$(grep host= ${GIT_DIR}/.gitreview | sed 's#^host=##' | head -n 1)"
+    if git_match_safe_gerrit_host "${review_host}" ; then
+        echo "gerrit"
+        return 0
+    fi
+    echo "default"
+
 }
 
 git_review_url () {

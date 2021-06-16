@@ -19,15 +19,24 @@ PUSH_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${PUSH_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "push_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest [--manifest-prefix <prefix>]] [ --bypass-gerrit ]"
+    echo "push_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ]"
+    echo "             [ --manifest [ --manifest-file=<manifest.xml> ] [--manifest-prefix <prefix>]]"
+    echo "             [ --bypass-gerrit ] [--safe-gerrit-host=<host>]"
+    echo "             [ --dry-run ]"
     echo " "
     echo "Push a pre-existing git tag into all listed projects, and all projects"
     echo "hosted by all listed remotes.  Lists are comma separated."
     echo ""
     echo "A manifest push can also be requested."
+    echo ""
+    echo "--manifest-file may be used to override the manifest file to be updated."
+    echo ""
+    echo "--safe-gerrit-host allows one to specify host names of gerrit servers"
+    echo "that are safe to push reviews to."
+
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-prefix:,bypass-gerrit,help -n 'push_tags.sh' -- "$@")
+TEMP=$(getopt -o h,n --long remotes:,projects:,tag:,manifest,manifest-file:,manifest-prefix:,bypass-gerrit,safe-gerrit-host:,help,dry-run -n 'push_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -35,6 +44,7 @@ fi
 eval set -- "$TEMP"
 
 HELP=0
+DRY_RUN=
 MANIFEST=0
 BYPASS_GERRIT=0
 remotes=""
@@ -45,19 +55,24 @@ manifest_prefix=""
 new_manifest=""
 repo_root_dir=""
 
+safe_gerrit_hosts=()
 while true ; do
     case "$1" in
         -h|--help)         HELP=1 ; shift ;;
-        --bypass-gerrit)  BYPASS_GERRIT=1 ; shift ;;
+        -n|--dry-run)      DRY_RUN="--dry-run" ; shift ;;
+        --bypass-gerrit)   BYPASS_GERRIT=1 ; shift ;;
         --remotes)         remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)        projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --tag)             tag=$2; shift 2;;
         --manifest)        MANIFEST=1 ; shift ;;
+        --manifest-file)   repo_set_manifest_file "$2"; shift 2;;
         --manifest-prefix) manifest_prefix=$2; shift 2;;
+        --safe-gerrit-host) safe_gerrit_hosts+=("$2") ; shift 2 ;;
         --)                shift ; break ;;
         *)                 usage; exit 1 ;;
     esac
 done
+git_set_safe_gerrit_hosts "${safe_gerrit_hosts[@]}"
 
 if [ $HELP -eq 1 ]; then
     usage
@@ -167,10 +182,10 @@ for subgit in $SUBGITS; do
     echo "Pushing tag $tag in ${subgit}"
     if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
         echo "git push ${review_remote} ${tag}"
-        git push ${review_remote} ${tag}
+        git push ${review_remote} ${tag} ${DRY_RUN}
     else
         echo "git push ${remote} ${tag}"
-        git push ${remote} ${tag}
+        git push ${remote} ${tag} ${DRY_RUN}
     fi
 
     if [ $? != 0 ] ; then
@@ -240,8 +255,8 @@ if [ $MANIFEST -eq 1 ]; then
         echo "   cd ${new_manifest_dir}"
         echo "   git push ${review_remote} ${tag}"
     else
-        git push ${remote} ${local_branch}:${remote_branch}
-        git push ${remote} ${tag}:${tag}
+        git push ${remote} ${local_branch}:${remote_branch} ${DRY_RUN}
+        git push ${remote} ${tag}:${tag} ${DRY_RUN}
     fi
 
     if [ $? != 0 ] ; then

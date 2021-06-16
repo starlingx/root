@@ -65,6 +65,11 @@ repo_root () {
 #    repo_manifest [<dir_path>]
 #
 
+REPO_MANIFEST_FILE=
+repo_set_manifest_file() {
+    REPO_MANIFEST_FILE="$1"
+}
+
 repo_manifest () {
     local query_dir="${1:-${PWD}}"
     local root_dir=""
@@ -73,6 +78,15 @@ repo_manifest () {
     root_dir="$(repo_root "${query_dir}")"
     if [ $? -ne 0 ]; then
         return 1
+    fi
+
+    if [[ -n "$REPO_MANIFEST_FILE" ]] ; then
+        if [[ "$REPO_MANIFEST_FILE" =~ ^/ ]] ; then
+            echo "$REPO_MANIFEST_FILE"
+        else
+            echo "${root_dir}/.repo/manifests/$REPO_MANIFEST_FILE"
+        fi
+        return 0
     fi
 
     repo_manifest="${root_dir}/.repo/manifest.xml"

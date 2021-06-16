@@ -24,7 +24,10 @@ CREATE_BRANCHES_AND_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )"
 source "${CREATE_BRANCHES_AND_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "create_branches_and_tags.sh --branch=<branch> [--tag=<tag>] [ --remotes=<remotes> ] [ --projects=<projects> ] [ --gitreview-default ] [ --manifest [ --lock-down  | --soft-lock-down ] [ --default-revision ]]"
+    echo "create_branches_and_tags.sh --branch=<branch> [--tag=<tag>]"
+    echo "                            [ --remotes=<remotes> ] [ --projects=<projects> ]"
+    echo "                            [ --manifest [ --manifest-file=<file.xml> ] [ --lock-down | --soft-lock-down ] [ --default-revision ]]"
+    echo "                            [ --gitreview-default ] [ --safe-gerrit-host=<host> ]"
     echo ""
     echo "Create a branch and a tag in all listed projects, and all"
     echo "projects hosted by all listed remotes.  Lists are comma separated."
@@ -43,9 +46,14 @@ usage () {
     echo "If a gitreview-default is selected, then all branched projects"
     echo "with a .gitreview file will have a defaultbranch entry added"
     echo "or updated."
+    echo ""
+    echo "--manifest-file may be used to override the manifest file to be updated."
+    echo ""
+    echo "--safe-gerrit-host allows one to specify host names of gerrit servers"
+    echo "that are safe to push reviews to."
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,help -n 'create_branches_and_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,safe-gerrit-host:,help -n 'create_branches_and_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -65,6 +73,7 @@ manifest=""
 new_manifest=""
 repo_root_dir=""
 
+safe_gerrit_hosts=()
 while true ; do
     case "$1" in
         -h|--help)           HELP=1 ; shift ;;
@@ -73,15 +82,18 @@ while true ; do
         --branch)            branch=$2; shift 2;;
         --tag)               tag=$2; shift 2;;
         --manifest)          MANIFEST=1 ; shift ;;
+        --manifest-file)     repo_set_manifest_file "$2" ; shift 2 ;;
         --lock-down)         LOCK_DOWN=2 ; shift ;;
         --hard-lock-down)    LOCK_DOWN=2 ; shift ;;
         --soft-lock-down)    LOCK_DOWN=1 ; shift ;;
         --default-revision)  SET_DEFAULT_REVISION=1 ; shift ;;
         --gitreview-default) GITREVIEW_DEFAULT=1 ; shift ;;
+        --safe-gerrit-host)  safe_gerrit_hosts+=("$2") ; shift 2 ;;
         --)                  shift ; break ;;
         *)                   usage; exit 1 ;;
     esac
 done
+git_set_safe_gerrit_hosts "${safe_gerrit_hosts[@]}"
 
 if [ $HELP -eq 1 ]; then
     usage

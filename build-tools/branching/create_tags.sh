@@ -23,7 +23,9 @@ CREATE_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${CREATE_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "create_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ] [ --manifest [ --manifest-prefix <prefix> ] [ --lock-down | --soft-lock-down ] [ --default-revision ]]"
+    echo "create_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ]"
+    echo "               [ --manifest [ --manifest-file=<manifest.xml> ] [ --manifest-prefix <prefix> ] [ --lock-down | --soft-lock-down ] [ --default-revision ]]"
+    echo "               [ --safe-gerrit-host=<host> ]"
     echo " "
     echo "Create a git tag in all listed projects, and all projects"
     echo "hosted by all listed remotes.  Lists are comma separated."
@@ -34,9 +36,14 @@ usage () {
     echo "HEAD's sha set as the revision."
     echo "If default-revision is selected, then the manifest default revision"
     echo "will be set."
+    echo ""
+    echo "--manifest-file may be used to override the manifest file to be updated."
+    echo ""
+    echo "--safe-gerrit-host allows one to specify host names of gerrit servers"
+    echo "that are safe to push reviews to."
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,help -n 'create_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-file:,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,safe-gerrit-host:,help -n 'create_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -55,6 +62,7 @@ new_manifest=""
 manifest_prefix=""
 repo_root_dir=""
 
+safe_gerrit_hosts=()
 while true ; do
     case "$1" in
         -h|--help)           HELP=1 ; shift ;;
@@ -62,15 +70,18 @@ while true ; do
         --projects)          projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --tag)               tag=$2; shift 2;;
         --manifest)          MANIFEST=1 ; shift ;;
+        --manifest-file)     repo_set_manifest_file "$2"; shift 2;;
         --manifest-prefix)   manifest_prefix=$2; shift 2;;
         --lock-down)         LOCK_DOWN=2 ; shift ;;
         --hard-lock-down)    LOCK_DOWN=2 ; shift ;;
         --soft-lock-down)    LOCK_DOWN=1 ; shift ;;
         --default-revision)  SET_DEFAULT_REVISION=1 ; shift ;;
+        --safe-gerrit-host)  safe_gerrit_hosts+=("$2") ; shift 2 ;;
         --)                  shift ; break ;;
         *)                   usage; exit 1 ;;
     esac
 done
+git_set_safe_gerrit_hosts "${safe_gerrit_hosts[@]}"
 
 if [ $HELP -eq 1 ]; then
     usage
