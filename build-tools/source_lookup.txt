@@ -72,7 +72,6 @@ http://glance.openstack.org openstack-glance 2015.1.0
 https://github.com/stackforge/packstack packstack 2014.1.0
 https://github.com/stackforge/puppet puppet 3.7.4
 http://www.drbd.org/ drbd-kernel 8.4.7
-http://pypi.python.org/pypi/django_openstack_auth/ python-django-openstack-auth 1.2.0
 http://ceph.com/ ceph 0.94.6
 https://sourceforge.net/p/ibmtpm20tss/tss/ci/v930/tree/ tss2 930
 https://git.centos.org/git/rpms/rt-setup rt-setup 1.59
