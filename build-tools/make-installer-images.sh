@@ -86,20 +86,40 @@ echo "--> extract files from new kernel and its modular rpms to initrd root"
 for kf in ${kernel_rpms_dir}/std/*.rpm ; do rpm2cpio $kf | cpio -idu; done
 
 # by now new kernel and its modules exist!
-# find new kernel in /boot/
+# find new kernel in /boot/vmlinuz-* or /lib/modules/*/vmlinuz
 echo "--> get new kernel image: vmlinuz"
-new_kernel="$(ls ./boot/vmlinuz-*)"
-echo $new_kernel
-if [ -f $new_kernel ];then
-    #copy out the new kernel
+new_kernel="$(ls ./boot/vmlinuz-* 2>/dev/null || ls ./lib/modules/*/vmlinuz 2>/dev/null || true)"
+echo "New kernel: \"${new_kernel}\""
+if [ -f "${new_kernel}" ];then
+    # copy out the new kernel
     if [ -f $output_dir/new-vmlinuz ]; then
         mv -f $output_dir/new-vmlinuz $output_dir/vmlinuz-backup-$timestamp
     fi
     cp -f $new_kernel $output_dir/new-vmlinuz
 
-    kernel_name=$(basename $new_kernel)
-    new_ver=$(echo $kernel_name | cut -d'-' -f2-)
-    echo $new_ver
+    if echo "${new_kernel}" | grep -q '^\./boot/vmlinuz'; then
+        kernel_name=$(basename $new_kernel)
+        new_ver=$(echo $kernel_name | cut -d'-' -f2-)
+        system_map="boot/System.map-${new_ver}"
+    elif echo "${new_kernel}" | grep -q '^\./lib/modules/'; then
+        new_ver="$(echo "${new_kernel}" | sed 's#^\./lib/modules/\([^/]\+\)/.*$#\1#')"
+        system_map="lib/modules/${new_ver}/System.map"
+    else
+        echo "Unrecognized new kernel path: ${new_kernel}"
+        exit -1
+    fi
+
+    if [ -z "${new_ver}" ]; then
+        echo "Could not determine new kernel version"
+        exit -1
+    fi
+
+    echo "New kernel version: ${new_ver}"
+
+    if ! [ -f "${system_map}" ]; then
+        echo "Could not find System.map file at: ${system_map}"
+        exit -1
+    fi
 else
     echo "ERROR: new kernel is NOT found!"
     exit -1
@@ -107,9 +127,9 @@ fi
 
 echo "-->check module dependencies in new initrd.img in chroot context"
 chroot $initrd_root /bin/bash -x <<EOF
-/usr/sbin/depmod -aeF "/boot/System.map-$new_ver" "$new_ver"
+/usr/sbin/depmod -aeF "/${system_map}" "$new_ver"
 if [ $? == 0 ]; then echo "module dependencies are satisfied!" ; fi
-## Remove the bisodevname package!
+## Remove the biosdevname package!
 rm -f ./usr/lib/udev/rules.d/71-biosdevname.rules ./usr/sbin/biosdevname
 exit
 EOF
@@ -279,9 +299,9 @@ for kf in ${kernel_rpms_dir}/std/*.rpm ; do rpm2cpio $kf | cpio -idu; done
 echo "-->check module dependencies in new squashfs.img in chroot context"
 #we are using the same new  kernel-xxx.rpm, so the $new_ver is the same
 chroot $squashfs_root /bin/bash -x <<EOF
-/usr/sbin/depmod -aeF "/boot/System.map-$new_ver" "$new_ver"
+/usr/sbin/depmod -aeF "/${system_map}" "$new_ver"
 if [ $? == 0 ]; then echo "module dependencies are satisfied!" ; fi
-## Remove the bisodevname package!
+## Remove the biosdevname package!
 rm -f ./usr/lib/udev/rules.d/71-biosdevname.rules ./usr/sbin/biosdevname
 exit
 EOF
