@@ -47,9 +47,9 @@ images:
     # Tag determined based on release tag associated with upstream commit
     tag: stx.4.0-v2.14.0-1
   - name: docker.io/starlingx/n3000-opae
-    src_build_tag: master-centos-stable-20200221T221248Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/f466dc94e721311ac922474a3bd0080776e3cf9a
-    tag: stx.4.0-v1.0.0
+    src_build_tag: master-centos-stable-20210716T025745Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/7c06f48a448e6c9a9d1f3cfce8596728b971a9a6
+    tag: stx.6.0-v1.0.1
   - name: docker.io/starlingx/rvmc
     src_build_tag: master-centos-stable-20201027T184226Z.0
     src_ref: https://opendev.org/starlingx/metal/commit/d46c9c55a9a9b7ea09e8d0fe66c8cfbeeb9ac75f
