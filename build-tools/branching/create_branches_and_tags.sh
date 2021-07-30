@@ -24,36 +24,52 @@ CREATE_BRANCHES_AND_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )"
 source "${CREATE_BRANCHES_AND_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "create_branches_and_tags.sh --branch=<branch> [--tag=<tag>]"
-    echo "                            [ --remotes=<remotes> ] [ --projects=<projects> ]"
-    echo "                            [ --manifest [ --manifest-file=<file.xml> ] [ --lock-down | --soft-lock-down ] [ --default-revision ]]"
-    echo "                            [ --gitreview-default ] [ --safe-gerrit-host=<host> ]"
+    echo "create_branches_and_tags.sh --branch=<branch> [--tag=<tag>] <options>"
     echo ""
-    echo "Create a branch and a tag in all listed projects, and all"
-    echo "projects hosted by all listed remotes.  Lists are comma separated."
+    echo "    The branch name must be provided.  The tag name can also be provided."
+    echo "    If the tag is omitted, one is automativally generate by adding the"
+    echo "    prefix 'v' to the branch name."
     echo ""
-    echo "The branch name must be provided.  The tag name can also be provided."
-    echo "If the tag is omitted, one is automativally generate by adding the"
-    echo "prefix 'v' to the branch name."
+    echo "selection options:"
+    echo "    [ --remotes=<remotes> ] [ --projects=<projects> ]"
     echo ""
-    echo "If a manifest is requested, the current manifest is modified."
-    echo "to specify the new branch for all select remotes and projects."
-    echo "If lockdown is requested, all other projects get the current"
-    echo "HEAD's sha set as the revision."
-    echo "If default-revision is selected, then the manifest default revision"
-    echo "will be set."
+    echo "    Create a branch and a tag in all listed projects, and all"
+    echo "    projects hosted by all listed remotes.  Lists are comma separated."
     echo ""
-    echo "If a gitreview-default is selected, then all branched projects"
-    echo "with a .gitreview file will have a defaultbranch entry added"
-    echo "or updated."
+    echo "gitreview options:"
+    echo "    Update any .gitreview files in branched projects."
     echo ""
-    echo "--manifest-file may be used to override the manifest file to be updated."
+    echo "    [ --gitreview-host <host> ]"
+    echo "                                Set or update 'host' field."
+    echo "    [ --gitreview-port <port> ]"
+    echo "                                Set or update 'port' field."
+    echo "    [ --gitreview-project ]"
+    echo "                                Set or update 'project' field."
+    echo "    [ --gitreview-default ]"
+    echo "                                Set or update 'defaultbranch' field."
+    echo "    [ --safe-gerrit-host=<host> ]"
+    echo "                                allows one to specify host names of gerrit"
+    echo "                                servers that are safe to push reviews to."
     echo ""
-    echo "--safe-gerrit-host allows one to specify host names of gerrit servers"
-    echo "that are safe to push reviews to."
+    echo "manifest options:"
+    echo "    [ --manifest ]"
+    echo "                        Modify the current repo manifest to specify the"
+    echo "                        new branch for all select remotes and projects."
+    echo "    [ --manifest-file=<file.xml> ]"
+    echo "                        Override the manifest file to be updated."
+    echo "    [ --hard-lock-down | --lockdown ]"
+    echo "                        All unselected projects get the current HEAD's"
+    echo "                        SHA set as the revision."
+    echo "    [ --soft-lock-down ]"
+    echo "                        All unselected projects with an revision that"
+    echo "                        is unset, or 'master', get the current HEAD's sha"
+    echo "                        set as the revision."
+    echo "    [ --default-revision ]"
+    echo "                        Set the default revision of the manifest."
+    echo ""
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,safe-gerrit-host:,help -n 'create_branches_and_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,gitreview-project,gitreview-host:,gitreview-port:,safe-gerrit-host:,help -n 'create_branches_and_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -64,6 +80,10 @@ HELP=0
 MANIFEST=0
 LOCK_DOWN=0
 GITREVIEW_DEFAULT=0
+GITREVIEW_PROJECT=0
+GITREVIEW_HOST=""
+GITREVIEW_PORT=""
+GITREVIEW_CHANGE=0
 SET_DEFAULT_REVISION=0
 remotes=""
 projects=""
@@ -88,11 +108,15 @@ while true ; do
         --soft-lock-down)    LOCK_DOWN=1 ; shift ;;
         --default-revision)  SET_DEFAULT_REVISION=1 ; shift ;;
         --gitreview-default) GITREVIEW_DEFAULT=1 ; shift ;;
+        --gitreview-project) GITREVIEW_PROJECT=1 ; shift ;;
+        --gitreview-host)    GITREVIEW_HOST=$2 ; shift 2;;
+        --gitreview-port)    GITREVIEW_PORT=$2 ; shift 2;;
         --safe-gerrit-host)  safe_gerrit_hosts+=("$2") ; shift 2 ;;
         --)                  shift ; break ;;
-        *)                   usage; exit 1 ;;
+        *)                   echo "unknown option $1"; usage; exit 1 ;;
     esac
 done
+
 git_set_safe_gerrit_hosts "${safe_gerrit_hosts[@]}"
 
 if [ $HELP -eq 1 ]; then
@@ -112,32 +136,109 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+if  [ $GITREVIEW_DEFAULT -ne 0 ] ||
+    [ $GITREVIEW_PROJECT -ne 0 ] ||
+    [ "$GITREVIEW_HOST" != "" ] ||
+    [ "$GITREVIEW_PORT" != "" ]; then
+    GITREVIEW_CHANGE=1
+fi
+
+update_field () {
+    local file=$1
+    local field=$2
+    local value=$3
+    local changed=0
+
+    if [ ! -f ${file} ]; then
+        echo "File ${file} not found"
+        return ${changed}
+    fi
+
+    if ! grep -q "^${field}=${value}$" ${file}; then
+        echo "Updating ${field} in ${file}"
+        if grep -q "^${field}=" ${file}; then
+            sed "s#\(${field}=\).*#\1${value}#" -i ${file}
+        else
+            echo "${field}=${value}" >> ${file}
+        fi
+        changed=1
+    else
+        echo "${field} in ${file} already set"
+    fi
+
+    return ${changed}
+}
+
 update_gitreview () {
     local DIR=$1
+    local need_rm=0
+    local need_commit=0
+    local message="Update .gitreview for ${branch}"
+    local new_host=0
     (
-    cd $DIR || exit 1
-    if [ $GITREVIEW_DEFAULT -eq 1 ] && [ -f .gitreview ]; then
-        if ! grep -q "^defaultbranch=$branch$" .gitreview; then
-            echo "Updating defaultbranch in ${DIR}/.gitreview"
-            if grep -q defaultbranch= .gitreview; then
-                sed "s#\(defaultbranch=\).*#\1$branch#" -i .gitreview
+    cd ${DIR} || exit 1
+
+    if [ ${GITREVIEW_CHANGE} -eq 1 ] && [ -f .gitreview ]; then
+        if [ "${GITREVIEW_HOST}" != "" ]; then
+            update_field ${PWD}/.gitreview host ${GITREVIEW_HOST} || need_commit=1
+            if [ ${need_commit} -ne 0 ]; then
+                new_host=1
+            fi
+        fi
+
+        if [ "${GITREVIEW_PORT}" != "" ]; then
+            update_field ${PWD}/.gitreview port ${GITREVIEW_PORT} || need_commit=1
+        fi
+
+        if [ ${GITREVIEW_PROJECT} -eq 1 ]; then
+            remote_url=$(git_repo_remote_url)
+            pull_url=${remote_url}
+            path=$(url_path ${pull_url})
+            project=${path%.git}
+            update_field ${PWD}/.gitreview project ${project} || need_commit=1
+        fi
+
+        if [ ${GITREVIEW_DEFAULT} -eq 1 ]; then
+            update_field ${PWD}/.gitreview defaultbranch ${branch} || need_commit=1
+        fi
+
+        if [ $need_commit -eq 1 ]; then
+            review_method=$(git_repo_review_method)
+            if [ "${review_method}" == "gerrit" ] ; then
+                timeout 15 git review -s
+                if [ $? != 0 ] ; then
+                    if [ ${new_host} -eq 0 ]; then
+                        echo_stderr "ERROR: failed to setup git review in ${DIR}"
+                        exit 1
+                    fi
+
+                    need_rm=1
+                    message="Delete .gitreview for ${branch}"
+                fi
             else
-                echo "defaultbranch=$branch" >>  .gitreview
+                need_rm=1
+                message="Delete .gitreview for ${branch}"
             fi
 
-            git add .gitreview
-            if [ $? != 0 ] ; then
-                echo_stderr "ERROR: failed to add .gitreview in ${DIR}"
-                exit 1
+            if [ ${need_rm} -eq 1 ]; then
+                git rm -f .gitreview
+                if [ $? != 0 ] ; then
+                    echo_stderr "ERROR: failed to add .gitreview in ${DIR}"
+                    exit 1
+                fi
+            else
+                git add .gitreview
+                if [ $? != 0 ] ; then
+                    echo_stderr "ERROR: failed to add .gitreview in ${DIR}"
+                    exit 1
+                fi
             fi
 
-            git commit -s -m "Update .gitreview for $branch"
+            git commit -s -m "${message}"
             if [ $? != 0 ] ; then
                 echo_stderr "ERROR: failed to commit .gitreview in ${DIR}"
                 exit 1
             fi
-        else
-            echo "defaultbranch in ${DIR}/.gitreview already set"
         fi
     fi
     )
@@ -211,8 +312,8 @@ fi
 echo "Finding subgits"
 SUBGITS=$(repo forall $projects -c 'echo '"$repo_root_dir"'/$REPO_PATH')
 
-# Go through all subgits and create the branch and tag if they does not already exist
-echo "Applying branched and tags"
+# Go through all subgits and create the branch and tag if it does not already exist
+echo "Applying branches and tags"
 (
 for subgit in $SUBGITS; do
     (
@@ -280,6 +381,8 @@ done
 
 if [ $MANIFEST -eq 1 ]; then
     (
+    echo "Starting manifest update"
+
     new_manifest_name=$(basename "${new_manifest}")
     new_manifest_dir=$(dirname "${new_manifest}")
     manifest_name=$(basename "${manifest}")

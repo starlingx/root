@@ -467,8 +467,35 @@ git_remote_url () {
 
 git_remote_branch () {
     local local_branch=""
+    local sha=""
+    local remote=""
+
+    # Our best bet is if the git config shows the local
+    # branch is tracking a remote branch.
     local_branch=$(git_local_branch) || return 1
     git config branch.${local_branch}.merge | sed 's#^refs/heads/##'
+    if [ ${PIPESTATUS[0]} -eq 0  ]; then
+        return 0
+    fi
+
+    # Before we can select a remote branch, we need to know which remote.
+    remote=$(git_remote)
+    if [ $? -ne 0 ] || [ "$remote" == "" ]; then
+        return 1
+    fi
+
+    # Find 'nearest' remote branch that we detached from and/or added commits to
+    sha=$(git rev-parse HEAD)
+    while [ $? -eq 0 ]; do
+        result=$(git show-ref --head | grep -e "$sha refs/remotes/$remote/" | sed "s#$sha refs/remotes/$remote/##" | head -n 1)
+        if [ "$result" != "" ]; then
+            echo $result
+            return 0
+        fi
+
+        sha=$(git rev-parse $sha^ 2> /dev/null)
+    done
+    return 1
 }
 
 # Usage: git_set_safe_gerrit_hosts HOST1 HOST2...
