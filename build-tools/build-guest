@@ -13,20 +13,7 @@
 BUILD_GUEST_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${BUILD_GUEST_DIR}/image-utils.sh"
 
-# Remind folks then need to be in the correct group to run mock commands
-# Note: cgts is our current alias for the mock group.  Should probably be
-# renamed as stx-build in a future update
-NEED_GROUP=cgts
-CURRENT_GID=$(id -g)
-NEED_GID=$(getent group $NEED_GROUP | cut -d: -f3)
-if [ $CURRENT_GID != $NEED_GID ]; then
-   echo "This command must be run using group '$NEED_GROUP'."
-   echo "Please run:"
-   echo "   newgrp $NEED_GROUP"
-   echo ""
-   echo "Then try again."
-   exit 1
-fi
+PROGNAME=$(basename "$0")
 
 # NOTE: TMP_DIR must end in '/'
 # NOTE: /tmp/ is now tmpfs like.  Can't be trusted across multiple mock commands
@@ -190,7 +177,24 @@ function create_rootfs {
 	printf "   Error -- Failed to install RPM packages\n";
 	exit 1
     fi
-    
+
+    # Make sure all requested packages are installed
+    MISSING=$(
+        $MOCK -r $GUEST_CFG --chroot -- rpm -q --whatprovides ${INC_RPM_LIST} ${TIS_RPM_LIST} \
+            | tee /tmp/dpanech.log \
+            | sed -n 's/^no package provides //p' \
+            | sort -u
+    )
+    if [ -n "$MISSING" ]; then
+        printf "=====\n"
+        printf "WARNING: The following RPMs requested in .inc files are missing or could not be installed:\n"
+        for zz in $MISSING ; do
+            echo "   [$zz]"
+        done
+        #echo $MISSING | tr ' ' '\n' | sed 's/^/\t/'
+        printf "=====\n"
+    fi
+
     # Remove RPMs that are not required in image (pruned package list)
     # NOTE: these are automatically installed from the mock init not
     # through dependencies.
@@ -264,7 +268,7 @@ function build_image {
     ROOTFS_EXCLUDE=rootfs-exclude.txt
 
     $MOCK -r $GUEST_CFG --copyin $GUEST_BUILD_DIR/$ROOTFS_EXCLUDE $TMP_DIR
-    $MOCK -r $GUEST_CFG --chroot -- tar -cf $TMP_DIR$ROOTFS_TAR -X $TMP_DIR$ROOTFS_EXCLUDE --numeric-owner /
+    $MOCK -r $GUEST_CFG --chroot -- tar -cf $TMP_DIR$ROOTFS_TAR -X $TMP_DIR$ROOTFS_EXCLUDE --exclude=$TMP_DIR$ROOTFS_TAR --numeric-owner /
     $MOCK -r $GUEST_CFG --copyout $TMP_DIR$ROOTFS_TAR $GUEST_DIR
     $MOCK -r $GUEST_CFG --chroot -- rm -f $TMP_DIR$ROOTFS_TAR
 
@@ -330,7 +334,7 @@ VERBOSE=0
 BUILD_MODE='std'
 
 # read the options
-TEMP=`getopt -o h --long clean --long rt --long  std --long verbose -n 'test.sh' -- "$@"`
+TEMP=`getopt -o h --long clean,rt,std,verbose,help -n "$PROGNAME" -- "$@"` || exit 1
 eval set -- "$TEMP"
 
 # extract options and their arguments into variables.

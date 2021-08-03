@@ -76,7 +76,9 @@ fi
 yum clean all
 
 # update /etc/rsyslog.conf to have OmitLocalLogging off
-sed -i 's#OmitLocalLogging on#OmitLocalLogging off#g' /etc/rsyslog.conf
+if [ -f /etc/rsyslog.conf ]; then
+    sed -i 's#OmitLocalLogging on#OmitLocalLogging off#g' /etc/rsyslog.conf
+fi
 
 # select correct kernel and initrd
 if [ "$BUILD_MODE" == "rt" ]; then

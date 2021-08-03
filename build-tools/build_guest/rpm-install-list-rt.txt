@@ -10,7 +10,6 @@ bash
 bind-libs-lite
 bind-license
 binutils
-bonnie++
 bridge-utils
 btrfs-progs
 bzip2-libs
@@ -19,9 +18,7 @@ centos-logos
 centos-release
 checkpolicy
 chkconfig
-chrony
 cloud-init
-cloud-utils-growpart
 coreutils
 cpio
 cracklib
@@ -45,7 +42,6 @@ diffutils
 dmidecode
 dnsmasq
 dracut
-dracut-config-generic
 dracut-config-rescue
 dracut-network
 e2fsprogs
@@ -90,7 +86,6 @@ iperf3
 iproute
 iptables
 iputils
-iwl7265-firmware
 jansson
 jbigkit-libs
 json-c
@@ -221,8 +216,6 @@ policycoreutils-python
 polkit
 polkit-pkla-compat
 popt
-postfix
-ppp
 procps-ng
 pth
 pygobject3-base
@@ -232,7 +225,6 @@ python
 python-backports
 python-backports-ssl_match_hostname
 python-chardet
-python-cheetah
 python-configobj
 python-decorator
 python-iniparse
@@ -241,7 +233,6 @@ python-jsonpatch
 python-jsonpointer
 python-kitchen
 python-libs
-python-markdown
 python-perf
 python-pillow
 python-prettytable
@@ -294,7 +285,6 @@ vim-minimal
 virt-what
 wget
 which
-wpa_supplicant
 xz
 xz-libs
 yum
