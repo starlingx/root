@@ -358,12 +358,26 @@ function build_image_loci {
         \rm -rf ${CLONE_DIR}
 
         echo "Creating bare clone of ${PROJECT_REPO} for ${LABEL} build..."
-        git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
-            && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
-            && chmod a+x ${CLONE_DIR}/hooks/post-update \
-            && cd ${CLONE_DIR} \
-            && git update-server-info \
-            && cd ${ORIGWD}
+        if [ -n "${PROJECT_REF}" ]; then
+            echo "PROJECT_REF specified is ${PROJECT_REF}..."
+            git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
+                && cd ${PROJECT_REPO} \
+                && git push --force ${CLONE_DIR} HEAD:refs/heads/${PROJECT_REF} \
+                && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
+                && chmod a+x ${CLONE_DIR}/hooks/post-update \
+                && cd ${CLONE_DIR} \
+                && git update-server-info \
+                && cd ${ORIGWD}
+        else
+            git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
+                && cd ${PROJECT_REPO} \
+                && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
+                && chmod a+x ${CLONE_DIR}/hooks/post-update \
+                && cd ${CLONE_DIR} \
+                && git update-server-info \
+                && cd ${ORIGWD}
+        fi
+
         if [ $? -ne 0 ]; then
             echo "Failed to clone ${PROJECT_REPO}... Aborting ${LABEL} build"
             RESULTS_FAILED+=(${LABEL})
