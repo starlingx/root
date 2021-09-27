@@ -1,0 +1,530 @@
+#!/usr/bin/python3
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Copyright (C) 2021 Wind River Systems,Inc
+
+import argparse
+import debrepack
+import debsentry
+import dsc_depend
+import dsccache
+import logging
+import os
+import repo_manage
+import requests
+import signal
+import subprocess
+import time
+import utils
+
+BUILDER_URL = os.environ.get('BUILDER_URL')
+REPOMGR_URL = os.environ.get('REPOMGR_URL')
+BUILD_ROOT = os.environ.get('MY_BUILD_PKG_DIR')
+STX_ROOT = os.environ.get('MY_REPO_ROOT_DIR')
+USER = os.environ.get('MYUNAME')
+PROJECT = os.environ.get('PROJECT')
+REPO_BUILD = 'deb-local-build'
+REPO_SOURCE = 'deb-local-source'
+# Listed all stx source layers which contains 'debian_pkg_dirs'
+STX_LAYERS = ['integ', 'kernel']
+
+logger = logging.getLogger('debcontroller')
+utils.set_logger(logger)
+
+
+def get_pkgname_with_dsc(dscs, dsc_path):
+    for package, dsc in dscs.items():
+        if dsc.strip() in dsc_path:
+            return package
+    return None
+
+
+def get_pkgname_ver_with_deb(deb_name):
+    if not deb_name.endswith('.deb'):
+        return None
+    name_list = deb_name.split('_')
+    if len(name_list) < 2:
+        return None
+    return name_list[0], name_list[1]
+
+
+def req_chroots_action(action, extra_params):
+    """
+    Base function called by each require on chroot with Restful API
+    Param:
+      action: addchroot, loadchroot, savechroot
+    """
+    req_params = {}
+    req_params['project'] = PROJECT
+    req_params['user'] = USER
+
+    if extra_params:
+        req_params.update(extra_params)
+    try:
+        resp = requests.get(BUILDER_URL + action, data=req_params)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(e)
+    else:
+        logger.debug(resp.text)
+        if 'success' in resp.text:
+            return 'success'
+        if 'exists' in resp.text:
+            return 'success'
+        if 'creating' in resp.text:
+            return 'creating'
+    return 'fail'
+
+
+def show_task_log(log_file, wait_time, key_str):
+    """
+    Display the log file on the current console
+    Param:
+    wait_time: customer defines to wait before the log file can be read
+    key_str: the separate string can be taken as flag to exit
+    """
+    status = 'fail'
+    time.sleep(wait_time)
+    logger.debug(' '.join(['Wait for log file', log_file]))
+
+    timeout = 8
+    time_counter = 0
+    while not os.path.exists(log_file):
+        time.sleep(1)
+        time_counter += 1
+        if time_counter > timeout:
+            break
+
+    if os.path.exists(log_file):
+        p = subprocess.Popen("tail -f " + log_file, stdout=subprocess.PIPE,
+                             shell=True, universal_newlines=True)
+        while p.poll() is None:
+            line = p.stdout.readline()
+            line = line.strip()
+            if line:
+                print(line)
+                if key_str in line:
+                    status = 'success'
+                    break
+    return status
+
+
+def get_pkgs_in_layer(layer):
+    """
+    Fetch pacakges list of the STX layer
+    Params:
+        layer: name of the STX layer
+    Return:
+        List of packages
+    """
+    pkgs = []
+    pkg_list = os.path.join(STX_ROOT,
+                            'stx-tools/debian-mirror-tools/config/debian',
+                            layer, 'stx-std.lst')
+    logger.debug(' '.join(['packages list ', pkg_list, 'of', layer]))
+
+    with open(pkg_list, 'r') as flist:
+        lines = list(line for line in (lpkgs.strip() for lpkgs in flist) if line)
+        for pkg in lines:
+            pkg = pkg.strip()
+            if pkg.startswith('#'):
+                continue
+            pkgs.append(pkg)
+    return pkgs
+
+
+def fetch_debian_folder(package):
+    for layer in STX_LAYERS:
+        pkg_dir_file = os.path.join(STX_ROOT, 'cgcs-root/stx', layer,
+                                    'debian_pkg_dirs')
+        logger.debug(' '.join(['Search debian meta in', pkg_dir_file]))
+        if os.path.exists(pkg_dir_file):
+            with open(pkg_dir_file, 'r') as fpkg_dir:
+                debs = fpkg_dir.readlines()
+                for deb in debs:
+                    deb = deb.strip()
+                    if os.path.basename(deb) == package:
+                        msg = ' '.join(['Meta of', package, 'in', deb])
+                        logger.debug(msg)
+                        return os.path.join(STX_ROOT, 'cgcs-root/stx',
+                                            layer, deb)
+    return None
+
+
+class BuildController():
+    """
+    builderClient helps to create or refresh the debian build recipes
+    (.dsc, *.tar) based the stx source, then it offloads the build
+    task to pkgbuilder container with customer's build options
+    The build log will be displayed on console until getting the result
+    'Status: success': build ok
+    'Status: fail': build fail
+    'Status: give-back': try again later
+    """
+    def __init__(self):
+        self.attrs = {
+            'mode': 'private',
+            'type': 'std',
+            'avoid': True,
+            'parallel': False,
+            'exit_on_fail': False
+        }
+        self.kits = {
+            'dsc_cache': None,
+            'repo_mgr': None,
+            'dsc_maker': None
+        }
+        self.lists = {
+            'success': [],
+            'fail': [],
+            'uploaded': [],
+        }
+        self.pkgs_digests = {}
+
+    @property
+    def build_avoid(self):
+        return self.attrs['avoid']
+
+    @build_avoid.setter
+    def build_avoid(self, avoid):
+        self.attrs['avoid'] = avoid
+
+    def start(self):
+        if not self.kits['dsc_cache']:
+            pkl_file = os.path.join(BUILD_ROOT, self.attrs['type'], 'dsc.pkl')
+            self.kits['dsc_cache'] = dsccache.DscCache(logger, pkl_file)
+            if not self.kits['dsc_cache']:
+                logger.warning(' '.join(['Fail to create dsc cache',
+                               pkl_file]))
+
+        if not self.kits['repo_mgr']:
+            self.kits['repo_mgr'] = repo_manage.RepoMgr('aptly', REPOMGR_URL,
+                                                        '/tmp', logger)
+            self.kits['repo_mgr'].upload_pkg(REPO_BUILD, None)
+            logger.info(' '.join(['create repo', REPO_BUILD]))
+
+        build_dir = os.path.join(BUILD_ROOT, self.attrs['type'])
+        if not os.path.exists(build_dir):
+            os.makedirs(build_dir)
+        if not self.kits['dsc_maker']:
+            self.kits['dsc_maker'] = debrepack.Parser(build_dir, build_dir,
+                                                      'debug', REPO_SOURCE)
+            logger.info("create dsc maker to generate new dsc")
+        # load the persistent chroot on shared volume
+        req_chroots_action('loadchroot', None)
+
+    def stop(self):
+        self.show_build_stats()
+
+    def add_chroot(self, mirror):
+        extra_req = {}
+
+        if mirror:
+            # Extra required data can be extended here, for example:
+            # req_param['mirror'] = "http://ftp.de.debian.org/debian"
+            # when 'addchroot'
+            extra_req['mirror'] = mirror
+
+        ret = req_chroots_action('addchroot', extra_req)
+        if 'success' in ret:
+            logger.info('chroot exists, continue to build')
+            return 'success'
+
+        if 'creating' in ret:
+            key_string = 'Successfully set up bullseye chroot'
+            state = show_task_log(os.path.join(BUILD_ROOT,
+                                               'chroots/chroot.log'),
+                                  10, key_string)
+            if 'success' in state:
+                req_chroots_action('savechroot', None)
+                ret = 'success'
+            else:
+                logger.error('Fail to add chroot, please check the log')
+                ret = 'fail'
+            self.req_kill_task('chroot')
+
+        return ret
+
+    def upload_with_deb(self, package, debs_dir):
+        """
+        upload the local build debian binaries to repo manager
+        Params:
+            package: target package name
+            debs_dir: the directory to debian binaries
+        """
+        logger.debug(' '.join(['Remove all old version of debs for', package]))
+        debs_clue = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'),
+                                 'debs_entry.pkl')
+        subdebs = debsentry.get_subdebs(debs_clue, package, logger)
+        if subdebs:
+            for deb in subdebs:
+                pkg_item = deb.split('_')
+                msg = ''.join(['package name:', pkg_item[0], ' ver:',
+                               pkg_item[1], ' will be removed from ',
+                               REPO_BUILD])
+                logger.debug(msg)
+                self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0],
+                                                 pkg_item[1])
+        sdebs = []
+        if not os.path.exists(debs_dir):
+            logger.error("Deb directory %s doesn't exist")
+            return False
+        for root, dirs, files in os.walk(debs_dir):
+            if dirs:
+                pass
+            for r in files:
+                if r.endswith('.deb'):
+                    deb_file = os.path.join(root, r)
+                    if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file):
+                        logger.debug(' '.join(['Repo manager upload deb',
+                                               deb_file, 'ok']))
+                        pkg_item = r.split('_')
+                        sdebs.append(''.join([pkg_item[0], '_', pkg_item[1]]))
+                        msg = ''.join([pkg_item[0], '_', pkg_item[1],
+                                       ' is saved to debs_entry for ',
+                                       package])
+                        logger.debug(msg)
+                    else:
+                        logger.error(' '.join(['Fail to upload', deb_file]))
+                        return False
+        debsentry.set_subdebs(debs_clue, package, sdebs, logger)
+        return True
+
+    def upload_with_dsc(self, dsc, repo_name):
+        if not os.path.exists(dsc):
+            logger.error(' '.join(['dsc file', dsc, 'does not exist']))
+            return False
+        return self.kits['repo_mgr'].upload_pkg(repo_name, dsc)
+
+    def req_add_task(self, package, dsc_path):
+        status = 'fail'
+        dsc = os.path.basename(dsc_path)
+
+        req_params = {}
+        req_params['mode'] = self.attrs['mode']
+        req_params['type'] = self.attrs['type']
+        req_params['project'] = PROJECT
+        req_params['user'] = USER
+        req_params['name'] = package
+        req_params['dsc'] = dsc
+        try:
+            resp = requests.get(BUILDER_URL + 'addtask', data=req_params)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            print(e)
+        else:
+            logger.debug(resp.text)
+            if 'success' in resp.text:
+                log = os.path.join(BUILD_ROOT, self.attrs['type'], package,
+                                   dsc.replace('.dsc', '_amd64.build'))
+                ret = show_task_log(log, 3, 'Status: successful')
+                if 'success' in ret:
+                    self.upload_with_deb(package, os.path.join(BUILD_ROOT,
+                                         self.attrs['type'], package))
+                    self.req_kill_task('sbuild')
+                    status = 'success'
+        return status
+
+    def req_kill_task(self, owner):
+        req_params = {}
+        req_params['owner'] = owner
+        req_params['user'] = USER
+        req_params['mode'] = self.attrs['mode']
+
+        try:
+            resp = requests.get(BUILDER_URL + 'killtask', data=req_params)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            print(e)
+        else:
+            logger.debug(resp.text)
+
+    def req_stop_task(self):
+        req_params = {}
+        req_params['user'] = USER
+        req_params['mode'] = self.attrs['mode']
+
+        try:
+            resp = requests.get(BUILDER_URL + 'stoptask', data=req_params)
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            print(e)
+        else:
+            logger.debug(resp.text)
+
+    def create_dsc(self, package, pkg_meta):
+        """
+        Call dsc maker(debrepack) to generate the new dsc for package
+        Params:
+            package: package name
+            pkg_meta: path to the package's debian folder
+        Return: result list like:
+            ['dhcp-2.10.1.tis.dsc' 'dhcp-2.10.tar.xz' 'dhcp-2.10.tar.xz.orig']
+        """
+        skip_build = False
+        # Check whether there are changes on package's debian folder
+        new_checksum = self.kits['dsc_maker'].checksum(pkg_meta)
+        self.pkgs_digests[package] = new_checksum
+        if self.kits['dsc_cache']:
+            old_checksum = self.kits['dsc_cache'].get_package_digest(package)
+            if old_checksum and old_checksum == new_checksum:
+                logger.info(' '.join(['No debian meta changes for', package]))
+                skip_build = True
+
+        if self.attrs['avoid'] and skip_build:
+            logger.info(' '.join(['build_avoid set, skip rebuild', package]))
+            return None
+
+        logger.debug(' '.join([pkg_meta, 'is ready to create dsc']))
+        dsc_recipes = self.kits['dsc_maker'].package(pkg_meta)
+        if not dsc_recipes:
+            logger.error(' '.join(['Fail to create dsc for', package]))
+            return None
+        logger.debug(' '.join(['Success to create dsc for', package]))
+        return dsc_recipes
+
+    def run_build_loop(self, pkgs_dsc):
+        build_dir = os.path.join(BUILD_ROOT, self.attrs['type'])
+        dsc_list_file = os.path.join(build_dir, 'dsc.lst')
+        deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, logger)
+
+        for p in range(len(pkgs_dsc)):
+            pkgs_can_build = deps_resolver.get_build_able_pkg(1)
+            for dsc in pkgs_can_build:
+                logger.info(' '.join(['Depends resolver tells to build',
+                            os.path.basename(dsc)]))
+                package = get_pkgname_with_dsc(pkgs_dsc, dsc)
+                status = self.req_add_task(package, dsc)
+                if 'success' in status:
+                    logger.info(' '.join(['Build success for',
+                                          package]))
+                    deps_resolver.pkg_accomplish(dsc)
+                    self.lists['success'].append(package)
+                    pkg_md5 = self.pkgs_digests[package]
+                    self.kits['dsc_cache'].set_package_digest(package, pkg_md5)
+                else:
+                    logger.info(' '.join(['Build fail for', package, 'on', p]))
+                    self.lists['fail'].append(package)
+                    self.req_stop_task()
+                    if self.attrs['exit_on_fail']:
+                        return
+
+        logger.info("Build loop done, please check the stats")
+
+    def build_whole_layer(self, layer):
+        packages = get_pkgs_in_layer(layer)
+        if packages:
+            self.build_packages(packages)
+        else:
+            logger.error(' '.join(['Fail to get packages for layer', layer]))
+
+    def build_packages(self, packages):
+        fdsc_file = None
+        packages_dscs = {}
+
+        build_dir = os.path.join(BUILD_ROOT, self.attrs['type'])
+        if not os.path.exists(build_dir):
+            os.makedirs(build_dir)
+
+        dscs_list_file = os.path.join(build_dir, 'dsc.lst')
+        logger.debug(' '.join(['Prepare', dscs_list_file, 'to deps_resolver']))
+        fdsc_file = open(dscs_list_file, 'w+')
+        fdsc_file.seek(0)
+        fdsc_file.truncate()
+
+        # Now check and create the debian meta one by one
+        for deb in packages:
+            dsc_file = ""
+            deb = deb.strip()
+            deb_meta_path = fetch_debian_folder(deb)
+            if not deb_meta_path:
+                logger.error(' '.join(['No debian folder found, skip', deb]))
+                continue
+
+            deb_recipes = self.create_dsc(deb, deb_meta_path)
+            if deb_recipes:
+                dsc_file = os.path.join(build_dir, deb, deb_recipes[0])
+                packages_dscs[deb.strip()] = dsc_file
+                fdsc_file.write(dsc_file + '\n')
+                if self.kits['repo_mgr']:
+                    self.upload_with_dsc(dsc_file, REPO_SOURCE)
+
+        if fdsc_file:
+            fdsc_file.close()
+
+        # Start to build
+        self.run_build_loop(packages_dscs)
+
+    def show_build_stats(self):
+        if len(self.lists['success']) > 0:
+            logger.info("Build success:")
+            for deb in self.lists['success']:
+                logger.info(deb)
+
+        if len(self.lists['fail']) > 0:
+            logger.info("Build fail:")
+            for deb in self.lists['fail']:
+                logger.info(deb)
+
+
+def bc_signal_handler(signum, frame):
+    if not build_controller:
+        return
+
+    if frame:
+        logger.debug(' '.join(['Signal', signum, 'got']))
+    logger.debug('Send request to stop build tasks in pkgbuilder')
+    build_controller.req_stop_task()
+    build_controller.show_build_stats()
+
+
+def reg_signal_handler():
+    signal.signal(signal.SIGINT, bc_signal_handler)
+    signal.signal(signal.SIGHUP, bc_signal_handler)
+    signal.signal(signal.SIGTERM, bc_signal_handler)
+
+
+if __name__ == "__main__":
+    default_layer = "distro"
+
+    parser = argparse.ArgumentParser(description="build-pkgs helper")
+    parser.add_argument('-c', '--clean', help="Start fresh build",
+                        action='store_true')
+    parser.add_argument('-e', '--exit_on_fail', help="exit if any fail",
+                        action='store_true')
+    parser.add_argument('-p', type=str, help="packages seperated with comma",
+                        required=False)
+    args = parser.parse_args()
+
+    build_controller = BuildController()
+    build_controller.start()
+    if args.clean:
+        build_controller.attrs['avoid'] = False
+    if args.exit_on_fail:
+        build_controller.attrs['exit_on_fail'] = False
+
+    reg_signal_handler()
+
+    if args.p:
+        # mirror can be set to add_chroot
+        if build_controller.add_chroot(None) == 'success':
+            build_controller.build_packages(args.p.split(','))
+        else:
+            logger.error("chroot is not ready, please check")
+    else:
+        build_controller.build_whole_layer(default_layer)
+
+    build_controller.stop()
+
+    logger.info("build controller finished")
