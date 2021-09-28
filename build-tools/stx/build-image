@@ -1,0 +1,257 @@
+#!/usr/bin/python3
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Copyright (C) 2021 Wind River Systems,Inc
+
+import getopt
+import logging
+import os
+import repo_manage
+import shutil
+import subprocess
+import sys
+import time
+import utils
+import yaml
+
+REPO_BINARY = 'deb-local-binary'
+REPO_BUILD = 'deb-local-build'
+DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
+PKG_LIST_DIR = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), DEB_CONFIG_DIR)
+img_pkgs = []
+
+logger = logging.getLogger('build-image')
+utils.set_logger(logger)
+
+
+def feed_lat_src_repos(img_yaml, repo_url):
+    if not os.path.exists(img_yaml):
+        logger.error(' '.join(['LAT yaml file', img_yaml, 'does not exist']))
+        return False
+
+    with open(img_yaml) as f:
+        yaml_doc = yaml.safe_load(f)
+    yaml_doc['package_feeds'].extend(repo_url)
+    yaml_doc['package_feeds'] = list(set(yaml_doc['package_feeds']))
+    yaml_doc['package_feeds'].sort()
+
+    with open(img_yaml, 'w') as f:
+        yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+
+    logger.debug(' '.join(['Update', img_yaml, 'to feed repos']))
+    return True
+
+
+def add_lat_packages(img_yaml, packages):
+    if not os.path.exists(img_yaml):
+        logger.error(' '.join(['LAT yaml file', img_yaml, 'does not exist']))
+        return False
+
+    with open(img_yaml) as f:
+        yaml_doc = yaml.safe_load(f)
+    yaml_doc['packages'].extend(packages)
+    yaml_doc['packages'] = list(set(yaml_doc['packages']))
+    yaml_doc['packages'].sort()
+
+    with open(img_yaml, 'w') as f:
+        yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+
+    logger.debug(' '.join(['Update', img_yaml, 'to add packages']))
+    return True
+
+
+def check_base_os_binaries(repomgr):
+    base_bins_list = os.path.join(PKG_LIST_DIR,
+                                  'debian/common/base-bullseye.lst')
+    if not os.path.exists(base_bins_list):
+        logger.error(' '.join(['Base OS packages list', base_bins_list,
+                               'does not exist']))
+        return False
+
+    results = query_repo(repomgr, REPO_BINARY, base_bins_list)
+    if results:
+        logger.error("====OS binaries checking fail:")
+        for deb in results:
+            logger.error(deb)
+        logger.error("====OS binaries missing end====\n")
+        return False
+    logger.info("====All OS binary packages are ready ====\n")
+    return True
+
+
+def check_stx_binaries(repomgr, btype='std'):
+    stx_bins_list = ''.join([PKG_LIST_DIR, '/debian/distro/os-', btype,
+                             '.lst'])
+    if not os.path.exists(stx_bins_list):
+        logger.warning(' '.join(['STX binary packages list', stx_bins_list,
+                                'does not exist']))
+        # Assume no such list here means ok
+        return True
+
+    results = query_repo(repomgr, REPO_BINARY, stx_bins_list)
+    if results:
+        logger.error("====STX binaries checking fail:")
+        for deb in results:
+            logger.error(deb)
+        logger.error("====STX binaries missing end====\n")
+        return False
+    logger.info("====All STX binary packages are ready ====\n")
+    return True
+
+
+def check_stx_patched(repomgr, btype='std'):
+    stx_patched_list = ''.join([PKG_LIST_DIR, '/debian/distro/stx-', btype,
+                                '.lst'])
+    if not os.path.exists(stx_patched_list):
+        logger.warning(''.join(['STX patched packages list', stx_patched_list,
+                                'does not exist']))
+        return False
+
+    results = query_repo(repomgr, REPO_BUILD, stx_patched_list)
+    if results:
+        logger.error("====STX patched packages checking fail:")
+        for deb in results:
+            logger.error(deb)
+        logger.error("====STX patched packages missing end====\n")
+        return False
+    logger.info("====All STX patched packages are ready ====\n")
+    return True
+
+
+def query_repo(repomgr, repo_name, pkg_list_path):
+    failed_pkgs = []
+    with open(pkg_list_path, 'r') as flist:
+        lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
+        for pkg in lines:
+            pkg = pkg.strip()
+            if pkg.startswith('#'):
+                continue
+            pname_parts = pkg.split()
+            name = pname_parts[0]
+            if len(pname_parts) > 1:
+                version = pname_parts[1]
+                pkg_name = ''.join([name, '_', version])
+                if repomgr.search_pkg(repo_name, name, version):
+                    img_pkgs.append(''.join([name, '=', version]))
+                    logger.debug(''.join(['Found package:name=', name,
+                                          ' version=', version]))
+                else:
+                    logger.debug(' '.join([pkg_name,
+                                 'is missing in local binary repo']))
+                    failed_pkgs.append(pkg_name)
+            else:
+                if repomgr.search_pkg(repo_name, name):
+                    img_pkgs.append(name)
+                    logger.debug(''.join(['Found package with name:', name]))
+                else:
+                    failed_pkgs.append(name)
+
+        return failed_pkgs
+
+
+def usage():
+    print("")
+    print("Usage: build-image [-h:help][-t <std|rt>]")
+    print("")
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+
+    build_type = 'std'
+    if len(sys.argv) > 1:
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], 'ht:')
+            for opt, arg in opts:
+                if '-t' == opt:
+                    if arg in ('std', 'rt'):
+                        logger.debug(' '.join(['Not supported build type',
+                                               arg]))
+                        usage()
+                    else:
+                        build_type = arg
+                else:
+                    usage()
+        except getopt.GetoptError as e:
+            logger.error(e.msg)
+            usage()
+
+    repo_manager = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
+                                       '/tmp/', logger)
+
+    logger.info("\n")
+    logger.info("=====Build Image start ......")
+    logger.info("checking OS binary packages ......")
+    base_bins_ready = check_base_os_binaries(repo_manager)
+
+    logger.info("\nchecking STX binary packages ......")
+    stx_bins_ready = check_stx_binaries(repo_manager, build_type)
+
+    logger.info("\nchecking STX patched packages ......")
+    stx_patched_ready = check_stx_patched(repo_manager, build_type)
+
+    if not base_bins_ready or not stx_bins_ready or not stx_patched_ready:
+        logger.error("Fail to get prepared to build image")
+        sys.exit(1)
+
+    base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-bullseye.yaml')
+    lat_yaml = "/localdisk/deploy/lat.yaml"
+
+    if not os.path.exists(base_yaml):
+        logger.error(' '.join(['Base yaml file', base_yaml, 'does not exist']))
+        sys.exit(1)
+    else:
+        if not os.path.exists("/localdisk/deploy/"):
+            os.makedirs("/localdisk/deploy/")
+        shutil.copyfile(base_yaml, lat_yaml)
+
+    binary_repo_url = ''.join(['deb [trusted=yes] ',
+                               os.environ.get('REPOMGR_DEPLOY_URL'),
+                               REPO_BINARY, ' bullseye main'])
+    build_repo_url = ''.join(['deb [trusted=yes] ',
+                              os.environ.get('REPOMGR_DEPLOY_URL'),
+                              REPO_BUILD, ' bullseye main'])
+    if not feed_lat_src_repos(lat_yaml, [binary_repo_url, build_repo_url]):
+        logger.error("Fail to feed local repos to LAT")
+        sys.exit(1)
+    else:
+        logger.info("success to feed local repos to LAT")
+
+    if add_lat_packages(lat_yaml, img_pkgs):
+        os.system("latc --file " + lat_yaml + " build")
+        time.sleep(5)
+        lat_log = "/localdisk/log/log.appsdk"
+        time_to_wait = 5
+        time_counter = 0
+        while not os.path.exists(lat_log):
+            time.sleep(1)
+            time_counter += 1
+            if time_counter > time_to_wait:
+                break
+        if os.path.exists(lat_log):
+            log_printer = subprocess.Popen("tail -f " + lat_log,
+                                           stdout=subprocess.PIPE, shell=True,
+                                           universal_newlines=True)
+            while log_printer.poll() is None:
+                line = log_printer.stdout.readline()
+                line = line.strip()
+                if line:
+                    print(line)
+                    if "ERROR: " in line:
+                        msg = 'build-image fail, check in /localdisk/log/'
+                        logger.info(msg)
+                        sys.exit(1)
+                    if "DEBUG: Deploy ovmf.qcow2" in line:
+                        msg = 'build-image done, check in /localdisk/deploy/'
+                        sys.exit(0)

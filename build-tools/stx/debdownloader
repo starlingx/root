@@ -1,0 +1,148 @@
+#!/usr/bin/python3
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Copyright (C) 2021 Wind River Systems,Inc
+
+import apt
+import logging
+import os
+import repo_manage
+import sys
+import utils
+
+REPO_BUILD = 'deb-local-build'
+REPO_BIN = 'deb-local-binary'
+DL_BINARY_DIR = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'), 'binaries')
+
+logger = logging.getLogger('debdownloader')
+utils.set_logger(logger)
+
+
+class DebDownloader():
+    def __init__(self, _dl_dir, _logger):
+        self.dl_dir = _dl_dir
+        self.apt_cache = apt.cache.Cache()
+        self.logger = _logger
+
+    def download(self, _name, _version):
+        package = self.apt_cache[_name]
+        candidate = package.versions.get(_version)
+        if not candidate:
+            logger.error(' '.join(['Fail to download', _name,
+                         'with wrong version', _version, '?']))
+            logger.error('May need to update the package list file')
+            return None
+
+        package.candidate = candidate
+        try:
+            ret = package.candidate.fetch_binary(self.dl_dir)
+            if ret:
+                self.logger.debug("Fetch binray ok with result %s" % ret)
+                return ret
+        except apt.package.FetchError:
+            self.logger.error("Fail to fetch binray %s-%s" % (_name, _version))
+        return None
+
+    def get_downloaded_pkgs(self):
+        dl_pkgs_list = []
+        if not os.path.exists(self.dl_dir):
+            return None
+
+        for root, dirs, files in os.walk(self.dl_dir):
+            if root or dirs:
+                pass
+            for file in files:
+                dl_pkgs_list.append(file)
+
+        return dl_pkgs_list
+
+
+if __name__ == "__main__":
+    if not len(sys.argv) == 2:
+        logger.info("Usage: debdownloader <path to binary packages list>")
+        sys.exit(0)
+
+    if not sys.argv[1] or not os.path.isfile(sys.argv[1]):
+        logger.error("Binary packages list doesn't exist")
+        sys.exit(1)
+
+    if not os.path.exists(DL_BINARY_DIR):
+        os.makedirs(DL_BINARY_DIR)
+
+    dl = DebDownloader(DL_BINARY_DIR, logger)
+    debs_downloaded = dl.get_downloaded_pkgs()
+    debs_need_download = []
+    debs_need_upload = []
+
+    # Create local binary repo with repo manager
+    repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
+                                  '/tmp/', logger)
+    repomgr.upload_pkg(REPO_BIN, None)
+
+    with open(sys.argv[1], 'r') as flist:
+        lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
+        for pkg in lines:
+            pkg = pkg.strip()
+            if pkg.startswith('#'):
+                continue
+            pkgname_parts = pkg.split()
+            name = pkgname_parts[0]
+            if len(pkgname_parts) == 1:
+                logger.error(' '.join(['The version of package',
+                                      name, 'must be defined']))
+                logger.error(' '.join(['Please updated the list file',
+                             sys.argv[1]]))
+                sys.exit(1)
+            version = pkgname_parts[1]
+            pname_x86 = ''.join([name, '_', version, '_amd64.deb'])
+            pname_all = ''.join([name, '_', version, '_all.deb'])
+            if repomgr.search_pkg(REPO_BIN, name, version):
+                logger.info(''.join([name, '-', version,
+                            ' is already in binary repo, skip download']))
+            else:
+                if debs_downloaded and pname_x86 in debs_downloaded:
+                    logger.info(''.join([name, '-', version,
+                                'has been downloaded, skip download']))
+                    debs_need_upload.append(pname_x86)
+                else:
+                    if debs_downloaded and pname_all in debs_downloaded:
+                        logger.info(''.join([name, '-', version,
+                                    'has been downloaded, skip download']))
+                        debs_need_upload.append(pname_all)
+                    else:
+                        debs_need_download.append(name + '_' + version)
+
+    for deb in debs_need_upload:
+        if repomgr.upload_pkg(REPO_BIN, os.path.join(DL_BINARY_DIR, deb)):
+            logger.info(' '.join([os.path.join(DL_BINARY_DIR, deb),
+                                  'is uploaded to', REPO_BIN]))
+        else:
+            logger.info(' '.join([os.path.join(DL_BINARY_DIR, deb),
+                                  'fail to uploaded to', REPO_BIN]))
+
+    for deb in debs_need_download:
+        logger.debug(' '.join(['package', deb, 'is need to be downloaded']))
+        debname_parts = deb.split('_')
+        dlret = dl.download(debname_parts[0], debname_parts[1])
+        if dlret:
+            logger.info(''.join([debname_parts[0], '-', debname_parts[1],
+                        ' download ok']))
+            if repomgr.upload_pkg(REPO_BIN, dlret):
+                logger.info(''.join([debname_parts[0], '-', debname_parts[1],
+                            ' is uploaded to ', REPO_BIN]))
+            else:
+                logger.info(''.join([debname_parts[0], '-', debname_parts[1],
+                            ' fail to upload to ', REPO_BIN]))
+
+    logger.info("debdownloaader feeds local binary repo done")
