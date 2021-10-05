@@ -32,3 +32,5 @@ RUN set -ex; \
     python get-pip.py
 COPY ${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
 
+# root CA cert expired on October 1st, 2021
+RUN yum update -y ca-certificates
