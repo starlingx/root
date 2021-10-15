@@ -441,6 +441,7 @@ class Parser():
         run_shell_cmd(cmd % (tarball_file, self.pkginfo["srcdir"]), self.logger)
         self.create_orig_tarball()
         self.update_deb_folder()
+        self.apply_deb_patches()
 
         return True
 
