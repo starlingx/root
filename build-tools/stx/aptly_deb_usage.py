@@ -251,17 +251,20 @@ class Deb_aptly():
         return None
 
     # info all remote repositories through logger
-    def list_remotes(self):
+    def list_remotes(self, quiet=False):
         '''List all remote repositories/mirrors.'''
         r_list = []
         remote_list = self.aptly.mirrors.list()
         if not len(remote_list):
-            self.logger.info('No remote repo')
+            if not quiet:
+                self.logger.info('No remote repo')
             return r_list
-        self.logger.info('%d remotes:', len(remote_list))
+        if not quiet:
+            self.logger.info('%d remotes:', len(remote_list))
         for remote in remote_list:
             r_list.append(remote.name)
-            self.logger.info('%s : %s : %s', remote.name, remote.archive_root, remote.distribution)
+            if not quiet:
+                self.logger.info('%s : %s : %s', remote.name, remote.archive_root, remote.distribution)
         return r_list
 
     # find and remove a remote
@@ -305,18 +308,20 @@ class Deb_aptly():
         return True
 
     # info all local repositories through logger
-    def list_local(self):
+    def list_local(self, quiet=False):
         '''List all local repository.'''
         local_list = []
         repo_list = self.aptly.repos.list()
         if not len(repo_list):
             self.logger.info('No local repo')
             return local_list
-        self.logger.info('%d local repos:', len(repo_list))
+        if not quiet:
+            self.logger.info('%d local repos:', len(repo_list))
         for repo in repo_list:
             # rpo.name, repo.url, repo.distributions, repo.components
             local_list.append(repo.name)
-            self.logger.info('%s : %s : %s', repo.name, repo.default_distribution, repo.default_component)
+            if not quiet:
+                self.logger.info('%s : %s : %s', repo.name, repo.default_distribution, repo.default_component)
         return local_list
 
     # Create a local repository

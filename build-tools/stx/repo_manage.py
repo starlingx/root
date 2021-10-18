@@ -347,8 +347,8 @@ class RepoMgr():
         if not deb_list and not dsc_list:
             raise Exception('deb_list and dsc_list, at least one is required.')
         # construct repo list will be checkd
-        local_list = self.repo.list_local()
-        remote_list = self.repo.list_remotes()
+        local_list = self.repo.list_local(quiet=True)
+        remote_list = self.repo.list_remotes(quiet=True)
         # Specified local repo must exist, or failed
         if repo_name not in local_list:
             raise Exception('Sync failed, local repo not exist, create it firstly')
@@ -426,8 +426,8 @@ class RepoMgr():
     # Output: Ture is all works in order
     def remove_repo(self, repo_name):
         '''Remove a specified repository.'''
-        local_list = self.repo.list_local()
-        remote_list = self.repo.list_remotes()
+        local_list = self.repo.list_local(quiet=True)
+        remote_list = self.repo.list_remotes(quiet=True)
         for repo in local_list:
             if repo == repo_name:
                 self.logger.info('Remove a local repo')
@@ -448,7 +448,7 @@ class RepoMgr():
     def upload_pkg(self, repo_name, package):
         '''Upload a Debian package into a specified repository.'''
         repo_exist = False
-        local_list = self.repo.list_local(True)
+        local_list = self.repo.list_local(quiet=True)
         for repo in local_list:
             if repo == repo_name:
                 repo_exist = True
@@ -487,11 +487,11 @@ class RepoMgr():
         '''Find a package from a specified repo.'''
         repo_find = False
         repo = None
-        r_list = self.repo.list_local(True)
+        r_list = self.repo.list_local(quiet=True)
         for repo in r_list:
             if repo == repo_name:
                 repo_find = True
-        r_list = self.repo.list_remotes(True)
+        r_list = self.repo.list_remotes(quiet=True)
         for repo in r_list:
             if repo == repo_name:
                 repo_find = True
@@ -517,7 +517,7 @@ class RepoMgr():
         '''Find and delete a binary package from a specified local repo.'''
         repo_find = False
         repo = None
-        local_list = self.repo.list_local()
+        local_list = self.repo.list_local(quiet=True)
         for repo in local_list:
             if repo == repo_name:
                 repo_find = True
