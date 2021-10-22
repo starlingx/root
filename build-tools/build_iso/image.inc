@@ -81,3 +81,4 @@ nvme-cli
 # Add openscap tools
 openscap
 openscap-scanner
+scap-security-guide
