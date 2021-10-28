@@ -808,6 +808,7 @@ raw_create_tarballs_extract_script () {
                        echo "$LINE" >> $EXTRACT_SCRIPT
                     fi
                     ;;
+                "/usr/bin/mkdir "*|\
                 "mkdir "*)
                     echo "$LINE -p" >> $EXTRACT_SCRIPT
                     ;;
@@ -922,6 +923,7 @@ raw_create_tarballs_extract_script () {
                        echo "$LINE" >> $EXTRACT_SCRIPT
                     fi
                     ;;
+                "/usr/bin/mkdir "*|\
                 "mkdir "*)
                     echo "$LINE -p" >> $EXTRACT_SCRIPT
                     ;;
@@ -1061,6 +1063,7 @@ raw_create_tarballs_extract_script_post_metapatch () {
                 "pushd "*)
                     echo "$LINE" >> $EXTRACT_SCRIPT
                     ;;
+                "/usr/bin/mkdir "*|\
                 "mkdir "*)
                     echo "$LINE -p" >> $EXTRACT_SCRIPT
                     ;;
@@ -1126,6 +1129,7 @@ raw_create_tarballs_extract_script_post_metapatch () {
                 "pushd "*)
                     echo $LINE >> $EXTRACT_SCRIPT
                     ;;
+                "/usr/bin/mkdir "*|\
                 "mkdir "*)
                     echo "$LINE -p" >> $EXTRACT_SCRIPT
                     ;;
