@@ -43,7 +43,6 @@ dracut-config-rescue
 dracut-network
 e2fsprogs
 e2fsprogs-libs
-ebtables
 efibootmgr
 efivar-libs
 elfutils-libelf
@@ -85,6 +84,7 @@ hwdata
 info
 iproute
 iprutils
+iptables-ebtables
 iputils
 jansson
 json-c
