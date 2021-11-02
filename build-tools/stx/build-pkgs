@@ -247,7 +247,8 @@ class BuildController():
             'type': 'std',
             'avoid': True,
             'parallel': False,
-            'exit_on_fail': False
+            'exit_on_fail': False,
+            'run_tests': False
         }
         self.kits = {
             'dsc_cache': None,
@@ -430,6 +431,8 @@ class BuildController():
         req_params['user'] = USER
         req_params['name'] = package
         req_params['dsc'] = dsc
+        req_params['run_tests'] = self.attrs['run_tests']
+
         try:
             resp = requests.get(BUILDER_URL + 'addtask', data=req_params)
             resp.raise_for_status()
@@ -659,6 +662,9 @@ if __name__ == "__main__":
                         action='store_true')
     parser.add_argument('-e', '--exit_on_fail', help="Exit for any fail",
                         action='store_true')
+    parser.add_argument('-t', '--test', help="Run package tests during build",
+                        action='store_true')
+
     # set mutually options pair for package build and layer build
     build_group = parser.add_mutually_exclusive_group()
     build_group.add_argument('-a', '--all', help="Packages with comma")
@@ -688,6 +694,8 @@ if __name__ == "__main__":
         build_controller.clean()
     if args.exit_on_fail:
         build_controller.attrs['exit_on_fail'] = False
+    if args.test:
+        build_controller.attrs['run_tests'] = True
 
     if not build_controller.start():
         logger.critical("Fail to initialize build controller, exit ......")
