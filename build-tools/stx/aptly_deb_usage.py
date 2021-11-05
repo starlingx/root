@@ -388,15 +388,19 @@ class Deb_aptly():
             self.logger.warning('add_upload_file failed %s : %s : %s', new_name, repo_name, self.aptly.tasks.show(task.id).state)
         return True
 
-    # Remove a binary Debian package from a local repository.
+    # Delete a Debian package from a local repository.
     # Input:
     #       local_repo: the name of the local repository
     #       pkg_name: the path-name of the deb file
+    #       pkg_type: 'binary' or 'source'
     #       pkg_version: version of the deb file
     # Output: None
-    def delete_pkg_local(self, local_repo, pkg_name, pkg_version: Optional[str] = None):
+    def delete_pkg_local(self, local_repo, pkg_name, pkg_type, pkg_version = None):
         '''Delete a binary package from a local repository.'''
         # self.logger.debug('delete_pkg_local not supported yet.')
+        if pkg_type not in {'binary', 'source'}:
+            self.logger.error('package type must be one of either "binary" or "source"')
+            return
         if not pkg_version:
             query = pkg_name
         else:
@@ -404,10 +408,9 @@ class Deb_aptly():
         # If we want more detailed info, add "detailed=True, with_deps=True" for search_packages.
         search_result = self.aptly.repos.search_packages(local_repo, query=query)
         self.logger.debug('delete_pkg_local find %d packages.', len(search_result))
-        # find_pkg = False
         for pkg in search_result:
-            if pkg.key.split()[0] != 'Psource':
-                # find_pkg = True
+            if (pkg_type == 'source' and pkg.key.split()[0] == 'Psource') or \
+                (pkg_type != 'source' and pkg.key.split()[0] != 'Psource') :
                 self.aptly.repos.delete_packages_by_key(local_repo, pkg.key)
 
     # Search a package in a set of repos, return True if find, or False
