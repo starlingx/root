@@ -6,6 +6,8 @@ FROM centos:${RELEASE}
 
 RUN set -ex ;\
     sed -i '/\[main\]/ atimeout=120' /etc/yum.conf ;\
+    yum install --disablerepo=* ${REPO_OPTS} -y \
+        yum-priorities ;\
     yum install -y centos-release-openstack-stein ;\
     rm -rf \
         /var/log/* \
