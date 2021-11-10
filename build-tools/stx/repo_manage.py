@@ -478,9 +478,9 @@ class RepoMgr():
         return True
 
     # search a package from a repository
-    # repo_name: name of the repository that search the package
-    # pkg_name: name of the binary package to be deleted
-    # pkg_version: version number of the package to be deleted
+    # repo_name: name of the repository to search the package in
+    # pkg_name: name of the Debian package to be searched
+    # pkg_version: version number of the package to be searched
     # binary: binary package or source one?
     # Output: True if find, or False
     def search_pkg(self, repo_name, pkg_name, pkg_version: Optional[str] = None, binary: Optional[bool] = True):
@@ -508,28 +508,35 @@ class RepoMgr():
             return False
         return True
 
-    # Delete a binary package from a repository
-    # repo_name: name of the LOCAL repository that delete the package from
+    # Delete a Debian package from a local repository
+    # repo_name: name of the LOCAL repository to delete the package from
     # pkg_name: name of the binary package to be deleted
+    # pkg_type: 'source' or 'binary'
     # pkg_version: version number of the package to be deleted
     # Output: True is find and deleted, or False
-    def delete_pkg(self, repo_name, pkg_name, pkg_version: Optional[str] = None):
+    def delete_pkg(self, repo_name, pkg_name, pkg_type, pkg_version = ''):
         '''Find and delete a binary package from a specified local repo.'''
         repo_find = False
         repo = None
+        if pkg_type not in {'binary', 'source'}:
+            self.logger.error('Delete package, pkg_type must be one of either "binary" or "source".')
+            return False
+        if not repo_name.startswith(aptly_deb_usage.PREFIX_LOCAL):
+            self.logger.error('Delete package, only local repositories support this operation.')
+            return False
         local_list = self.repo.list_local(quiet=True)
         for repo in local_list:
             if repo == repo_name:
                 repo_find = True
         if not repo_find:
-            self.logger.err('Delete package, repository not exist.')
+            self.logger.error('Delete package, repository not exist.')
             return False
 
-        if not self.repo.pkg_exist([repo_name], pkg_name, 'binary', pkg_version):
+        if not self.repo.pkg_exist([repo_name], pkg_name, pkg_type, pkg_version):
             self.logger.info('Delete package, package not find.')
             return False
 
-        self.repo.delete_pkg_local(repo_name, pkg_name, pkg_version)
+        self.repo.delete_pkg_local(repo_name, pkg_name, pkg_type, pkg_version)
         self.repo.deploy_local(repo_name)
         return True
 
@@ -565,12 +572,11 @@ def _handleUploadPkg(args):
 
 def _handleDeletePkg(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
-    repomgr.delete_pkg(args.repository, args.package_name, pkg_version=args.package_version)
+    repomgr.delete_pkg(args.repository, args.package_name, args.package_type, pkg_version=args.package_version)
 
 
 def _handleSearchPkg(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
-    print('_handleSearchPkg', args.package_name, args.package_type)
     if args.package_type == 'binary':
         repomgr.search_pkg(args.repository, args.package_name, pkg_version=args.package_version, binary=True)
     else:
@@ -654,17 +660,18 @@ def main():
     upload_pkg_parser.set_defaults(handle=_handleUploadPkg)
 
     delete_pkg_parser = subparsers.add_parser('delete_pkg',
-                                              help='Delete a specified binary package from a specified repository.\n\n')
-    delete_pkg_parser.add_argument('--package_name', '-p', help='Binary package to be deleted.')
-    delete_pkg_parser.add_argument('--package_version', '-v', help='The version of the binary package.', required=False)
-    delete_pkg_parser.add_argument('--repository', '-r', help='The Repository that will delete the package.')
+                                              help='Delete a specified Debian package from a specified repository.\n\n')
+    delete_pkg_parser.add_argument('--package_name', '-p', help='Package name to be deleted.')
+    delete_pkg_parser.add_argument('--package_type', '-t', help='Package type to be deleted, "binary" or "source".')
+    delete_pkg_parser.add_argument('--package_version', '-v', help='Version number of the package.', required=False)
+    delete_pkg_parser.add_argument('--repository', '-r', help='Local Repository to delete the package from.')
     delete_pkg_parser.set_defaults(handle=_handleDeletePkg)
 
     search_pkg_parser = subparsers.add_parser('search_pkg',
                                               help='Search a specified package from a specified repository.\n\n')
     search_pkg_parser.add_argument('--package_name', '-p', help='package to be looking for.')
     search_pkg_parser.add_argument('--package_version', '-v', help='The version of the package.', required=False)
-    search_pkg_parser.add_argument('--repository', '-r', help='The Repository that will delete the pacakge.')
+    search_pkg_parser.add_argument('--repository', '-r', help='The Repository to search the package in.')
     search_pkg_parser.add_argument('--package_type', '-t', help='binary or source', required=False)
     search_pkg_parser.set_defaults(handle=_handleSearchPkg)
 
