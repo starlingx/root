@@ -175,9 +175,9 @@ if __name__ == "__main__":
             opts, args = getopt.getopt(sys.argv[1:], 'ht:')
             for opt, arg in opts:
                 if '-t' == opt:
-                    if arg in ('std', 'rt'):
-                        logger.debug(' '.join(['Not supported build type',
-                                               arg]))
+                    if arg not in ('std', 'rt'):
+                        logger.debug("%s is not a supported build type. " +
+                                     "Must be one of 'std' or 'rt'.", arg)
                         usage()
                     else:
                         build_type = arg
