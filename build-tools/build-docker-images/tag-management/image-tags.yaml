@@ -69,9 +69,9 @@ images:
     # Tag based on upstream package version
     tag: stx.5.0-v0.7.0
   - name: docker.io/starlingx/stx-snmp
-    src_build_tag: master-centos-stable-20210105T023146Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/2b370655a7f9a506ea139cfffa6c466d1a82cce4
-    tag: stx.5.0-v1.0.0
+    src_build_tag: master-centos-stable-20211109T015900Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/1904f3ad6d5d1b24d173bf78bb84c0128a33022d
+    tag: stx.6.0-v1.0.1
   - name: docker.io/starlingx/stx-fm-subagent
     src_build_tag: master-centos-stable-20211103T051143Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/5642841ebc729ce54dcaf8d62dbcf1eb68ce1c88
