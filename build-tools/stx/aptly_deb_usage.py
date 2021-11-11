@@ -138,15 +138,13 @@ class Deb_aptly():
                 task = self.aptly.publish.drop(prefix=name, distribution=publish.distribution, force_delete=True)
                 self.aptly.tasks.wait_for_task_by_id(task.id)
                 if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop publish failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                    self.logger.warning('Remove publication failed %s : %s' % (name, self.aptly.tasks.show(task.id).state))
         # Rename the snapshot if exists
         snap_list = self.aptly.snapshots.list()
         for snap in snap_list:
             if snap.name == name:
                 backup_name = 'backup-' + name
-                self.aptly.snapshots.update(name, backup_name)
-                # update operation doesn't return a task, thus we can only sleep for a while.
-                time.sleep(1)
+                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(name, backup_name).id)
 
         # crate a snapshot
         task = None
@@ -157,15 +155,14 @@ class Deb_aptly():
         self.aptly.tasks.wait_for_task_by_id(task.id)
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
             if backup_name:
-                self.aptly.snapshots.update(backup_name, name)
-                time.sleep(1)
-            self.logger.warning('Snapshot for %s create failed: %s. ', name, self.aptly.tasks.show(task.id).state)
+                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(backup_name, name).id)
+            self.logger.warning('Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
             return False
         if backup_name:
             task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
             self.aptly.tasks.wait_for_task_by_id(task.id)
             if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Drop snapshot failed %s : %s', backup_name, self.aptly.tasks.show(task.id).state)
+                self.logger.warning('Remove snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
         return True
 
     # Publish a snap called "name" with prefix as name, "bullseye" as the distribution
@@ -395,7 +392,7 @@ class Deb_aptly():
     #       pkg_type: 'binary' or 'source'
     #       pkg_version: version of the deb file
     # Output: None
-    def delete_pkg_local(self, local_repo, pkg_name, pkg_type, pkg_version = None):
+    def delete_pkg_local(self, local_repo, pkg_name, pkg_type, pkg_version=None):
         '''Delete a binary package from a local repository.'''
         # self.logger.debug('delete_pkg_local not supported yet.')
         if pkg_type not in {'binary', 'source'}:
@@ -407,11 +404,14 @@ class Deb_aptly():
             query = pkg_name + ' (' + pkg_version + ')'
         # If we want more detailed info, add "detailed=True, with_deps=True" for search_packages.
         search_result = self.aptly.repos.search_packages(local_repo, query=query)
-        self.logger.debug('delete_pkg_local find %d packages.', len(search_result))
+        self.logger.debug('delete_pkg_local find %d packages.' % len(search_result))
         for pkg in search_result:
             if (pkg_type == 'source' and pkg.key.split()[0] == 'Psource') or \
-                (pkg_type != 'source' and pkg.key.split()[0] != 'Psource') :
-                self.aptly.repos.delete_packages_by_key(local_repo, pkg.key)
+                (pkg_type != 'source' and pkg.key.split()[0] != 'Psource'):
+                task = self.aptly.repos.delete_packages_by_key(local_repo, pkg.key)
+                self.aptly.tasks.wait_for_task_by_id(task.id)
+                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                    self.logger.warning('Delete package failed %s : %s' % (pkg_name, self.aptly.tasks.show(task.id).state))
 
     # Search a package in a set of repos, return True if find, or False
     # repolist: a list of repo names, including local repo and mirror
