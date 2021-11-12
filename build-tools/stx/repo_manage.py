@@ -22,18 +22,18 @@ import argparse
 from concurrent.futures import as_completed
 from concurrent.futures import ThreadPoolExecutor
 import debian.deb822
+import debian.debfile
 import logging
 import os
 import requests
+from requests.compat import urljoin
 import shutil
-from typing import Optional
+import urllib.request
 import utils
 
 
 REPOMGR_URL = os.environ.get('REPOMGR_URL')
 REPOMGR_DEPLOY_URL = os.environ.get('REPOMGR_DEPLOY_URL')
-# REPOMGR_URL = 'http://128.224.162.137:8083/'
-# REPOMGR_DEPLOY_URL = 'http://128.224.162.137:8082/'
 
 APTFETCH_JOBS = 10
 
@@ -86,11 +86,7 @@ class AptFetch():
 
         # check to see if meta file exist
         if not os.path.exists(sources_list):
-            raise Exception('Upstream sources file %s not exist' % sources_list)
-        # if not os.path.exists(deb_list):
-        #     raise Exception('Deb package list file file %s not exist' % deb_list)
-        # if not os.path.exists(dsc_list):
-        #     raise Exception('Source package list file file %s not exist' % dsc_list)
+            raise Exception('Upstream source list file %s does not exist' % sources_list)
 
         if os.path.exists(basedir):
             shutil.rmtree(basedir)
@@ -113,40 +109,37 @@ class AptFetch():
         self.aptcache.open()
 
     # Download a binary package into downloaded folder
-    def fetch_deb(self, pkg_name, pkg_version: Optional[str] = None):
+    def fetch_deb(self, pkg_name, pkg_version=''):
         '''Download a binary package'''
         if not pkg_name:
             raise Exception('Package name empty')
 
         destdir = self.workdir + '/downloads/'
-        # print(pkg_name, pkg_version)
         pkg = self.aptcache[pkg_name]
         if not pkg:
-            raise Exception('Binary package not find', pkg_name)
+            raise Exception('Binary package "%s" not found' % pkg_name)
         if not pkg_version:
-            # pkg.candidate.fetch_binary(destdir=destdir)
             uri = pkg.candidate.uri
         else:
             vers = pkg.versions
             vers_find = False
             for ver in vers:
                 if ver.version == pkg_version:
-                    # ver.fetch_binary(destdir=destdir)
                     uri = ver.uri
                     vers_find = True
                     break
             if not vers_find:
-                raise Exception('Binary package not find for specified version: ', pkg_name, pkg_version)
+                raise Exception('Binary package "%s %s" not found.' % (pkg_name, pkg_version))
         res = requests.get(uri, stream=True)
-        self.logger.debug('Fetch package file %s', uri)
+        self.logger.debug('Fetch package file %s' % uri)
         with open(os.path.join(destdir, os.path.basename(uri)), 'wb') as download_file:
             for chunk in res.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     download_file.write(chunk)
-        self.logger.info('Binary package %s downloaded.', pkg_name)
+        self.logger.info('Binary package %s downloaded.' % pkg_name)
 
     # Download a source package into downloaded folder
-    def fetch_dsc(self, pkg_name, pkg_version: Optional[str] = ''):
+    def fetch_dsc(self, pkg_name, pkg_version=''):
         '''Download a source package'''
         if not pkg_name:
             raise Exception('Package name empty')
@@ -159,7 +152,7 @@ class AptFetch():
                 break
             source_lookup = src.lookup(pkg_name)
         if not source_lookup:
-            raise ValueError("No source package %s find" % pkg_name)
+            raise ValueError("Source package %s not found" % pkg_name)
 
         # Here the src.files is a list, each one point to a source file
         # Download those source files one by one with requests
@@ -170,12 +163,12 @@ class AptFetch():
                 for chunk in res.iter_content(chunk_size=1024 * 1024):
                     if chunk:
                         download_file.write(chunk)
-        self.logger.info('Source package %s downloaded.', pkg_name)
+        self.logger.info('Source package %s downloaded.' % pkg_name)
 
     # Download a ubndle of packages into downloaded folder
     # deb_list: binary package list file
     # dsc_list: source package list file
-    def Fetch_pkg_list(self, deb_list: Optional[str] = None, dsc_list: Optional[str] = None):
+    def Fetch_pkg_list(self, deb_list='', dsc_list=''):
         '''Download a bundle of packages specified through deb_list and dsc_list.'''
         if not deb_list and not dsc_list:
             raise Exception('deb_list and dsc_list, at least one is required.')
@@ -195,9 +188,9 @@ class AptFetch():
                         # self.fetch_deb(pkg_name, pkg_version)
                         obj = threads.submit(self.fetch_deb, pkg_name, pkg_version)
                         obj_list.append(obj)
-                    self.logger.debug('%d binary packages downloaded.', deb_count)
+                    self.logger.debug('%d binary packages downloaded.' % deb_count)
                 else:
-                    raise Exception('deb_list file specified but not exist')
+                    raise Exception('deb_list file specified but does not exist')
 
             # Scan source package list and download them
             if dsc_list:
@@ -209,14 +202,13 @@ class AptFetch():
                         if not pkg_name:
                             continue
                         dsc_count = dsc_count + 1
-                        # self.fetch_dsc(pkg_name, pkg_version)
                         obj = threads.submit(self.fetch_dsc, pkg_name, pkg_version)
                         obj_list.append(obj)
-                    self.logger.debug('%d source packages downloaded.', dsc_count)
+                    self.logger.debug('%d source packages downloaded.' % dsc_count)
                 else:
-                    raise Exception('dsc_list file specified but not exist')
+                    raise Exception('dsc_list file specified but does not exist')
             for future in as_completed(obj_list):
-                self.logger.debug('download result %s', future.result())
+                self.logger.debug('download result %s' % future.result())
 
 
 class RepoMgr():
@@ -253,7 +245,7 @@ class RepoMgr():
             deb_count = deb_count + 1
             apt_fetch.fetch_deb(pkg_name, pkg_ver)
         pkg_list.close()
-        self.logger.info('%d binary packages downloaded.', deb_count)
+        self.logger.info('%d binary packages downloaded.' % deb_count)
 
     def __sync_dsc(self, check_list, dsc_list, apt_fetch):
         '''Sync source packages'''
@@ -269,7 +261,7 @@ class RepoMgr():
             # print(pkg_name, pkg_ver)
             dsc_count = dsc_count + 1
             apt_fetch.fetch_dsc(pkg_name, pkg_ver)
-        self.logger.info('%d source packages downloaded.', dsc_count)
+        self.logger.info('%d source packages downloaded.' % dsc_count)
 
     # Download a bundle of packages and deployed them through repository
     # repo_name: the repository used to deploy these packages
@@ -278,7 +270,7 @@ class RepoMgr():
     # kwarge:deb_list: file contains binary package list
     # kwarge:dsc_ist: file contains source package list
     # Output: None
-    def download(self, repo_name, no_clear: Optional[bool] = False, **kwargs):
+    def download(self, repo_name, no_clear=False, **kwargs):
         '''Download specified packages and deploy them through a specified local repo.'''
         sources_list = kwargs['sources_list']
         if 'deb_list' not in kwargs.keys():
@@ -293,7 +285,8 @@ class RepoMgr():
         if not deb_list and not dsc_list:
             raise Exception('deb_list and dsc_list, at least one is required.')
         if not self.repo.create_local(repo_name):
-            raise Exception('Local repo created failed, Please double check if the repo exist already.')
+            raise Exception('Local repo created failed, Please double check'
+                            ' if the repo exist already.')
 
         # Download packages from remote repo
         apt_fetch = AptFetch(sources_list, self.workdir, self.logger)
@@ -311,7 +304,7 @@ class RepoMgr():
         repo_str = self.repo.deploy_local(repo_name)
         if not no_clear:
             shutil.rmtree(self.workdir)
-        self.logger.info('New local repo can be accessed through: %s', repo_str)
+        self.logger.info('New local repo can be accessed through: %s' % repo_str)
 
     # We need a bundle packages been deployed through a serials of repositories
     # We have:
@@ -330,7 +323,7 @@ class RepoMgr():
     # kwargs:deb_list: file lists all needed binary packages
     # kwargs:dsc_list: file lists all needed source packages
     # Output: None
-    def sync(self, repo_name, repo_list, no_clear: Optional[bool] = False, **kwargs):
+    def sync(self, repo_name, repo_list, no_clear=False, **kwargs):
         '''
         Sync a set of repositories with spaecified package lists, any package
         missed, download and deploy through a specified local repo
@@ -351,14 +344,14 @@ class RepoMgr():
         remote_list = self.repo.list_remotes(quiet=True)
         # Specified local repo must exist, or failed
         if repo_name not in local_list:
-            raise Exception('Sync failed, local repo not exist, create it firstly')
+            raise Exception('Sync failed, local repo does not exist, create it firstly')
         # Make sure all repos in check_list exist in aptly/pulp database.
         check_list = [repo_name]
         for repo in repo_list.split():
             if repo in local_list or repo in remote_list:
                 check_list.append(repo)
             else:
-                self.logger.warn('%s in the list but not exists.', repo)
+                self.logger.warn('%s in the list but does not exists.' % repo)
 
         # Download missing packages from remote repo
         apt_fetch = AptFetch(kwargs['sources_list'], self.workdir, self.logger)
@@ -377,7 +370,7 @@ class RepoMgr():
         repo_str = self.repo.deploy_local(repo_name)
         if not no_clear:
             shutil.rmtree(self.workdir)
-        self.logger.info('local repo can be accessed through: %s ', repo_str)
+        self.logger.info('local repo can be accessed through: %s ' % repo_str)
 
     # Construct a repository mirror to an upstream Debian repository
     # kwargs:url: URL of the upstream repo (http://deb.debian.org/debian)
@@ -407,7 +400,7 @@ class RepoMgr():
                                     components=[component],
                                     architectures=[architectures])
         repo_str = self.repo.deploy_remote(repo_name)
-        self.logger.info('New mirror can be accessed through: %s', repo_str)
+        self.logger.info('New mirror can be accessed through: %s' % repo_str)
 
     # List all repositories
     # Output: None
@@ -441,40 +434,106 @@ class RepoMgr():
         self.logger.warn('Remove repo failed, not find spesified repo')
         return False
 
+    # Before uploading a source package into a local repo, scan all repos,
+    # find all duplicate files with different size.
+    # dsc: Dsc data of the source package. <class 'debian.deb822.Dsc'>
+    # Return a dictionary: {repo_1: {file_a, ...}, ...}
+    #   Input dsc contains file_a, while repo_1 also contains such a file
+    #   with different size.
+    def __check_orig_files(self, dsc):
+        different_files = {}
+        repo_list = self.repo.list_local(quiet=True)
+        repo_list += self.repo.list_remotes(quiet=True)
+        for repo in repo_list:
+            for meta_file in dsc['Files']:
+                if meta_file['name'].find('.orig.'):
+                    new_file_size = meta_file['size']
+                    if dsc['Source'].startswith('lib'):
+                        prefix_dir = dsc['Source'][:4] + '/' + dsc['Source']
+                    else:
+                        prefix_dir = dsc['Source'][0] + '/' + dsc['Source']
+                    target_path = repo + '/pool/main/' + prefix_dir + '/' + meta_file['name']
+                    target_url = urljoin(REPOMGR_DEPLOY_URL, target_path)
+                    try:
+                        orig_file = urllib.request.urlopen(target_url)
+                    except Exception:
+                        # no such file in repo, that is good
+                        self.logger.debug('%s does not contain %s' % (repo, meta_file['name']))
+                        continue
+                    if orig_file.length != int(new_file_size):
+                        self.logger.debug('File %s is not same as the one in %s.' %
+                                          (meta_file['name'], repo))
+                        if repo not in different_files.keys():
+                            different_files[repo] = {meta_file['name']}
+                        else:
+                            different_files[repo].add(meta_file['name'])
+        return different_files
+
     # upload a Debian package and deploy it
     # repo_name: the name of the repository used to contain and deploy the package
     # package: pathname of the package(xxx.deb or xxx.dsc) to be uploaded
     # Output: True if all works.
     def upload_pkg(self, repo_name, package):
         '''Upload a Debian package into a specified repository.'''
-        repo_exist = False
         local_list = self.repo.list_local(quiet=True)
-        for repo in local_list:
-            if repo == repo_name:
-                repo_exist = True
-                break
-
-        if not repo_exist:
-            self.logger.info('Upload package, repository not exist, create it.')
+        if repo_name not in local_list:
+            self.logger.info('upload_pkg: repository %s does not exist, creating it.' % repo_name)
             self.repo.create_local(repo_name)
 
         if not package:
-            # No repo find, no package specified, just create & deploy the repo and return
+            # No repo found, no package specified, just create & deploy the repo and return
             self.repo.deploy_local(repo_name)
-            return False
+            return True
 
+        self.logger.debug('upload_pkg: upload package %s into %s' % (package, repo_name))
         if '.deb' == os.path.splitext(package)[-1]:
+            pkg_type = 'binary'
+            try:
+                deb = debian.debfile.DebFile(package, 'r').debcontrol()
+            except Exception as e:
+                self.logger.error('Error: %s' % e)
+                self.logger.error('Binary package %s read error.' % package)
+                raise Exception('Binary package error.')
+            pkg_version = deb['Version']
+            pkg_name = deb['Package']
             self.repo.upload_pkg_local(package, repo_name)
         elif '.dsc' == os.path.splitext(package)[-1]:
-            dsc = debian.deb822.Dsc(open(package, 'r'))
-            for file in dsc['Files']:
-                # print(os.path.join(os.path.dirname(package), file['name']))
-                self.repo.upload_pkg_local(os.path.join(os.path.dirname(package), file['name']), repo_name)
+            pkg_type = 'source'
+            try:
+                dsc = debian.deb822.Dsc(open(package, 'r'))
+            except Exception as e:
+                self.logger.error('Error: %s' % e)
+                self.logger.error('Source package %s read error.' % package)
+                raise Exception('Source package error.')
+            pkg_name = dsc['Source']
+            pkg_version = dsc['Version']
+
+            # In case there is already an *.orig.* file with different size in any repos,
+            # refuse to upload it.
+            different_files = self.__check_orig_files(dsc)
+            if different_files:
+                for repo, meta_files in different_files.items():
+                    self.logger.error('%s contains different file: %s' % (repo, str(meta_files)))
+                    self.logger.error('Package %s upload failed.  Repo %s already contains '
+                                      'file %s with different content.' %
+                                      (package, repo, str(meta_files)))
+                return False
+
+            for meta_file in dsc['Files']:
+                self.repo.upload_pkg_local(os.path.join(os.path.dirname(package),
+                                           meta_file['name']), repo_name)
             self.repo.upload_pkg_local(package, repo_name)
         else:
-            self.logger.warn('handlwUploadPkg only support Debian style files like deb and dsc.')
+            self.logger.warning('Only Debian style files, like deb and dsc, are supported.')
             return False
+        self.logger.debug('upload_pkg: package %s been uploaded into %s' % (package, repo_name))
         self.repo.deploy_local(repo_name)
+
+        # Double check if the package been uploaded successfully
+        if not self.search_pkg(repo_name, pkg_name, pkg_version, pkg_type == 'binary'):
+            self.logger.error('upload_pkg: verify failed, no %s package %s %s in %s'
+                              % (pkg_type, pkg_name, pkg_version, repo_name))
+            return False
         return True
 
     # search a package from a repository
@@ -483,7 +542,7 @@ class RepoMgr():
     # pkg_version: version number of the package to be searched
     # binary: binary package or source one?
     # Output: True if find, or False
-    def search_pkg(self, repo_name, pkg_name, pkg_version: Optional[str] = None, binary: Optional[bool] = True):
+    def search_pkg(self, repo_name, pkg_name, pkg_version=None, binary=True):
         '''Find a package from a specified repo.'''
         repo_find = False
         repo = None
@@ -496,7 +555,7 @@ class RepoMgr():
             if repo == repo_name:
                 repo_find = True
         if not repo_find:
-            self.logger.error('Search package, repository not exist.')
+            self.logger.error('Search package, repository does not exist.')
             return False
 
         if binary:
@@ -504,7 +563,7 @@ class RepoMgr():
         else:
             pkg_type = 'source'
         if not self.repo.pkg_exist([repo_name], pkg_name, pkg_type, pkg_version):
-            self.logger.info('Search %s package %s, not find.', pkg_type, pkg_name)
+            self.logger.info('Search %s package %s, not found.' % (pkg_type, pkg_name))
             return False
         return True
 
@@ -513,13 +572,14 @@ class RepoMgr():
     # pkg_name: name of the binary package to be deleted
     # pkg_type: 'source' or 'binary'
     # pkg_version: version number of the package to be deleted
-    # Output: True is find and deleted, or False
-    def delete_pkg(self, repo_name, pkg_name, pkg_type, pkg_version = ''):
+    # Output: True if find and delete, or False
+    def delete_pkg(self, repo_name, pkg_name, pkg_type, pkg_version=''):
         '''Find and delete a binary package from a specified local repo.'''
         repo_find = False
         repo = None
         if pkg_type not in {'binary', 'source'}:
-            self.logger.error('Delete package, pkg_type must be one of either "binary" or "source".')
+            self.logger.error('Delete package, pkg_type must be one of '
+                              'either "binary" or "source".')
             return False
         if not repo_name.startswith(aptly_deb_usage.PREFIX_LOCAL):
             self.logger.error('Delete package, only local repositories support this operation.')
@@ -529,11 +589,11 @@ class RepoMgr():
             if repo == repo_name:
                 repo_find = True
         if not repo_find:
-            self.logger.error('Delete package, repository not exist.')
+            self.logger.error('Delete package, repository does not exist.')
             return False
 
         if not self.repo.pkg_exist([repo_name], pkg_name, pkg_type, pkg_version):
-            self.logger.info('Delete package, package not find.')
+            self.logger.info('Delete package, package not found.')
             return False
 
         self.repo.delete_pkg_local(repo_name, pkg_name, pkg_type, pkg_version)
@@ -548,13 +608,15 @@ utils.set_logger(applogger)
 
 def _handleDownload(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, applogger)
-    kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list, 'dsc_list': args.dsc_list}
+    kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list,
+              'dsc_list': args.dsc_list}
     repomgr.download(args.name, **kwargs, no_clear=args.no_clear)
 
 
 def _handleSync(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, applogger)
-    kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list, 'dsc_list': args.dsc_list}
+    kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list,
+              'dsc_list': args.dsc_list}
     repomgr.sync(args.name, args.repo_list, **kwargs, no_clear=args.no_clear)
 
 
@@ -572,15 +634,18 @@ def _handleUploadPkg(args):
 
 def _handleDeletePkg(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
-    repomgr.delete_pkg(args.repository, args.package_name, args.package_type, pkg_version=args.package_version)
+    repomgr.delete_pkg(args.repository, args.package_name, args.package_type,
+                       pkg_version=args.package_version)
 
 
 def _handleSearchPkg(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
     if args.package_type == 'binary':
-        repomgr.search_pkg(args.repository, args.package_name, pkg_version=args.package_version, binary=True)
+        repomgr.search_pkg(args.repository, args.package_name, pkg_version=args.package_version,
+                           binary=True)
     else:
-        repomgr.search_pkg(args.repository, args.package_name, pkg_version=args.package_version, binary=False)
+        repomgr.search_pkg(args.repository, args.package_name, pkg_version=args.package_version,
+                           binary=False)
 
 
 def _handleRemoveRope(args):
@@ -600,38 +665,60 @@ def _handleClean(_args):
 
 def subcmd_download(subparsers):
     download_parser = subparsers.add_parser('download',
-                                            help='Download specified packages and deploy them through a new repository.\n\n')
-    download_parser.add_argument('--name', '-n', help='Name of the local repo', required=False, default='deb-local-down')
-    download_parser.add_argument('--deb_list', help='Binary package list file', required=False, default='./deb.list')
-    download_parser.add_argument('--dsc_list', help='Source package list file', required=False, default='./dsc.list')
-    download_parser.add_argument('--basedir', help='Temporary folder to store packages', required=False, default='/tmp/repomgr')
-    download_parser.add_argument('--sources_list', help='Upstream sources list file', default='./sources.list')
-    download_parser.add_argument('--no-clear', help='Not remove temporary files', action='store_true')
+                                            help='Download specified packages and deploy them '
+                                                 'through a new repository.\n\n')
+    download_parser.add_argument('--name', '-n', help='Name of the local repo', required=False,
+                                 default='deb-local-down')
+    download_parser.add_argument('--deb_list', help='Binary package list file', required=False,
+                                 default='')
+    download_parser.add_argument('--dsc_list', help='Source package list file', required=False,
+                                 default='')
+    download_parser.add_argument('--basedir', help='Temporary folder to store packages',
+                                 required=False, default='/tmp/repomgr')
+    download_parser.add_argument('--sources_list', help='Upstream sources list file',
+                                 default='./sources.list')
+    download_parser.add_argument('--no-clear', help='Not remove temporary files',
+                                 action='store_true')
     download_parser.set_defaults(handle=_handleDownload)
 
 
 def subcmd_sync(subparsers):
     sync_parser = subparsers.add_parser('sync',
-                                        help='Sync a set of repositories with specified package lists..\n\n')
-    sync_parser.add_argument('--name', '-n', help='Name of the local repo', required=False, default='deb-local-sync')
-    sync_parser.add_argument('--repo_list', '-l', help='a set of local repos', required=False, default=[])
-    sync_parser.add_argument('--deb_list', help='Binary package list file', required=False, default='./deb.list')
-    sync_parser.add_argument('--dsc_list', help='Source package list file', required=False, default='./dsc.list')
-    sync_parser.add_argument('--basedir', help='Temporary folder to store packages', required=False, default='/tmp/repomgr')
-    sync_parser.add_argument('--sources_list', help='Upstream sources list file', default='./sources.list')
-    sync_parser.add_argument('--no-clear', help='Not remove temporary files', action='store_true')
+                                        help='Sync a set of repositories with specified package'
+                                             'lists..\n\n')
+    sync_parser.add_argument('--name', '-n', help='Name of the local repo', required=False,
+                             default='deb-local-sync')
+    sync_parser.add_argument('--repo_list', '-l', help='a set of local repos', required=False,
+                             default=[])
+    sync_parser.add_argument('--deb_list', help='Binary package list file', required=False,
+                             default='')
+    sync_parser.add_argument('--dsc_list', help='Source package list file', required=False,
+                             default='')
+    sync_parser.add_argument('--basedir', help='Temporary folder to store packages',
+                             required=False, default='/tmp/repomgr')
+    sync_parser.add_argument('--sources_list', help='Upstream sources list file',
+                             default='./sources.list')
+    sync_parser.add_argument('--no-clear', help='Not remove temporary files',
+                             action='store_true')
     sync_parser.set_defaults(handle=_handleSync)
 
 
 def subcmd_mirror(subparsers):
     mirror_parser = subparsers.add_parser('mirror',
-                                          help='Construct a mirror based on a remote repository.\n\n')
-    mirror_parser.add_argument('--name', '-n', help='Name of the mirror', required=False, default='deb-remote-tmp')
-    mirror_parser.add_argument('--url', help='URL of remote repository', required=False, default='http://nginx.org/packages/debian/')
-    mirror_parser.add_argument('--distribution', '-d', help='distribution name', required=False, default='buster')
-    mirror_parser.add_argument('--component', '-c', help='component name', required=False, default='nginx')
-    mirror_parser.add_argument('--architectures', '-a', help='architectures', required=False, default='amd64')
-    mirror_parser.add_argument('--with-sources', '-s', help='include source packages', action='store_true')
+                                          help='Construct a mirror based on a remote'
+                                               'repository.\n\n')
+    mirror_parser.add_argument('--name', '-n', help='Name of the mirror', required=False,
+                               default='deb-remote-tmp')
+    mirror_parser.add_argument('--url', help='URL of remote repository', required=False,
+                               default='http://nginx.org/packages/debian/')
+    mirror_parser.add_argument('--distribution', '-d', help='distribution name', required=False,
+                               default='buster')
+    mirror_parser.add_argument('--component', '-c', help='component name', required=False,
+                               default='nginx')
+    mirror_parser.add_argument('--architectures', '-a', help='architectures', required=False,
+                               default='amd64')
+    mirror_parser.add_argument('--with-sources', '-s', help='include source packages',
+                               action='store_true')
     mirror_parser.set_defaults(handle=_handleMirror)
 
 
@@ -639,8 +726,10 @@ def main():
     # command line arguments
     parser = argparse.ArgumentParser(add_help=False,
                                      description='Repository management Tool',
-                                     epilog='''Tips: Use %(prog)s --help to get help for all of parameters\n\n''')
-    subparsers = parser.add_subparsers(title='Repo control Commands:', help='sub-command for repo-ctl\n\n')
+                                     epilog='''Tips: Use %(prog)s --help to get help for all of '
+                                            'parameters\n\n''')
+    subparsers = parser.add_subparsers(title='Repo control Commands:',
+                                       help='sub-command for repo-ctl\n\n')
 
     # Three functions for three sub commands: pylint checking(too-many-statements)
     subcmd_download(subparsers)
@@ -650,32 +739,48 @@ def main():
     clean_parser = subparsers.add_parser('clean', help='Clear all aptly repos.\n\n')
     clean_parser.set_defaults(handle=_handleClean)
 
-    remove_repo_parser = subparsers.add_parser('remove_repo', help='Remove a specific repository.\n\n')
-    remove_repo_parser.add_argument('--repository', '-r', help='Name of the repo to be removed')
+    remove_repo_parser = subparsers.add_parser('remove_repo',
+                                               help='Remove a specific repository.\n\n')
+    remove_repo_parser.add_argument('--repository', '-r',
+                                    help='Name of the repo to be removed')
     remove_repo_parser.set_defaults(handle=_handleRemoveRope)
 
-    upload_pkg_parser = subparsers.add_parser('upload_pkg', help='Upload a Debian package into a specific repository.\n\n')
-    upload_pkg_parser.add_argument('--package', '-p', help='Debian package to be uploaded.', required=False)
-    upload_pkg_parser.add_argument('--repository', '-r', help='Repository used to deploy this package.')
+    upload_pkg_parser = subparsers.add_parser('upload_pkg',
+                                              help='Upload a Debian package into a specific '
+                                                   'repository.\n\n')
+    upload_pkg_parser.add_argument('--package', '-p',
+                                   help='Debian package to be uploaded.', required=False)
+    upload_pkg_parser.add_argument('--repository', '-r',
+                                   help='Repository used to deploy this package.')
     upload_pkg_parser.set_defaults(handle=_handleUploadPkg)
 
     delete_pkg_parser = subparsers.add_parser('delete_pkg',
-                                              help='Delete a specified Debian package from a specified repository.\n\n')
+                                              help='Delete a specified Debian package from a '
+                                                   'specified repository.\n\n')
     delete_pkg_parser.add_argument('--package_name', '-p', help='Package name to be deleted.')
-    delete_pkg_parser.add_argument('--package_type', '-t', help='Package type to be deleted, "binary" or "source".')
-    delete_pkg_parser.add_argument('--package_version', '-v', help='Version number of the package.', required=False)
-    delete_pkg_parser.add_argument('--repository', '-r', help='Local Repository to delete the package from.')
+    delete_pkg_parser.add_argument('--package_type', '-t',
+                                   help='Package type to be deleted, "binary" or "source".')
+    delete_pkg_parser.add_argument('--package_version', '-v',
+                                   help='Version number of the package.', required=False)
+    delete_pkg_parser.add_argument('--repository', '-r', help='Local Repository to delete the '
+                                   'package from.')
     delete_pkg_parser.set_defaults(handle=_handleDeletePkg)
 
     search_pkg_parser = subparsers.add_parser('search_pkg',
-                                              help='Search a specified package from a specified repository.\n\n')
+                                              help='Search a specified package from a specified '
+                                                   'repository.\n\n')
     search_pkg_parser.add_argument('--package_name', '-p', help='package to be looking for.')
-    search_pkg_parser.add_argument('--package_version', '-v', help='The version of the package.', required=False)
-    search_pkg_parser.add_argument('--repository', '-r', help='The Repository to search the package in.')
-    search_pkg_parser.add_argument('--package_type', '-t', help='binary or source', required=False)
+    search_pkg_parser.add_argument('--package_version', '-v', help='The version of the package.',
+                                   required=False)
+    search_pkg_parser.add_argument('--repository', '-r',
+                                   help='The Repository to search the package in.')
+    search_pkg_parser.add_argument('--package_type', '-t', help='binary or source',
+                                   required=False)
     search_pkg_parser.set_defaults(handle=_handleSearchPkg)
 
-    list_parser = subparsers.add_parser('list', help='List all aptly repos, including local repo and remote mirror.\n\n')
+    list_parser = subparsers.add_parser('list',
+                                        help='List all aptly repos, including local repo and '
+                                             'remote mirror.\n\n')
     list_parser.set_defaults(handle=_handleList)
 
     args = parser.parse_args()
