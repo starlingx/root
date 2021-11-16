@@ -298,7 +298,7 @@ class Deb_aptly():
                 if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
                     self.logger.warning('Drop mirror failed %s : %s', name, self.aptly.tasks.show(task.id).state)
 
-        # Clean orphans
+        # Delete orphan files
         task = self.aptly.db.cleanup()
         self.aptly.tasks.wait_for_task_by_id(task.id)
 
@@ -468,7 +468,11 @@ class Deb_aptly():
             return None
 
         if self.__create_snapshot(name, True):
-            return self.__publish_snap(name)
+            ret = self.__publish_snap(name)
+            # Delete orphan files
+            task = self.aptly.db.cleanup()
+            self.aptly.tasks.wait_for_task_by_id(task.id)
+            return ret
         return None
 
     # remove a local repository
@@ -506,6 +510,10 @@ class Deb_aptly():
                 self.aptly.tasks.wait_for_task_by_id(task.id)
                 if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
                     self.logger.warning('Drop repo failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+
+        # Delete orphan files
+        task = self.aptly.db.cleanup()
+        self.aptly.tasks.wait_for_task_by_id(task.id)
 
         return None
 
@@ -554,6 +562,6 @@ class Deb_aptly():
             self.aptly.files.delete(file)
         # clean tasks
         self.aptly.tasks.clear()
-        # Clean orphans
+        # Delete orphan files
         task = self.aptly.db.cleanup()
         self.aptly.tasks.wait_for_task_by_id(task.id)
