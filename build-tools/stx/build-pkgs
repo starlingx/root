@@ -296,9 +296,8 @@ class BuildController():
         if not self.kits['repo_mgr']:
             logger.critical("Failed to create repo manager")
             return False
-        if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, None):
-            logger.error(' '.join(['Failed to create repo', REPO_BUILD]))
-            return False
+        self.kits['repo_mgr'].upload_pkg(REPO_BUILD, None)
+        self.kits['repo_mgr'].upload_pkg(REPO_SOURCE, None)
 
         build_dir = os.path.join(BUILD_ROOT, self.attrs['type'])
         os.makedirs(build_dir, exist_ok=True)
@@ -309,8 +308,7 @@ class BuildController():
         if not self.kits['dsc_maker']:
             try:
                 self.kits['dsc_maker'] = debrepack.Parser(build_dir,
-                                                          recipes_dir, 'debug',
-                                                          REPO_SOURCE)
+                                                          recipes_dir, 'debug')
             except Exception as e:
                 logger.error(str(e))
                 logger.error("Failed to create dsc maker")
@@ -393,13 +391,16 @@ class BuildController():
             for deb in subdebs:
                 pkg_item = deb.split('_')
                 msg = ''.join(['Package ', pkg_item[0], '(', pkg_item[1], ')'])
-                if self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0],
+                if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0],
                                                     pkg_item[1]):
-                    logger.debug(' '.join([msg, ' is removed from',
-                                           REPO_BUILD]))
-                else:
-                    logger.error(' '.join(['Failed to remove', msg, 'from',
-                                           REPO_BUILD]))
+                    if self.kits['repo_mgr'].delete_pkg(REPO_BUILD,
+                                                        pkg_item[0],
+                                                        pkg_item[1]):
+                        logger.debug(' '.join([msg, ' is removed from',
+                                               REPO_BUILD]))
+                    else:
+                        logger.error(' '.join(['Failed to remove', msg, 'from',
+                                               REPO_BUILD]))
         sdebs = []
         if not os.path.exists(debs_dir):
             logger.error(' '.join(['Noneexistent directory', debs_dir]))
@@ -516,6 +517,16 @@ class BuildController():
 
         logger.debug(' '.join([pkg_meta, 'is ready to create dsc']))
 
+        pkgdir = os.path.join(BUILD_ROOT, self.attrs['type'], package)
+        if os.path.exists(pkgdir):
+            try:
+                shutil.rmtree(pkgdir)
+            except Exception as e:
+                logger.error(str(e))
+            else:
+                logger.debug(' '.join(['Successfully removed old', pkgdir]))
+                os.makedirs(pkgdir)
+
         try:
             dsc_recipes = self.kits['dsc_maker'].package(pkg_meta)
         except Exception as e:
@@ -616,6 +627,7 @@ class BuildController():
             deb_meta_path = fetch_debian_folder(deb)
             if not deb_meta_path:
                 logger.error(' '.join(['No debian meta found, skip', deb]))
+                self.lists['fail'].append(deb)
                 continue
 
             deb_recipes = self.create_dsc(deb, deb_meta_path)
@@ -625,22 +637,32 @@ class BuildController():
                 fdsc_file.write(dsc_file + '\n')
                 if self.kits['repo_mgr']:
                     self.upload_with_dsc(dsc_file, REPO_SOURCE)
+            else:
+                self.lists['fail'].append(deb)
+                if self.attrs['exit_on_fail']:
+                    if fdsc_file:
+                        fdsc_file.close()
+                    return
 
         if fdsc_file:
             fdsc_file.close()
 
         # Start to build
-        self.run_build_loop(packages_dscs)
+        if packages_dscs:
+            self.run_build_loop(packages_dscs)
+        else:
+            logger.info("No debian dsc files found")
 
     def show_build_stats(self):
         if len(self.lists['success']) > 0:
             logger.info("Successfully built:")
-            for deb in self.lists['success']:
+            for deb in sorted(self.lists['success']):
                 logger.info(deb)
 
-        if len(self.lists['fail']) > 0:
+        failed_pkgs = list(set(self.lists['fail']))
+        if len(failed_pkgs) > 0:
             logger.error("Failed to build:")
-            for deb in self.lists['fail']:
+            for deb in sorted(failed_pkgs):
                 logger.error(deb)
 
 
@@ -678,7 +700,8 @@ if __name__ == "__main__":
 
     # set mutually options pair for package build and layer build
     build_group = parser.add_mutually_exclusive_group()
-    build_group.add_argument('-a', '--all', help="Packages with comma")
+    build_group.add_argument('-a', '--all', help="Packages with comma",
+                             action='store_true')
     build_group.add_argument('-l', '--layers', help="Layers with comma",
                              type=str)
     build_group.add_argument('-p', '--packages', help="Packages with comma",
@@ -686,11 +709,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.packages:
         build_port = 'package'
-        build_data = args.packages.split(',')
+        build_data = args.packages.strip().split(',')
     else:
         if args.layers:
             build_port = 'layer'
-            build_data = args.layers.split(',')
+            build_data = args.layers.strip().split(',')
         else:
             if args.all:
                 build_port = 'all'
@@ -702,9 +725,10 @@ if __name__ == "__main__":
     build_controller = BuildController()
     if args.clean:
         build_controller.build_avoid = False
-        build_controller.clean()
+        if build_port == 'all':
+            build_controller.clean()
     if args.exit_on_fail:
-        build_controller.attrs['exit_on_fail'] = False
+        build_controller.attrs['exit_on_fail'] = True
     if args.test:
         build_controller.attrs['run_tests'] = True
 
