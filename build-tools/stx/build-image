@@ -34,6 +34,24 @@ img_pkgs = []
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
 
+def update_ostree_osname(img_yaml):
+
+    ostree_osname = os.environ.get('OSTREE_OSNAME')
+    if ostree_osname is None:
+        return False
+
+    try:
+        with open(img_yaml) as f:
+            yaml_doc = yaml.safe_load(f)
+        yaml_doc['ostree']['ostree_osname'] = ostree_osname
+        with open(img_yaml, 'w') as f:
+            yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+    except IOError as e:
+        logger.error(str(e))
+        return False
+
+    logger.debug(' '.join(['Update', img_yaml, 'to update the ostree_osname']))
+    return True
 
 def feed_lat_src_repos(img_yaml, repo_url):
     if not os.path.exists(img_yaml):
@@ -227,6 +245,8 @@ if __name__ == "__main__":
         sys.exit(1)
     else:
         logger.info("success to feed local repos to LAT")
+
+    update_ostree_osname(lat_yaml)
 
     if add_lat_packages(lat_yaml, img_pkgs):
         os.system("latc --file " + lat_yaml + " build")
