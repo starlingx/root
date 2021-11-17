@@ -224,15 +224,24 @@ if __name__ == "__main__":
         sys.exit(1)
 
     base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-bullseye.yaml')
+    base_initramfs_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-initramfs-bullseye.yaml')
     lat_yaml = "/localdisk/deploy/lat.yaml"
+    lat_initramfs_yaml = "/localdisk/deploy/lat-initramfs.yaml"
 
-    if not os.path.exists(base_yaml):
-        logger.error(' '.join(['Base yaml file', base_yaml, 'does not exist']))
-        sys.exit(1)
-    else:
-        if not os.path.exists("/localdisk/deploy/"):
-            os.makedirs("/localdisk/deploy/")
+    for yaml_file in (base_yaml, base_initramfs_yaml):
+        if not os.path.exists(yaml_file):
+            logger.error(' '.join(['Base yaml file', yaml_file, 'does not exist']))
+            sys.exit(1)
+
+    if not os.path.exists("/localdisk/deploy/"):
+        os.makedirs("/localdisk/deploy/")
+
+    try:
         shutil.copyfile(base_yaml, lat_yaml)
+        shutil.copyfile(base_initramfs_yaml, lat_initramfs_yaml)
+    except IOError as e:
+        logger.error('Fail to copy image yaml files to /localdisk/deploy')
+        sys.exit(1)
 
     binary_repo_url = ''.join(['deb [trusted=yes] ',
                                os.environ.get('REPOMGR_DEPLOY_URL'),
@@ -240,11 +249,13 @@ if __name__ == "__main__":
     build_repo_url = ''.join(['deb [trusted=yes] ',
                               os.environ.get('REPOMGR_DEPLOY_URL'),
                               REPO_BUILD, ' bullseye main'])
-    if not feed_lat_src_repos(lat_yaml, [binary_repo_url, build_repo_url]):
-        logger.error("Fail to feed local repos to LAT")
-        sys.exit(1)
-    else:
-        logger.info("success to feed local repos to LAT")
+
+    for yaml_file in (lat_yaml, lat_initramfs_yaml):
+        if not feed_lat_src_repos(yaml_file, [binary_repo_url, build_repo_url]):
+            logger.error(' '.join(['Fail to set local repos to', yaml_file]))
+            sys.exit(1)
+        else:
+            logger.info(' '.join(['success to set local repos to', yaml_file]))
 
     update_ostree_osname(lat_yaml)
 
