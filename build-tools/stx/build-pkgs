@@ -394,7 +394,7 @@ class BuildController():
                 if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0],
                                                     pkg_item[1]):
                     if self.kits['repo_mgr'].delete_pkg(REPO_BUILD,
-                                                        pkg_item[0],
+                                                        pkg_item[0], 'binary',
                                                         pkg_item[1]):
                         logger.debug(' '.join([msg, ' is removed from',
                                                REPO_BUILD]))
