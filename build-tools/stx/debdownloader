@@ -105,20 +105,22 @@ if __name__ == "__main__":
                              sys.argv[1]]))
                 sys.exit(1)
             version = pkgname_parts[1]
-            pname_x86 = ''.join([name, '_', version, '_amd64.deb'])
-            pname_all = ''.join([name, '_', version, '_all.deb'])
+            # strip epoch
+            major_ver = version.split(":")[-1]
+            pname_x86 = ''.join([name, '_', major_ver, '_amd64.deb'])
+            pname_all = ''.join([name, '_', major_ver, '_all.deb'])
             if repomgr.search_pkg(REPO_BIN, name, version):
                 logger.info(''.join([name, '-', version,
                             ' is already in binary repo, skip download']))
             else:
                 if debs_downloaded and pname_x86 in debs_downloaded:
                     logger.info(''.join([name, '-', version,
-                                'has been downloaded, skip download']))
+                                ' already downloaded, skip download']))
                     debs_need_upload.append(pname_x86)
                 else:
                     if debs_downloaded and pname_all in debs_downloaded:
                         logger.info(''.join([name, '-', version,
-                                    'has been downloaded, skip download']))
+                                    ' already downloaded, skip download']))
                         debs_need_upload.append(pname_all)
                     else:
                         debs_need_download.append(name + '_' + version)
