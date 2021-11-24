@@ -222,6 +222,10 @@ def fetch_debian_folder(package):
     for layer in STX_SOURCE_REPOS:
         pkg_dir_file = os.path.join(STX_ROOT, 'cgcs-root/stx', layer,
                                     'debian_pkg_dirs')
+        if not os.path.exists(pkg_dir_file):
+            logger.warning('debian_pkg_dirs does not exist for layer %s, please check', layer)
+            continue
+
         logger.debug(' '.join(['Fetching debian meta in', pkg_dir_file]))
         try:
             with open(pkg_dir_file, 'r') as fdir:
@@ -273,8 +277,10 @@ class BuildController():
         }
         self.pkgs_digests = {}
         if not self.kits['repo_mgr']:
+            rlogger = logging.getLogger('repo_manager')
+            utils.set_logger(rlogger)
             self.kits['repo_mgr'] = repo_manage.RepoMgr('aptly', REPOMGR_URL,
-                                                        '/tmp', logger)
+                                                        '/tmp', rlogger)
             logger.debug("Successful created repo manager")
 
     @property
@@ -390,17 +396,20 @@ class BuildController():
         if subdebs:
             for deb in subdebs:
                 pkg_item = deb.split('_')
-                msg = ''.join(['Package ', pkg_item[0], '(', pkg_item[1], ')'])
+                msg = ''.join(['package ', pkg_item[0], '(', pkg_item[1], ')'])
+
+                logger.info(' '.join(['Searching for binary', msg, 'in repository', REPO_BUILD]))
                 if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0],
                                                     pkg_item[1]):
+                    logger.info('Found binary %s in repository %s', msg, REPO_BUILD)
                     if self.kits['repo_mgr'].delete_pkg(REPO_BUILD,
                                                         pkg_item[0], 'binary',
                                                         pkg_item[1]):
-                        logger.debug(' '.join([msg, ' is removed from',
-                                               REPO_BUILD]))
+                        logger.info('Successfully deleted binary %s from repository %s',
+                                    msg, REPO_BUILD)
                     else:
-                        logger.error(' '.join(['Failed to remove', msg, 'from',
-                                               REPO_BUILD]))
+                        logger.info('Failed to delete binary %s from repository %s', msg,
+                                    REPO_BUILD)
         sdebs = []
         if not os.path.exists(debs_dir):
             logger.error(' '.join(['Noneexistent directory', debs_dir]))
@@ -412,8 +421,8 @@ class BuildController():
                 if r.endswith('.deb'):
                     deb_file = os.path.join(root, r)
                     if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file):
-                        logger.debug(' '.join(['Successfully uploaded',
-                                               deb_file, 'to', REPO_BUILD]))
+                        logger.info(' '.join(['Successfully uploaded',
+                                              deb_file, 'to repository', REPO_BUILD]))
                         pkg_item = r.split('_')
                         sdebs.append(''.join([pkg_item[0], '_', pkg_item[1]]))
                         msg = ''.join([pkg_item[0], '_', pkg_item[1],
@@ -421,16 +430,39 @@ class BuildController():
                                        package])
                         logger.debug(msg)
                     else:
-                        logger.error(' '.join(['Failed to upload', deb_file]))
+                        logger.error(' '.join(['Failed to upload', deb_file,
+                                               'to repository', REPO_BUILD]))
                         return False
         debsentry.set_subdebs(debs_clue, package, sdebs, logger)
         return True
 
-    def upload_with_dsc(self, dsc, repo_name):
+    def upload_with_dsc(self, deb, dsc, repo_name):
         if not os.path.exists(dsc):
             logger.error(' '.join(['Dsc file', dsc, 'does not exist']))
             return False
-        return self.kits['repo_mgr'].upload_pkg(repo_name, dsc)
+
+        dsc_pkg = os.path.basename(dsc).split('_')[0]
+        if deb != dsc_pkg:
+            logger.warning(''.join(['Package name passed in is ', deb,
+                                    ', from dsc is ', dsc_pkg, ' ,did not match.']))
+        logger.info(' '.join(['Existing source for', dsc_pkg,
+                              'will be deleted from repository', repo_name, 'before new source is uploaded']))
+        logger.info("Searching for %s in repository %s", dsc_pkg, repo_name)
+        if self.kits['repo_mgr'].search_pkg(repo_name, dsc_pkg, None, False):
+            logger.info("Found %s in repository %s, attempting to delete", dsc_pkg, repo_name)
+            if not self.kits['repo_mgr'].delete_pkg(repo_name, dsc_pkg, 'source'):
+                logger.error("Failed to delete source %s from repository %s", dsc_pkg, repo_name)
+                return False
+            logger.info("Successfully deleted source %s from repository %s", dsc_pkg, repo_name)
+        else:
+            logger.info("can't find %s in repository %s", dsc_pkg, repo_name)
+
+        logger.info(' '.join(['Start to upload source', dsc, 'to repository', repo_name]))
+        if not self.kits['repo_mgr'].upload_pkg(repo_name, dsc):
+            logger.error("Failed to upload source %s to repository %s", dsc, repo_name)
+            return False
+        logger.info("Successfully uploaded source %s to repository %s", dsc, repo_name)
+        return True
 
     def req_add_task(self, package, dsc_path):
         status = 'fail'
@@ -511,6 +543,7 @@ class BuildController():
                 skip_build = True
 
         if self.attrs['avoid'] and skip_build:
+            self.lists['success'].append(package)
             logger.info(' '.join(['Skip build', package, 'again']))
             logger.info(' '.join(['Force to build, please use -c/--clean']))
             return None
@@ -560,7 +593,6 @@ class BuildController():
                     self.kits['dsc_cache'].set_package_digest(package, pkg_md5)
                 else:
                     logger.info(' '.join(['Failed to build', package, str(p)]))
-                    self.lists['fail'].append(package)
                     self.req_stop_task()
                     if self.attrs['exit_on_fail']:
                         return
@@ -610,6 +642,7 @@ class BuildController():
     def build_packages(self, packages):
         fdsc_file = None
         packages_dscs = {}
+        self.lists['fail'] = packages
 
         build_dir = os.path.join(BUILD_ROOT, self.attrs['type'])
         os.makedirs(build_dir, exist_ok=True)
@@ -627,7 +660,6 @@ class BuildController():
             deb_meta_path = fetch_debian_folder(deb)
             if not deb_meta_path:
                 logger.error(' '.join(['No debian meta found, skip', deb]))
-                self.lists['fail'].append(deb)
                 continue
 
             deb_recipes = self.create_dsc(deb, deb_meta_path)
@@ -636,9 +668,8 @@ class BuildController():
                 packages_dscs[deb.strip()] = dsc_file
                 fdsc_file.write(dsc_file + '\n')
                 if self.kits['repo_mgr']:
-                    self.upload_with_dsc(dsc_file, REPO_SOURCE)
+                    self.upload_with_dsc(deb, dsc_file, REPO_SOURCE)
             else:
-                self.lists['fail'].append(deb)
                 if self.attrs['exit_on_fail']:
                     if fdsc_file:
                         fdsc_file.close()
@@ -659,11 +690,14 @@ class BuildController():
             for deb in sorted(self.lists['success']):
                 logger.info(deb)
 
-        failed_pkgs = list(set(self.lists['fail']))
+        failed_pkgs = list(set(self.lists['fail']) - set(self.lists['success']))
         if len(failed_pkgs) > 0:
             logger.error("Failed to build:")
             for deb in sorted(failed_pkgs):
                 logger.error(deb)
+            logger.info("For the failure reason, you can check with:")
+            logger.info("\'cat /localdisk/builder.log | grep ERROR\' or")
+            logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<Failed package>/*.build\'")
 
 
 def bc_signal_handler(signum, frame):
