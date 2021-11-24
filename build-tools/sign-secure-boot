@@ -228,23 +228,43 @@ function sign_kernels
 #              unsigned binaries
 function sign_kernel
 {
-	local KERNEL_PATH=$1
-	local KERNEL_EXTRA=$2
-	KERNEL=`find $MY_WORKSPACE/${KERNEL_PATH}/rpmbuild/RPMS -name "kernel${KERNEL_EXTRA}-[1-9]*.$ARCH.rpm"`
-	UNSIGNED_KERNEL=`find $MY_WORKSPACE/${KERNEL_PATH}/rpmbuild/RPMS -name "kernel${KERNEL_EXTRA}-unsigned-[1-9]*.$ARCH.rpm"`
-	if [ "x${KERNEL}" == "x" ]; then
-	    echo "Warning -- cannot find kernel package to sign in ${KERNEL_PATH}"
-	    return 0
-	fi
-	if [ "x${UNSIGNED_KERNEL}" == "x" ]; then
-	    echo "Warning -- cannot find unsigned kernel package to sign in ${KERNEL_PATH}"
-	    return 0
-	fi
+    local KERNEL_PATH=$1
+    local KERNEL_EXTRA=$2
 
-	sign kernel $KERNEL $UNSIGNED_KERNEL
-	if [ $? -ne 0 ]; then
-		return $?
-	fi
+    local KERNEL=""
+    local UNSIGNED_KERNEL=""
+    local RPM=""
+    local VMLINUZ=""
+
+    # 5.xx series kernels store vmlinuz in the 'kernel-core' package
+    KERNEL=$(find $MY_WORKSPACE/${KERNEL_PATH}/rpmbuild/RPMS -name "kernel${KERNEL_EXTRA}-core-[1-9]*.$ARCH.rpm")
+    if [ "x${KERNEL}" == "x" ]; then
+        # Older kernels store vmlinuz in the 'kernel' package
+        KERNEL=$(find $MY_WORKSPACE/${KERNEL_PATH}/rpmbuild/RPMS -name "kernel${KERNEL_EXTRA}-[1-9]*.$ARCH.rpm")
+        if [ "x${KERNEL}" == "x" ]; then
+            echo "Warning -- cannot find kernel package to sign in ${KERNEL_PATH}"
+            return 0
+        fi
+    fi
+
+    # The unsigned vmlinuz is in the 'kernel-unsigned' package for ALL kernels.
+    UNSIGNED_KERNEL=$(find $MY_WORKSPACE/${KERNEL_PATH}/rpmbuild/RPMS -name "kernel${KERNEL_EXTRA}-unsigned-[1-9]*.$ARCH.rpm")
+    if [ "x${UNSIGNED_KERNEL}" == "x" ]; then
+        echo "Warning -- cannot find unsigned kernel package to sign in ${KERNEL_PATH}"
+        return 0
+    fi
+
+    # check for vmlinuz
+    for RPM in $KERNEL $UNSIGNED_KERNEL; do
+        VMLINUZ=$(rpm -q -l -p $RPM | grep '/boot/vmlinuz')
+        if [ $? -ne 0 ]; then
+            echo "Error -- cannot find /boot/vmlinuz in ${RPM}"
+            return 1
+        fi
+    done
+
+    sign kernel $KERNEL $UNSIGNED_KERNEL
+    return $?
 }
 
 # rebuild_pkgs - rebuild any packages that need to be updated from the newly
