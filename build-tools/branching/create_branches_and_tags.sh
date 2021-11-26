@@ -26,6 +26,9 @@ source "${CREATE_BRANCHES_AND_TAGS_SH_DIR}/../git-repo-utils.sh"
 usage () {
     echo "create_branches_and_tags.sh --branch=<branch> [--tag=<tag>] <options>"
     echo ""
+    echo "    Create a branch on selected projects, and optionally update the manifest"
+    echo "    to use the the new branch."
+    echo ""
     echo "    The branch name must be provided.  The tag name can also be provided."
     echo "    If the tag is omitted, one is automativally generate by adding the"
     echo "    prefix 'v' to the branch name."
@@ -57,6 +60,8 @@ usage () {
     echo "                        new branch for all select remotes and projects."
     echo "    [ --manifest-file=<file.xml> ]"
     echo "                        Override the manifest file to be updated."
+    echo "    [ --default-revision ]"
+    echo "                        Set the default revision of the manifest."
     echo "    [ --hard-lock-down | --lockdown ]"
     echo "                        All unselected projects get the current HEAD's"
     echo "                        SHA set as the revision."
@@ -64,12 +69,15 @@ usage () {
     echo "                        All unselected projects with an revision that"
     echo "                        is unset, or 'master', get the current HEAD's sha"
     echo "                        set as the revision."
-    echo "    [ --default-revision ]"
-    echo "                        Set the default revision of the manifest."
+    echo "    [ --lock-down-exclude-remotes=<remotes> ]"
+    echo "    [ --lock-down-exclude-projects=<projects> ]"
+    echo "                        Exclude from lock-down these additional projects, and"
+    echo "                        all projects hosted by these additional remotes."
+    echo "                        Lists are comma separated."
     echo ""
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,gitreview-project,gitreview-host:,gitreview-port:,safe-gerrit-host:,help -n 'create_branches_and_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,gitreview-project,gitreview-host:,gitreview-port:,safe-gerrit-host:,lock-down-exclude-remotes:,lock-down-exclude-projects:,help -n 'create_branches_and_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -87,6 +95,8 @@ GITREVIEW_CHANGE=0
 SET_DEFAULT_REVISION=0
 remotes=""
 projects=""
+ld_exclude_remotes=""
+ld_exclude_projects=""
 branch=""
 tag=""
 manifest=""
@@ -99,6 +109,8 @@ while true ; do
         -h|--help)           HELP=1 ; shift ;;
         --remotes)           remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)          projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --lock-down-exclude-remotes)  ld_exclude_remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --lock-down-exclude-projects) ld_exclude_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --branch)            branch=$2; shift 2;;
         --tag)               tag=$2; shift 2;;
         --manifest)          MANIFEST=1 ; shift ;;
@@ -191,7 +203,7 @@ update_gitreview () {
         fi
 
         if [ ${GITREVIEW_PROJECT} -eq 1 ]; then
-            remote_url=$(git_repo_remote_url)
+            remote_url=$(git_repo_remote_url || git_remote_url)
             pull_url=${remote_url}
             path=$(url_path ${pull_url})
             project=${path%.git}
@@ -271,7 +283,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 fi
 
-for project in $projects; do
+for project in $projects $ld_exclude_projects; do
     if ! repo_is_project $project; then
         echo_stderr "Invalid project: $project"
         echo_stderr "Valid projects are: $(repo_project_list | tr '\n' ' ')"
@@ -279,7 +291,7 @@ for project in $projects; do
     fi
 done
 
-for remote in $remotes; do
+for remote in $remotes $ld_exclude_remotes; do
     if ! repo_is_remote $remote; then
         echo_stderr "Invalid remote: $remote"
         echo_stderr "Valid remotes are: $(repo_remote_list | tr '\n' ' ')"
@@ -291,6 +303,11 @@ done
 if [ "$remotes" != "" ]; then
     projects+="$(repo_project_list $remotes | tr '\n' ' ')"
 fi
+
+if [ "$ld_exclude_remotes" != "" ]; then
+    ld_exclude_projects+="$(repo_project_list $ld_exclude_remotes | tr '\n' ' ')"
+fi
+
 
 # If no projects or remotes specified, process ALL projects
 if [ "$projects" == "" ] && [ "$remotes" == "" ]; then
@@ -440,7 +457,7 @@ if [ $MANIFEST -eq 1 ]; then
     update_gitreview ${manifest_dir} || exit 1
 
     echo "Creating manifest ${new_manifest_name}"
-    manifest_set_revision "${manifest}" "${new_manifest}" "$branch" ${LOCK_DOWN} ${SET_DEFAULT_REVISION} $projects || exit 1
+    manifest_set_revision "${manifest}" "${new_manifest}" "$branch" "${LOCK_DOWN}" "${SET_DEFAULT_REVISION}" "${projects// /,}" "${ld_exclude_projects// /,}" || exit 1
 
     echo "Move manifest ${new_manifest_name}, overwriting ${manifest_name}"
     \cp -f "${manifest}" "${manifest}.save"

@@ -23,27 +23,46 @@ CREATE_TAGS_SH_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 source "${CREATE_TAGS_SH_DIR}/../git-repo-utils.sh"
 
 usage () {
-    echo "create_tags.sh --tag=<tag> [ --remotes=<remotes> ] [ --projects=<projects> ]"
-    echo "               [ --manifest [ --manifest-file=<manifest.xml> ] [ --manifest-prefix <prefix> ] [ --lock-down | --soft-lock-down ] [ --default-revision ]]"
-    echo "               [ --safe-gerrit-host=<host> ]"
-    echo " "
-    echo "Create a git tag in all listed projects, and all projects"
-    echo "hosted by all listed remotes.  Lists are comma separated."
+    echo "create_tags.sh --tag=<tag> <options>"
     echo ""
-    echo "If a manifest is requested, it will recieve the name '<prefix><tag>.xml' and"
-    echo "it will specify the tag as the revision for all tagged projects."
-    echo "If lockdown is requested, all non-tagged projects get the current"
-    echo "HEAD's sha set as the revision."
-    echo "If default-revision is selected, then the manifest default revision"
-    echo "will be set."
+    echo "    Create a tag on selected projects, and optionally update the manifest"
+    echo "    to use the the new branch."
     echo ""
-    echo "--manifest-file may be used to override the manifest file to be updated."
+    echo "selection options:"
+    echo "    [ --remotes=<remotes> ] [ --projects=<projects> ]"
     echo ""
-    echo "--safe-gerrit-host allows one to specify host names of gerrit servers"
-    echo "that are safe to push reviews to."
+    echo "    Create a branch and a tag in all listed projects, and all"
+    echo "    projects hosted by all listed remotes.  Lists are comma separated."
+    echo ""
+    echo "manifest options:"
+    echo "    [ --manifest ]"
+    echo "                        Modify the current repo manifest to specify the"
+    echo "                        new branch for all select remotes and projects."
+    echo "    [ --manifest-file=<file.xml> ]"
+    echo "                        Override the manifest file to be updated."
+    echo "    [ --default-revision ]"
+    echo "                        Set the default revision of the manifest."
+    echo "    [ --hard-lock-down | --lockdown ]"
+    echo "                        All unselected projects get the current HEAD's"
+    echo "                        SHA set as the revision."
+    echo "    [ --soft-lock-down ]"
+    echo "                        All unselected projects with an revision that"
+    echo "                        is unset, or 'master', get the current HEAD's sha"
+    echo "                        set as the revision."
+    echo "    [ --lock-down-exclude-remotes=<remotes> ]"
+    echo "    [ --lock-down-exclude-projects=<projects> ]"
+    echo "                        Exclude from lock-down these additional projects, and"
+    echo "                        all projects hosted by these additional remotes."
+    echo "                        Lists are comma separated."
+    echo ""
+    echo "other options:"
+    echo "    [ --safe-gerrit-host=<host> ]"
+    echo "                                allows one to specify host names of gerrit"
+    echo "                                servers that are safe to push reviews to."
+    echo ""
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-file:,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,safe-gerrit-host:,help -n 'create_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-file:,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,safe-gerrit-host:,lock-down-exclude-remotes:,lock-down-exclude-projects:,help -n 'create_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -56,6 +75,8 @@ LOCK_DOWN=0
 SET_DEFAULT_REVISION=0
 remotes=""
 projects=""
+ld_exclude_remotes=""
+ld_exclude_projects=""
 tag=""
 manifest=""
 new_manifest=""
@@ -68,6 +89,8 @@ while true ; do
         -h|--help)           HELP=1 ; shift ;;
         --remotes)           remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)          projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --lock-down-exclude-remotes)  ld_exclude_remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --lock-down-exclude-projects) ld_exclude_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --tag)               tag=$2; shift 2;;
         --manifest)          MANIFEST=1 ; shift ;;
         --manifest-file)     repo_set_manifest_file "$2"; shift 2;;
@@ -119,7 +142,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 fi
 
-for project in $projects; do
+for project in $projects $ld_exclude_projects; do
     if ! repo_is_project $project; then
         echo_stderr "Invalid project: $project"
         echo_stderr "Valid projects are: $(repo_project_list | tr '\n' ' ')"
@@ -127,7 +150,7 @@ for project in $projects; do
     fi
 done
 
-for remote in $remotes; do
+for remote in $remotes $ld_exclude_remotes; do
     if ! repo_is_remote $remote; then
         echo_stderr "Invalid remote: $remote"
         echo_stderr "Valid remotes are: $(repo_remote_list | tr '\n' ' ')"
@@ -138,6 +161,10 @@ done
 # Add projects from listed remotes
 if [ "$remotes" != "" ]; then
     projects+="$(repo_project_list $remotes | tr '\n' ' ')"
+fi
+
+if [ "$ld_exclude_remotes" != "" ]; then
+    ld_exclude_projects+="$(repo_project_list $ld_exclude_remotes | tr '\n' ' ')"
 fi
 
 # If no projects or remotes specified, process ALL projects
@@ -235,7 +262,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 
     echo "Creating manifest ${new_manifest_name}"
-    manifest_set_revision "${manifest}" "${new_manifest}" "refs/tags/$tag" ${LOCK_DOWN} ${SET_DEFAULT_REVISION} $projects || exit 1
+    manifest_set_revision "${manifest}" "${new_manifest}" "refs/tags/$tag" "${LOCK_DOWN}" "${SET_DEFAULT_REVISION}" "${projects// /,}" "${ld_exclude_projects// /,}" || exit 1
 
     echo "Committing ${new_manifest_name} in ${new_manifest_dir}"
     git add ${new_manifest_name} || exit 1

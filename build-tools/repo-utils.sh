@@ -195,11 +195,11 @@ manifest_get_revision_of_project () {
 manifest_get_default_revision () {
     local manifest="${1}"
 
-    grep '<default' $manifest |sed -e 's#.*revision=\([^ ]*\).*#\1#' -e 's#"##g' -e "s#'##g"
+    grep '<default' $manifest |sed -e 's#.*revision=\([^ /]*\).*#\1#' -e 's#"##g' -e "s#'##g"
 }
 
 #
-# manifest_set_revision <old_manifest> <new_manifest> <revision> <lock_down> <project-list>
+# manifest_set_revision <old_manifest> <new_manifest> <revision> <lock_down> <project-list> <excluded_project_list>
 #
 #    old_manifest = Path to original manifest.
 #    new_manifest = Path to modified manifest. It will not overwrite an
@@ -211,9 +211,11 @@ manifest_get_default_revision () {
 #                   projects to equal the SHA of the current git head.
 #                   If 1, similar to 2, but only if the project doesn't have
 #                   some other form of revision specified.
-#    project-list = A space seperated list of projects.  Listed projects
+#    project-list = A comma seperated list of projects.  Listed projects
 #                   will have their revision set to the provided revision
 #                   value.
+#    excluded_project-list = A comma seperated list of projects.  Listed
+#                   projects will not be subject to lock-down.
 #
 manifest_set_revision () {
     local old_manifest="${1}"
@@ -221,8 +223,8 @@ manifest_set_revision () {
     local revision="${3}"
     local lock_down="${4}"
     local set_default="${5}"
-    shift 5
-    local projects="${@}"
+    local projects="${6//,/ }"
+    local ld_exclude_projects="${7//,/ }"
 
     local old_default_revision=""
     local repo_root_dir=""
@@ -293,21 +295,30 @@ manifest_set_revision () {
             fi
         done
 
+        LD_EXCLUDE_FOUND=0
+        for project in ${ld_exclude_projects}; do
+            echo "${line}" | grep -q 'name="'${project}'"'
+            if [ $? -eq 0 ]; then
+                LD_EXCLUDE_FOUND=1
+                break
+            fi
+        done
+
         rev=${revision}
         old_rev=$(echo "${line}" | grep 'revision=' | sed -e 's#.*revision=\([^ ]*\).*#\1#' -e 's#"##g' -e "s#'##g")
         if [ $FOUND -eq 0 ]; then
             # A non-selected project
-            if [ ${lock_down} -eq 2 ]; then
+            if [ ${lock_down} -eq 2 ] && [ $LD_EXCLUDE_FOUND -eq 0 ]; then
                 # Hard lock-down
                 # Set the revision to current HEAD SHA.
                 path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
                 rev=$(cd "${path}"; git rev-parse HEAD)
-            elif [ ${lock_down} -eq 1 ] && [ "${old_rev}" == "" ]; then
+            elif [ ${lock_down} -eq 1 ] && [ $LD_EXCLUDE_FOUND -eq 0 ] && [ "${old_rev}" == "" ]; then
                 # Soft lock-down but no revision is currently set on the project.
                 # Set the revision to current HEAD SHA.
                 path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
                 rev=$(cd "${path}"; git rev-parse HEAD)
-            elif [ ${lock_down} -eq 1 ] && [ "${old_rev}" == "master" ]; then
+            elif [ ${lock_down} -eq 1 ] && [ $LD_EXCLUDE_FOUND -eq 0 ] && [ "${old_rev}" == "master" ]; then
                 # Soft lock-down and project has revision set to 'master' which is definitly unstable.
                 # Set the revision to current HEAD SHA.
                 path="${repo_root_dir}/$(echo "${line}" | sed 's#.*path="\([^"]*\)".*#\1#')"
