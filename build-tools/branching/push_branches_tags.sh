@@ -234,12 +234,16 @@ for subgit in $SUBGITS; do
             $DRY_RUN_CMD git config --local --replace-all "branch.${branch}.merge" refs/heads/${branch} && \
             $DRY_RUN_CMD git review --topic="${branch}"
         else
-            echo "git push --tags ${review_remote} ${branch} $DRY_RUN"
-            git push --tags ${review_remote} ${branch} $DRY_RUN
+            echo "git push ${review_remote} ${branch}:${branch} $DRY_RUN"
+            git push ${review_remote} ${branch}:${branch} $DRY_RUN
+            echo "git push ${review_remote} ${tag}:${tag} $DRY_RUN"
+            git push ${review_remote} ${tag}:${tag} $DRY_RUN
         fi
     else
-        echo "git push --tags --set-upstream ${remote} ${branch} $DRY_RUN"
-        git push --tags --set-upstream ${remote} ${branch} $DRY_RUN
+        echo "git push ${remote} ${branch}:${branch} $DRY_RUN"
+        git push ${remote} ${branch}:${branch} $DRY_RUN
+        echo "git push ${remote} ${tag}:${tag} $DRY_RUN"
+        git push ${remote} ${tag}:${tag} $DRY_RUN
     fi
 
     if [ $? != 0 ] ; then
