@@ -593,7 +593,7 @@ class Parser():
         src = run_shell_cmd('dpkg-parsechangelog -l %s --show-field source' % changelog, self.logger)
         ver = run_shell_cmd('dpkg-parsechangelog -l %s --show-field version' % changelog, self.logger)
         ver += self.set_revision()
-        run_shell_cmd('cd %s; dch -p -D stable -v %s %s' % (self.pkginfo["srcdir"], ver, RELEASENOTES), self.logger)
+        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (self.pkginfo["srcdir"], ver, RELEASENOTES), self.logger)
         # strip epoch
         ver = ver.split(":")[-1]
 
