@@ -215,7 +215,8 @@ def get_all_packages():
             if r == 'debian_pkg_dirs':
                 pkgs_file = os.path.join(root, r)
                 pkgs.extend(bc_safe_fetch(pkgs_file, pkgdirs_entry_handler))
-    return pkgs
+    # Remove duplication
+    return list(set(pkgs))
 
 
 def fetch_debian_folder(package):
@@ -273,7 +274,8 @@ class BuildController():
         self.lists = {
             'success': [],
             'fail': [],
-            'uploaded': [],
+            'build-needed': [],
+            'uploaded': []
         }
         self.pkgs_digests = {}
         if not self.kits['repo_mgr']:
@@ -327,7 +329,7 @@ class BuildController():
         return True
 
     def stop(self):
-        self.show_build_stats()
+        return self.show_build_stats()
 
     def clean(self):
         """
@@ -593,6 +595,7 @@ class BuildController():
                     self.kits['dsc_cache'].set_package_digest(package, pkg_md5)
                 else:
                     logger.info(' '.join(['Failed to build', package, str(p)]))
+                    self.lists['fail'].append(package)
                     self.req_stop_task()
                     if self.attrs['exit_on_fail']:
                         return
@@ -610,7 +613,8 @@ class BuildController():
     def build_all(self):
         packages = get_all_packages()
         if packages:
-            logger.debug(''.join(['All packages:',
+            total_pkgs = len(packages)
+            logger.debug(''.join(['All packages(', str(total_pkgs), '):',
                                   ','.join(packages)]))
             self.build_packages(packages)
         else:
@@ -620,6 +624,8 @@ class BuildController():
         if not layers:
             logger.error('Failed to get layers')
             return
+        # remove duplication
+        layers = list(set(layers))
         for layer in layers:
             if layer not in STX_LAYERS:
                 logger.error(' '.join([layer, 'is not a valid layer']))
@@ -640,9 +646,12 @@ class BuildController():
         return
 
     def build_packages(self, packages):
+        # remove duplication
+        packages = list(set(packages))
+
         fdsc_file = None
         packages_dscs = {}
-        self.lists['fail'] = packages
+        self.lists['build-needed'] = packages
 
         build_dir = os.path.join(BUILD_ROOT, self.attrs['type'])
         os.makedirs(build_dir, exist_ok=True)
@@ -685,32 +694,51 @@ class BuildController():
             logger.info("No debian dsc files found")
 
     def show_build_stats(self):
-        if len(self.lists['success']) > 0:
-            logger.info("Successfully built:")
+        """
+        Since all packages are put into self.lists['build-needed']
+        at the begining of building, we know how many
+        packages want to build
+        """
+        ret_val = 0
+        logger.info("Total packages needing to be built: %d", len(self.lists['build-needed']))
+        success_number = len(self.lists['success'])
+        if success_number > 0:
+            logger.info("Successfully built: %d", success_number)
             for deb in sorted(self.lists['success']):
                 logger.info(deb)
 
-        failed_pkgs = list(set(self.lists['fail']) - set(self.lists['success']))
-        if len(failed_pkgs) > 0:
-            logger.error("Failed to build:")
+        # failed_pkgs is the universal set of failed packages for various reasons
+        failed_pkgs = list(set(self.lists['build-needed']) - set(self.lists['success']))
+        failed_number = len(failed_pkgs)
+        if failed_number > 0:
+            ret_val = 1
+            logger.error("Failed to build: %d", failed_number)
             for deb in sorted(failed_pkgs):
                 logger.error(deb)
+            # self.lists['fail'] is the subset of failed_pkgs
+            # particularly refer to those failed packages reported by pkgbuilder
+            if len(self.lists['fail']) > 0:
+                logger.info("List of failed packages:")
+                for deb in sorted(self.lists['fail']):
+                    logger.error(deb)
             logger.info("For the failure reason, you can check with:")
             logger.info("\'cat /localdisk/builder.log | grep ERROR\' or")
             logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<Failed package>/*.build\'")
+        return ret_val
 
 
 def bc_signal_handler(signum, frame):
+    ret_val = 0
     if not build_controller:
-        return
+        sys.exit(1)
 
     if frame:
         logger.debug(' '.join(['Signal', str(signum), 'got']))
     logger.debug('Request to stop building tasks')
     build_controller.req_stop_task()
-    build_controller.show_build_stats()
+    ret_val = build_controller.show_build_stats()
     logger.debug('Exit for user interruption')
-    sys.exit(1)
+    sys.exit(ret_val)
 
 
 def bc_reg_signal_handler():
@@ -781,6 +809,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     build_controller.build_route(build_port, build_data)
-    build_controller.stop()
+    ret_value = build_controller.stop()
 
     logger.info("Build controller done")
+    sys.exit(ret_value)
