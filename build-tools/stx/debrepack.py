@@ -426,11 +426,12 @@ class Parser():
             cmd = 'tar -xvzf %s '
             cmdx = 'tar -tzf %s '
 
-        cmdx = cmdx + '| awk -F "/" \'{print $1}\' | sort | uniq'
-        topdir = run_shell_cmd(cmdx % tarball_file, self.logger)
+        cmdx = cmdx + '| awk -F "/" \'{print $%s}\' | sort | uniq'
+        topdir = run_shell_cmd(cmdx % (tarball_file, "1"), self.logger)
+        subdir = run_shell_cmd(cmdx % (tarball_file, "2"), self.logger)
 
         # The tar ball has top directory
-        if len(topdir.split('\n')) == 1:
+        if len(topdir.split('\n')) == 1 and subdir != '':
             # Remove the top diretory
             cmd += '--strip-components 1 -C %s'
         # The tar ball is extracted under $PWD by default
