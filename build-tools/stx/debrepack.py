@@ -61,6 +61,50 @@ def get_str_md5(text):
     return str(_hash)
 
 
+def tar_cmd(tarball_name):
+
+    targz = re.match(r'.*.(tar\.gz|tar\.bz2|tar\.xz|tgz)$', tarball_name)
+    if targz is None:
+        self.logger.error('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
+        raise ValueError(f'{tarball_name} type is not supported')
+
+    # Refer to untar.py of debmake python module
+    if targz == 'tar.bz2':
+        cmd = 'tar --bzip2 -xf %s '
+        cmdx = 'tar --bzip2 -tf %s '
+        cmdc = 'tar --bzip2 -cf %s %s '
+    elif targz == 'tar.xz':
+        cmd = 'tar --xz -xf %s '
+        cmdx = 'tar --xz -tf %s '
+        cmdc = 'tar --xz -cf %s %s '
+    else:
+        cmd = 'tar -xzf %s '
+        cmdx = 'tar -tzf %s '
+        cmdc = 'tar -czf %s %s '
+
+    return cmd, cmdx, cmdc
+
+
+def get_topdir(tarball_file, logger):
+
+    if not os.path.exists(tarball_file):
+        self.logger.error('Not such file %s', tarball_file)
+        raise IOError
+
+    tarball_name = os.path.basename(tarball_file)
+    _, cmdx, _ = tar_cmd(tarball_name)
+    cmdx = cmdx + '| awk -F "/" \'{print $%s}\' | sort | uniq'
+    topdir = run_shell_cmd(cmdx % (tarball_file, "1"), logger)
+    subdir = run_shell_cmd(cmdx % (tarball_file, "2"), logger)
+
+    # The tar ball has top directory
+    if len(topdir.split('\n')) == 1 and subdir != '':
+        return topdir.split('\n')[0]
+    # Return None if no top directory
+    else:
+        return None
+
+
 def run_shell_cmd(cmd, logger):
 
     logger.info(f'[ Run - "{cmd}" ]')
@@ -219,8 +263,11 @@ class Parser():
             return dist + "." + str(revision)
 
         src_dirname = self.meta_data["src_path"]
+        if src_dirname is None:
+            return dist + "." + str(revision)
+
         src_path = os.path.expandvars(src_dirname)
-        if not os.path.isdir(src_path):
+        if not os.path.isabs(src_path):
             src_path = os.path.abspath(os.path.join(self.pkginfo["pkgpath"], src_dirname))
             if not os.path.exists(src_path):
                 self.logger.error("%s: No such directory", src_path)
@@ -276,7 +323,7 @@ class Parser():
         if not os.path.exists(deb_folder):
             os.mkdir(deb_folder)
 
-        self.logger.info("Overwrite the debian folder by %s", deb_folder)
+        self.logger.info("Overwrite the debian folder by %s", metadata)
         run_shell_cmd('cp -r %s/* %s' % (metadata, deb_folder), self.logger)
 
         series = os.path.join(metadata, "patches/series")
@@ -308,6 +355,26 @@ class Parser():
 
     def copy_custom_files(self):
 
+        if "src_files" in self.meta_data:
+            for src_file in self.meta_data['src_files']:
+                src_path = os.path.expandvars(src_file)
+                if not os.path.exists(src_path):
+                    src_path = os.path.join(self.pkginfo["pkgpath"], src_file)
+                if not os.path.exists(src_path):
+                    self.logger.error("No such file %s", src_path)
+                    raise IOError
+                run_shell_cmd('cp -rL %s %s' % (src_path, self.pkginfo["srcdir"]),
+                              self.logger)
+
+        if "dl_files" in self.meta_data:
+            for dl_file in self.meta_data['dl_files']:
+                dl_file = os.path.join(self.pkginfo["packdir"], dl_file)
+                if not os.path.exists(dl_file):
+                    self.logger.error("No such file %s", dl_file)
+                    raise IOError
+                run_shell_cmd('cp -rL %s %s' % (dl_file, self.pkginfo["srcdir"]),
+                              self.logger)
+
         files = os.path.join(self.pkginfo["debfolder"], "files")
         if not os.path.isdir(files) or not os.path.exists(files):
             return True
@@ -315,7 +382,7 @@ class Parser():
         for root, _, files in os.walk(files):
             for name in files:
                 os.path.join(root, name)
-                run_shell_cmd('cp -r %s %s' % (os.path.join(root, name), self.pkginfo["srcdir"]), self.logger)
+                run_shell_cmd('cp -rL %s %s' % (os.path.join(root, name), self.pkginfo["srcdir"]), self.logger)
 
         return True
 
@@ -386,6 +453,36 @@ class Parser():
 
         return True
 
+    def download_files(self):
+
+        if "dl_files" not in self.meta_data:
+            return
+
+        pwd = os.getcwd()
+        os.chdir(self.pkginfo["packdir"])
+        for dl_file in self.meta_data['dl_files']:
+            url = self.meta_data['dl_files'][dl_file]['url']
+            dir_name = self.meta_data['dl_files'][dl_file]['topdir']
+            download(url, dl_file, self.logger)
+            if dir_name is None:
+                continue
+
+            cmd, _, cmdc = tar_cmd(dl_file)
+            # The tar ball has top directory
+            if get_topdir(dl_file, self.logger) is not None:
+                # Remove the top diretory
+                cmd += '--strip-components 1 -C %s'
+            # The tar ball is extracted under $PWD by default
+            else:
+                cmd += '-C %s'
+
+            run_shell_cmd('rm -rf %s;mkdir %s' % (dir_name, dir_name), self.logger)
+            run_shell_cmd(cmd % (dl_file, dir_name), self.logger)
+            run_shell_cmd(cmdc % (dl_file, dir_name), self.logger)
+            run_shell_cmd('rm -rf %s' % dir_name, self.logger)
+
+        os.chdir(pwd)
+
     def download_tarball(self):
 
         tarball_name = self.meta_data["dl_path"]["name"]
@@ -406,32 +503,9 @@ class Parser():
                 self.logger.error("The md5sum of %s is %s, but %s is expected", tarball_file, md5sum, tarball_md5sum)
                 raise ValueError(f"The md5sum of {tarball_file} is {md5sum}, but {tarball_md5sum} is expected")
 
-        targz = re.match(r'.*.(tar\.gz|tar\.bz2|tar\.xz|tgz)$', tarball_name)
-        if targz is None:
-            self.logger.error('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
-            raise ValueError('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
-
-        targz = targz.group(1)
-        if targz == "tgz":
-            targz = "tar.gz"
-
-        # Refer to untar.py of debmake python module
-        if targz == 'tar.bz2':
-            cmd = 'tar --bzip2 -xvf %s '
-            cmdx = 'tar --bzip2 -tf %s '
-        elif targz == 'tar.xz':
-            cmd = 'tar --xz -xvf %s '
-            cmdx = 'tar --xz -tf %s '
-        else:
-            cmd = 'tar -xvzf %s '
-            cmdx = 'tar -tzf %s '
-
-        cmdx = cmdx + '| awk -F "/" \'{print $%s}\' | sort | uniq'
-        topdir = run_shell_cmd(cmdx % (tarball_file, "1"), self.logger)
-        subdir = run_shell_cmd(cmdx % (tarball_file, "2"), self.logger)
-
+        cmd, _, _ = untar_cmd(tarball_name)
         # The tar ball has top directory
-        if len(topdir.split('\n')) == 1 and subdir != '':
+        if get_topdir(tarball_file, self.logger) is not None:
             # Remove the top diretory
             cmd += '--strip-components 1 -C %s'
         # The tar ball is extracted under $PWD by default
@@ -440,6 +514,7 @@ class Parser():
 
         os.mkdir(self.pkginfo["srcdir"])
         run_shell_cmd(cmd % (tarball_file, self.pkginfo["srcdir"]), self.logger)
+        self.copy_custom_files()
         self.create_orig_tarball()
         self.update_deb_folder()
         self.apply_deb_patches()
@@ -532,15 +607,20 @@ class Parser():
     def create_src_package(self):
 
         src_dirname = self.meta_data["src_path"]
-        src_path = os.path.expandvars(src_dirname)
-        if not os.path.isdir(src_path):
-            src_path = os.path.abspath(os.path.join(self.pkginfo["pkgpath"], src_dirname))
-            if not os.path.exists(src_path):
-                self.logger.error("%s: No such directory", src_path)
-                raise ValueError(f"{src_path}: No such directory")
+        if src_dirname is None:
+            os.mkdir(self.pkginfo["srcdir"])
+        else:
+            src_path = os.path.expandvars(src_dirname)
+            if not os.path.isabs(src_path):
+                src_path = os.path.abspath(os.path.join(self.pkginfo["pkgpath"], src_dirname))
+                if not os.path.exists(src_path):
+                    self.logger.error("%s: No such directory", src_path)
+                    raise ValueError(f"{src_path}: No such directory")
 
-        # cp the .git folder, the git meta files in .git are symbol link, so need -L
-        run_shell_cmd('cp -rL %s %s' % (src_path, self.pkginfo["srcdir"]), self.logger)
+            # cp the .git folder, the git meta files in .git are symbol link, so need -L
+            run_shell_cmd('cp -rL %s %s' % (src_path, self.pkginfo["srcdir"]), self.logger)
+
+        self.copy_custom_files()
         self.create_orig_tarball()
         self.update_deb_folder()
 
@@ -574,6 +654,7 @@ class Parser():
     def package(self, pkgpath):
 
         self.setup(pkgpath)
+        self.download_files()
         if "dl_hook" in self.meta_data:
             self.run_dl_hook()
         elif "dl_path" in self.meta_data:
@@ -586,7 +667,6 @@ class Parser():
             self.download_deb_package()
 
         self.apply_src_patches()
-        self.copy_custom_files()
 
         self.logger.info("Repackge the package %s", self.pkginfo["srcdir"])
 
@@ -613,7 +693,6 @@ class Parser():
         for f in files:
             target = os.path.join(self.output, f)
             source = os.path.join(self.pkginfo["packdir"], f)
-            self.logger.info("Copy %s to %s", source, target)
-            shutil.copy(source, self.output)
+            run_shell_cmd('cp -Lr %s %s' % (source, self.output), self.logger)
 
         return files
