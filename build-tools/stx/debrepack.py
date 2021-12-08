@@ -503,7 +503,7 @@ class Parser():
                 self.logger.error("The md5sum of %s is %s, but %s is expected", tarball_file, md5sum, tarball_md5sum)
                 raise ValueError(f"The md5sum of {tarball_file} is {md5sum}, but {tarball_md5sum} is expected")
 
-        cmd, _, _ = untar_cmd(tarball_name)
+        cmd, _, _ = tar_cmd(tarball_name)
         # The tar ball has top directory
         if get_topdir(tarball_file, self.logger) is not None:
             # Remove the top diretory
