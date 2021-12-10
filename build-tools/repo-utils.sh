@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,16 +10,10 @@
 # A collection of utilities relating to 'repo'
 #
 
+REPO_UTILS_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 
-#
-# Echo to stderr
-#    echo_stderr [any text you want]
-#
+source ${REPO_UTILS_DIR}/utils.sh
 
-echo_stderr ()
-{
-    echo "$@" >&2
-}
 
 #
 # Get the root dir of a repo managed repository

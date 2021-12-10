@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -190,7 +190,7 @@ for subgit in $SUBGITS; do
 
     review_method=$(git_repo_review_method)
     if [ -f .gitreview ] && [ "${review_method}" == "gerrit" ] ; then
-        git review -s > /dev/null
+        with_retries -d 45 -t 15 -k 5 5 git review -s >&2
         if [ $? != 0 ] ; then
             echo_stderr "ERROR: failed to setup git review in ${subgit}"
             exit 1
@@ -221,7 +221,7 @@ if [ $MANIFEST -eq 1 ]; then
 
     review_method=$(git_review_method)
     if [ -f .gitreview ] && [ "${review_method}" == "gerrit" ] ; then
-        git review -s > /dev/null
+        with_retries -d 45 -t 15 -k 5 5 git review -s >&2
         if [ $? != 0 ] ; then
             echo_stderr "ERROR: failed to setup git review in ${new_manifest_dir}"
             exit 1

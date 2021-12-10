@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -215,18 +215,21 @@ update_gitreview () {
         fi
 
         if [ $need_commit -eq 1 ]; then
+            echo_stderr "determinging git review method in ${DIR}"
             review_method=$(git_repo_review_method)
             if [ "${review_method}" == "gerrit" ] ; then
-                timeout 15 git review -s
+                echo_stderr "running git review -s in ${DIR}"
+                with_retries -d 45 -t 15 -k 5 5 git review -s >&2
                 if [ $? != 0 ] ; then
                     if [ ${new_host} -eq 0 ]; then
-                        echo_stderr "ERROR: failed to setup git review in ${DIR}"
+                        echo_stderr "ERROR: 3: failed to setup git review in ${DIR}"
                         exit 1
                     fi
 
                     need_rm=1
                     message="Delete .gitreview for ${branch}"
                 fi
+                echo_stderr "finished git review -s in ${DIR}"
             else
                 need_rm=1
                 message="Delete .gitreview for ${branch}"
@@ -338,9 +341,9 @@ for subgit in $SUBGITS; do
 
     review_method=$(git_repo_review_method)
     if [ -f .gitreview ] && [ "${review_method}" == "gerrit" ] ; then
-        git review -s > /dev/null
+        with_retries -d 45 -t 15 -k 5 5 git review -s >&2
         if [ $? != 0 ] ; then
-            echo_stderr "ERROR: failed to setup git review in ${subgit}"
+            echo_stderr "ERROR: 1: failed to setup git review in ${subgit}"
             exit 1
         fi
     fi
@@ -409,9 +412,9 @@ if [ $MANIFEST -eq 1 ]; then
 
     review_method=$(git_review_method)
     if [ -f .gitreview ] && [ "${review_method}" == "gerrit" ] ; then
-        git review -s > /dev/null
+        with_retries -d 45 -t 15 -k 5 5 git review -s >&2
         if [ $? != 0 ] ; then
-            echo_stderr "ERROR: failed to setup git review in ${new_manifest_dir}"
+            echo_stderr "ERROR: 2: failed to setup git review in ${new_manifest_dir}"
             exit 1
         fi
     fi

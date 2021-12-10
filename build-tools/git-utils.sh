@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2018-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,10 +11,10 @@
 # by repo manifests.
 #
 
-echo_stderr ()
-{
-    echo "$@" >&2
-}
+GIT_UTILS_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
+
+source ${GIT_UTILS_DIR}/utils.sh
+
 
 git_ctx_root_dir () {
     dirname "${MY_REPO}"
@@ -562,7 +562,7 @@ git_review_url () {
         git config remote.gerrit.url
         if [ $? -ne 0 ]; then
             # Perhaps we need to run git review -s' and try again
-            git review -s > /dev/null || return 1
+            with_retries -d 45 -t 15 -k 5 5 git review -s >&2 || return 1
             git config remote.gerrit.url
         fi
     else
@@ -577,7 +577,7 @@ git_review_remote () {
         git config remote.gerrit.url > /dev/null
         if [ $? -ne 0 ]; then
             # Perhaps we need to run git review -s' and try again
-            git review -s > /dev/null || return 1
+            with_retries -d 45 -t 15 -k 5 5 git review -s >&2 || return 1
             git config remote.gerrit.url > /dev/null || return 1
         fi
         echo "gerrit"
