@@ -553,7 +553,7 @@ function extract_installer_files {
    extract_pkg_from_local_repo platform-kickstarts-pxeboot ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
    extract_pkg_from_local_repo platform-kickstarts-extracfgs ${MY_YUM_CONF} ${STD_REPO_ID} ${LOWER_LAYER_STD_REPO_ID}
 
-   \cp --preserve=all var/www/pages/feed/rel-*/*.cfg pxeboot/*.cfg ../kickstarts/ &&
+   \cp --preserve=all www/pages/feed/rel-*/*.cfg pxeboot/*.cfg ../kickstarts/ &&
    \cp --preserve=all extra_cfgs/*.cfg ../extra_cfgs/
    if [ $? -ne 0 ]; then
       echo "Failed to copy extracted kickstarts"
@@ -621,7 +621,7 @@ EOM
       exit 1
    fi
  
-   \cp --preserve=all var/www/pages/feed/rel-*/LiveOS/squashfs.img $OUTPUT_DIST_DIR/isolinux/LiveOS
+   \cp --preserve=all www/pages/feed/rel-*/LiveOS/squashfs.img $OUTPUT_DIST_DIR/isolinux/LiveOS
    if [ $? -ne 0 ]; then
       echo "Error: Could not copy squashfs from LiveOS"
       exit 1
