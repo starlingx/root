@@ -258,7 +258,7 @@ extract_pkg_from_patch_repo platform-kickstarts
 if [ $? -eq 0 ]; then
     # Replace files
     \rm -f ${BUILDDIR}/*ks.cfg &&
-    \cp --preserve=all var/www/pages/feed/rel-*/*.cfg ${BUILDDIR}/ &&
+    \cp --preserve=all www/pages/feed/rel-*/*.cfg ${BUILDDIR}/ &&
     \cp --preserve=all ${BUILDDIR}/controller_ks.cfg ${BUILDDIR}/ks.cfg
     if [ $? -ne 0 ]; then
         echo "Failed to copy extracted kickstarts"
@@ -300,7 +300,7 @@ if [ $? -eq 0 ]; then
     fi
 
     \rm -f ${BUILDDIR}/LiveOS/squashfs.img &&
-    \cp --preserve=all var/www/pages/feed/rel-*/LiveOS/squashfs.img ${BUILDDIR}/LiveOS/
+    \cp --preserve=all www/pages/feed/rel-*/LiveOS/squashfs.img ${BUILDDIR}/LiveOS/
     if [ $? -ne 0 ]; then
         echo "Error: Could not copy squashfs from LiveOS"
         exit 1
