@@ -273,10 +273,10 @@ fi
 extract_pkg_from_patch_repo platform-kickstarts-pxeboot
 if [ $? -eq 0 ]; then
     # Replace files
-    \rm -f ${BUILDDIR}/pxeboot/pxeboot_controller.cfg \
-        ${BUILDDIR}/pxeboot/pxeboot_smallsystem.cfg \
-        ${BUILDDIR}/pxeboot/pxeboot_smallsystem_lowlatency.cfg &&
-    \cp --preserve=all pxeboot/* ${BUILDDIR}/pxeboot/
+    \rm -f ${BUILDDIR}/var/pxeboot/pxeboot_controller.cfg \
+        ${BUILDDIR}/var/pxeboot/pxeboot_smallsystem.cfg \
+        ${BUILDDIR}/var/pxeboot/pxeboot_smallsystem_lowlatency.cfg &&
+    \cp --preserve=all pxeboot/* ${BUILDDIR}/var/pxeboot/
     if [ $? -ne 0 ]; then
         echo "Failed to copy extracted pxeboot kickstarts"
         exit 1
@@ -290,10 +290,10 @@ fi
 extract_pkg_from_patch_repo pxe-network-installer
 if [ $? -eq 0 ]; then
     # Replace files
-    \rm -f ${BUILDDIR}/pxeboot/pxelinux.0 \
-        ${BUILDDIR}/pxeboot/menu.c32 \
-        ${BUILDDIR}/pxeboot/chain.c32 &&
-    \cp --preserve=all pxeboot/pxelinux.0 pxeboot/menu.c32 pxeboot/chain.c32 ${BUILDDIR}/pxeboot/
+    \rm -f ${BUILDDIR}/var/pxeboot/pxelinux.0 \
+        ${BUILDDIR}/var/pxeboot/menu.c32 \
+        ${BUILDDIR}/var/pxeboot/chain.c32 &&
+    \cp --preserve=all pxeboot/pxelinux.0 pxeboot/menu.c32 pxeboot/chain.c32 ${BUILDDIR}/var/pxeboot/
     if [ $? -ne 0 ]; then
         echo "Error: Could not copy all files from installer"
         exit 1
@@ -309,17 +309,17 @@ if [ $? -eq 0 ]; then
     # Replace vmlinuz and initrd.img with our own pre-built ones
     \rm -f \
         ${BUILDDIR}/vmlinuz \
-        ${BUILDDIR}/images/pxeboot/vmlinuz \
+        ${BUILDDIR}/images/var/pxeboot/vmlinuz \
         ${BUILDDIR}/initrd.img \
-        ${BUILDDIR}/images/pxeboot/initrd.img &&
+        ${BUILDDIR}/images/var/pxeboot/initrd.img &&
     \cp --preserve=all pxeboot/rel-*/installer-bzImage_1.0 \
         ${BUILDDIR}/vmlinuz &&
     \cp --preserve=all pxeboot/rel-*/installer-bzImage_1.0 \
-        ${BUILDDIR}/images/pxeboot/vmlinuz &&
+        ${BUILDDIR}/images/var/pxeboot/vmlinuz &&
     \cp --preserve=all pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
         ${BUILDDIR}/initrd.img &&
     \cp --preserve=all pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
-        ${BUILDDIR}/images/pxeboot/initrd.img
+        ${BUILDDIR}/images/var/pxeboot/initrd.img
     if [ $? -ne 0 ]; then
         echo "Error: Failed to copy installer images"
         exit 1
@@ -333,8 +333,8 @@ fi
 extract_pkg_from_patch_repo grub2-efi-x64-pxeboot
 if [ $? -eq 0 ]; then
     # Replace files
-    \rm -f ${BUILDDIR}/pxeboot/EFI/grubx64.efi &&
-    \cp --preserve=all pxeboot/EFI/grubx64.efi ${BUILDDIR}/pxeboot/EFI/
+    \rm -f ${BUILDDIR}/var/pxeboot/EFI/grubx64.efi &&
+    \cp --preserve=all pxeboot/EFI/grubx64.efi ${BUILDDIR}/var/pxeboot/EFI/
     if [ $? -ne 0 ]; then
         echo "Error: Failed to copy grub2-efi-x64-pxeboot files"
         exit 1
@@ -350,8 +350,8 @@ if [ $? -eq 0 ]; then
     # Replace files
     for f in usr/lib/grub/x86_64-efi/*; do
         f_base=$(basename $f)
-        \rm -f ${BUILDDIR}/pxeboot/EFI/$f_base &&
-        \cp --preserve=all ${f} ${BUILDDIR}/pxeboot/EFI/
+        \rm -f ${BUILDDIR}/var/pxeboot/EFI/$f_base &&
+        \cp --preserve=all ${f} ${BUILDDIR}/var/pxeboot/EFI/
         if [ $? -ne 0 ]; then
             echo "Error: Failed to copy grub2-common files"
             exit 1
@@ -368,8 +368,8 @@ if [ $? -eq 0 ]; then
     # Replace files
     for f in usr/lib/grub/x86_64-efi/*; do
         f_base=$(basename $f)
-        \rm -f ${BUILDDIR}/pxeboot/EFI/$f_base &&
-        \cp --preserve=all ${f} ${BUILDDIR}/pxeboot/EFI/
+        \rm -f ${BUILDDIR}/var/pxeboot/EFI/$f_base &&
+        \cp --preserve=all ${f} ${BUILDDIR}/var/pxeboot/EFI/
         if [ $? -ne 0 ]; then
             echo "Error: Failed to copy grub2-efi-x64-modules files"
             exit 1
