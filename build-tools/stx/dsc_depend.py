@@ -36,7 +36,7 @@ mirror_0 = 'http://deb.debian.org/debian/ bullseye main contrib'
 mirror_1 = 'http://security.debian.org/debian-security bullseye-security main contrib'
 mirrors = [mirror_0, mirror_1]
 apt_rootdir = '/tmp/dsc_depend'
-DEFAULT_CYCLE_CONFIG = os.path.join(os.environ.get('$MY_BUILD_TOOLS_DIR'), 'stx/circular_dep.conf')
+DEFAULT_CYCLE_CONFIG = os.path.join(os.environ.get('MY_BUILD_TOOLS_DIR'), 'stx/circular_dep.conf')
 
 
 def get_aptcache(rootdir):
