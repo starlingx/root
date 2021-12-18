@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -182,8 +182,7 @@ git_repo_review_remote () {
         if [ $? -ne 0 ]; then
             # Perhaps we need to run git review -s' and try again
 
-            # echo a blank line into git in case it prompts for a username 
-            echo | git review -s > /dev/null || return 1
+            with_retries -d 45 -t 15 -k 5 5 git review -s >&2 || return 1
             git config remote.gerrit.url > /dev/null || return 1
         fi
         echo "gerrit"
@@ -205,8 +204,7 @@ git_repo_review_url () {
         if [ $? -ne 0 ]; then
             # Perhaps we need to run git review -s' and try again
 
-            # echo a blank line into git in case it prompts for a username 
-            echo | git review -s > /dev/null || return 1
+            with_retries -d 45 -t 15 -k 5 5 git review -s >&2 || return 1
             git config remote.gerrit.url || return 1
         fi
     else

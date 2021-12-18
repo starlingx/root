@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -182,10 +182,10 @@ for subgit in $SUBGITS; do
     echo "Pushing tag $tag in ${subgit}"
     if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
         echo "git push ${review_remote} ${tag}"
-        git push ${review_remote} ${tag} ${DRY_RUN}
+        with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${tag} ${DRY_RUN}
     else
         echo "git push ${remote} ${tag}"
-        git push ${remote} ${tag} ${DRY_RUN}
+        with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${tag} ${DRY_RUN}
     fi
 
     if [ $? != 0 ] ; then
@@ -246,7 +246,7 @@ if [ $MANIFEST -eq 1 ]; then
 
     echo "Pushing tag $tag in ${new_manifest_dir}"
     if [ "${review_method}" == "gerrit" ] && [ $BYPASS_GERRIT -eq 0 ]; then
-        git review
+        with_retries -d 45 -t 15 -k 5 5 git review
         if [ $? != 0 ] ; then
             echo_stderr "ERROR: Failed to create git review from ${new_manifest_dir}"
             exit 1
@@ -255,8 +255,10 @@ if [ $MANIFEST -eq 1 ]; then
         echo "   cd ${new_manifest_dir}"
         echo "   git push ${review_remote} ${tag}"
     else
-        git push ${remote} ${local_branch}:${remote_branch} ${DRY_RUN}
-        git push ${remote} ${tag}:${tag} ${DRY_RUN}
+        echo "git push ${remote} ${local_branch}:${remote_branch}" && \
+        with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${local_branch}:${remote_branch} ${DRY_RUN} && \
+        echo "git push ${remote} ${tag}:${tag}" && \
+        with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${tag}:${tag} ${DRY_RUN}
     fi
 
     if [ $? != 0 ] ; then

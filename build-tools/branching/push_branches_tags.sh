@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020-2021 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -224,26 +224,25 @@ for subgit in $SUBGITS; do
         port=$(url_port "${url}")
         path=$(url_path "${url}")
         if [ "${host}" == "review.opendev.org" ] || git_match_safe_gerrit_host "${host}" ; then
-            echo "git push ${review_remote} ${tag} && \\"
-            echo "ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag} && \\"
-            echo "git config --local --replace-all branch.${branch}.merge refs/heads/${branch} && \\"
-            echo "git review --topic=${branch}"
-
-            git push $DRY_RUN ${review_remote} ${tag} && \
+            echo "git push ${review_remote} ${tag}" && \
+            with_retries -d 45 -t 15 -k 5 5 git push $DRY_RUN ${review_remote} ${tag} && \
+            echo "ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag}" && \
             $DRY_RUN_CMD ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag} && \
+            echo "git config --local --replace-all branch.${branch}.merge refs/heads/${branch}" && \
             $DRY_RUN_CMD git config --local --replace-all "branch.${branch}.merge" refs/heads/${branch} && \
-            $DRY_RUN_CMD git review --topic="${branch}"
+            echo "git review --topic=${branch/\//.}" && \
+            $DRY_RUN_CMD with_retries -d 45 -t 15 -k 5 5 git review --topic="${branch/\//.}"
         else
-            echo "git push ${review_remote} ${branch}:${branch} $DRY_RUN"
-            git push ${review_remote} ${branch}:${branch} $DRY_RUN
-            echo "git push ${review_remote} ${tag}:${tag} $DRY_RUN"
-            git push ${review_remote} ${tag}:${tag} $DRY_RUN
+            echo "git push ${review_remote} ${branch}:${branch} $DRY_RUN" && \
+            with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${branch}:${branch} $DRY_RUN && \
+            echo "git push ${review_remote} ${tag}:${tag} $DRY_RUN" && \
+            with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${tag}:${tag} $DRY_RUN
         fi
     else
-        echo "git push ${remote} ${branch}:${branch} $DRY_RUN"
-        git push ${remote} ${branch}:${branch} $DRY_RUN
-        echo "git push ${remote} ${tag}:${tag} $DRY_RUN"
-        git push ${remote} ${tag}:${tag} $DRY_RUN
+        echo "git push ${remote} ${branch}:${branch} $DRY_RUN" && \
+        with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${branch}:${branch} $DRY_RUN && \
+        echo "git push ${remote} ${tag}:${tag} $DRY_RUN" && \
+        with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${tag}:${tag} $DRY_RUN
     fi
 
     if [ $? != 0 ] ; then
@@ -314,22 +313,21 @@ if [ $MANIFEST -eq 1 ]; then
         port=$(url_port "${url}")
         path=$(url_path "${url}")
         if [ "${host}" == "review.opendev.org" ] || git_match_safe_gerrit_host "${host}" ; then
-            echo "git push ${review_remote} ${tag} && \\"
-            echo "ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag} && \\"
-            echo "git config --local --replace-all branch.${branch}.merge refs/heads/${branch} && \\"
-            echo "git review --yes --topic=${branch}"
-
-            git push ${review_remote} ${tag} $DRY_RUN && \
+            echo "git push ${review_remote} ${tag}" && \
+            with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${tag} $DRY_RUN && \
+            echo "ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag}" && \
             $DRY_RUN_CMD ssh -p ${port} ${host} gerrit create-branch ${path} ${branch} ${tag} && \
+            echo "git config --local --replace-all branch.${branch}.merge refs/heads/${branch}" && \
             $DRY_RUN_CMD git config --local --replace-all "branch.${branch}.merge" refs/heads/${branch} && \
-            $DRY_RUN_CMD git review --yes --topic="${branch}"
+            echo "git review --yes --topic=${branch/\//.}" && \
+            $DRY_RUN_CMD with_retries -d 45 -t 15 -k 5 5 git review --yes --topic="${branch/\//.}"
         else
-            echo git push --tags ${review_remote} ${branch} $DRY_RUN
-            git push --tags ${review_remote} ${branch} $DRY_RUN
+            echo git push --tags ${review_remote} ${branch} $DRY_RUN && \
+            with_retries -d 45 -t 15 -k 5 5 git push --tags ${review_remote} ${branch} $DRY_RUN
         fi
     else
-        echo git push --tags --set-upstream ${review_remote} ${branch} $DRY_RUN
-        git push --tags --set-upstream ${review_remote} ${branch} $DRY_RUN
+        echo git push --tags --set-upstream ${review_remote} ${branch} $DRY_RUN && \
+        with_retries -d 45 -t 15 -k 5 5 git push --tags --set-upstream ${review_remote} ${branch} $DRY_RUN
     fi
 
     if [ $? != 0 ] ; then
