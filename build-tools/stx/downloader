@@ -1,0 +1,401 @@
+#!/usr/bin/python3
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Copyright (C) 2021 Wind River Systems,Inc
+
+import apt
+import argparse
+import debrepack
+import logging
+import os
+import repo_manage
+import shutil
+import signal
+import sys
+import utils
+
+DEFAULT_ARCH = 'amd64'
+REPO_SOURCE = 'deb-local-source'
+REPO_BIN = 'deb-local-binary'
+mirror_root = os.environ.get('STX_MIRROR')
+stx_src_mirror = os.path.join(mirror_root, 'sources')
+stx_bin_mirror = os.path.join(mirror_root, 'binaries')
+all_binary_lists = ['base-bullseye.lst', 'os-std.lst', 'os-rt.lst']
+types_pkg_dirs = ['debian_pkg_dirs', 'debian_pkg_dirs_rt', 'debian_pkg_dirs_installer']
+
+logger = logging.getLogger('downloader')
+utils.set_logger(logger)
+
+
+def get_downloaded(dl_dir, dl_type):
+    """
+    Browse and get the already downloaded binary or source
+    packages in dl_dir
+        dl_dir: mirror dir
+        dl_type: binary or source
+        return: list of downloaded targets
+    """
+    dl_list = []
+    if not os.path.exists(dl_dir):
+        return []
+
+    if dl_type == 'source':
+        logger.debug('debrepack will check the whole source mirror')
+
+    for file in os.listdir(dl_dir):
+        if dl_type == 'binary' and file.endswith('.deb'):
+            dl_list.append(file)
+
+    return dl_list
+
+
+def get_pkgs_from_list(root_dir, list_file):
+    """
+    Read each lines in debian_pkg_dirs_<type> and add it
+    to the map, for example:
+    entries { 'dhcp': '<path to>/stx/integ/base/dhcp',
+              'tsconfig': '<path to>/config/tsconfig'}
+    """
+    entries = {}
+    try:
+        with open(list_file, 'r') as flist:
+            lines = list(line for line in (p.strip() for p in flist) if line)
+    except Exception as e:
+        logger.error(str(e))
+    else:
+        for entry in lines:
+            entry = entry.strip()
+            if entry.startswith('#'):
+                continue
+            entries[os.path.basename(entry)] = os.path.join(root_dir, entry)
+    return entries
+
+
+def get_all_stx_pkgs():
+    """
+    Scan all STX source layers to get all buildable packages
+    Params: None
+    Return:
+        Map of all STX buildable packages and path to debian folder
+    """
+    pkgs = {}
+    stx_root = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), 'cgcs-root/stx')
+    for root, dirs, files in os.walk(stx_root):
+        if dirs:
+            pass
+        for r in files:
+            # Find all types of package dirs?
+            if r in types_pkg_dirs:
+                pkgs_file = os.path.join(root, r)
+                pkgs.update(get_pkgs_from_list(root, pkgs_file))
+    return pkgs
+
+
+def get_all_binary_list():
+    """
+    Return all binary packages listed in base-bullseye.lst, os-std.lst,os-rt.lst
+    """
+    bin_list = []
+    stx_config = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
+                              'stx-tools/debian-mirror-tools/config/debian')
+    for root, dirs, files in os.walk(stx_config):
+        if dirs:
+            pass
+        for r in files:
+            if r in all_binary_lists:
+                bin_list.append(os.path.join(root, r))
+    return bin_list
+
+
+class BaseDownloader():
+    def __init__(self, arch, _dl_dir, clean):
+        self.dl_dir = _dl_dir
+        self.arch = arch
+        self.clean_mirror = clean
+        self.dl_need = []
+        self.dl_success = []
+        self.dl_failed = []
+        self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
+                                           '/tmp/', logger)
+        self.repomgr.upload_pkg(REPO_BIN, None)
+
+    def clean(self):
+        if os.path.exists(self.dl_dir):
+            if self.clean_mirror:
+                try:
+                    shutil.rmtree(self.dl_dir)
+                except Exception as e:
+                    logger.error(str(e))
+                    logger.critical("Failed to clean mirror %s", self.dl_dir)
+                    sys.exit(1)
+                else:
+                    logger.debug("Successfully cleaned mirror %s", self.dl_dir)
+        os.makedirs(self.dl_dir, exist_ok=True)
+
+    def reports(self):
+        ret = 0
+        if len(self.dl_need):
+            logger.info("++++++++++++++++++++++++++++++++++++++++++++++++++")
+            logger.info("All packages need to be downloaded: %d", len(self.dl_need))
+
+        if len(self.dl_success):
+            logger.info("++++++++++++++++++++++++++++++++++++++++++++++++++")
+            logger.info("Successfully downloaded packages: %d", len(self.dl_success))
+            for dlobj in sorted(self.dl_success):
+                logger.info(dlobj.strip())
+
+        failed_list = list(set(self.dl_need) - set(self.dl_success))
+        if len(failed_list):
+            logger.error("+++++++++++++++++++++++++++++++++++++++++++++++++")
+            logger.error("Failed to download packages %d", len(failed_list))
+            ret = 1
+            for dlobj in sorted(failed_list):
+                logger.error(dlobj.strip())
+        return ret
+
+
+class DebDownloader(BaseDownloader):
+    def __init__(self, arch, _dl_dir, force, _bin_lists):
+        super(DebDownloader, self).__init__(arch, _dl_dir, force)
+        self.need_download = []
+        self.downloaded = []
+        self.need_upload = []
+        self.bin_lists = _bin_lists
+        self.apt_cache = apt.cache.Cache()
+        if self.repomgr:
+            self.repomgr.upload_pkg(REPO_BIN, None)
+
+    def download(self, _name, _version):
+        package = self.apt_cache[_name]
+        candidate = package.versions.get(_version)
+        if not candidate:
+            logger.error(' '.join(['Fail to download', _name,
+                         'with wrong version', _version, '?']))
+            logger.error('May need to update the package list file')
+            return None
+
+        package.candidate = candidate
+        try:
+            ret = package.candidate.fetch_binary(self.dl_dir)
+            if ret:
+                return ret
+        except apt.package.FetchError:
+            logger.debug("Fail to fetch binray %s_%s", _name, _version)
+        return None
+
+    def reports(self):
+        if len(self.bin_lists):
+            logger.info("All binary lists are:")
+            for blist in self.bin_lists:
+                logger.info(blist)
+        logger.info("Show result for binary download:")
+        return super(DebDownloader, self).reports()
+
+    def download_list(self, list_file):
+        if not os.path.exists(list_file):
+            return
+
+        self.downloaded = get_downloaded(self.dl_dir, 'binary')
+        with open(list_file) as flist:
+            lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
+            for pkg in lines:
+                pkg = pkg.strip()
+                if pkg.startswith('#'):
+                    continue
+                pkg_name_array = pkg.split()
+                pkg_name = pkg_name_array[0]
+                if len(pkg_name_array) == 1:
+                    logger.error("The package version of %s should be defined", pkg_name)
+                    logger.error("Please update the list file %s", list_file)
+                    sys.exit(1)
+                # strip epoch
+                pkg_ver = pkg_name_array[1].split(":")[-1]
+                # current default arch is 'amd64'
+                pname_arch = '_'.join([pkg_name, pkg_ver, self.arch]) + '.deb'
+                pname_all = ''.join([pkg_name, '_', pkg_ver, '_all.deb'])
+                self.dl_need.append(pkg_name + '_' + pkg_ver)
+
+                if self.downloaded and pname_arch in self.downloaded:
+                    logger.debug(''.join([pkg_name, '_', pkg_ver,
+                                         ' has been downloaded, skip']))
+                    self.dl_success.append(pkg_name + '_' + pkg_ver)
+                    self.need_upload.append(pname_arch)
+                else:
+                    if self.downloaded and pname_all in self.downloaded:
+                        logger.debug(''.join([pkg_name, '_', pkg_ver,
+                                     ' has been downloaded, skip']))
+                        self.need_upload.append(pname_all)
+                        self.dl_success.append(pkg_name + '_' + pkg_ver)
+                    else:
+                        # Tests show that the 'epoch' should be taken when
+                        # fetch the package with 'apt' module, there is not 'epoch'
+                        # in the dowloaded package name. This also requires the 'epoch'
+                        # should be defined in the package list file with ':'
+                        self.need_download.append(pkg_name + '_' + pkg_name_array[1])
+
+        for deb in self.need_upload:
+            name, ver, arch = deb.split('_')
+            if not self.repomgr.search_pkg(REPO_BIN, name, ver):
+                if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb)):
+                    logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
+                                          'is uploaded to', REPO_BIN]))
+                else:
+                    logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
+                                          'fail to uploaded to', REPO_BIN]))
+        for deb in self.need_download:
+            logger.debug(' '.join(['package', deb, 'is need to be downloaded']))
+            debnames = deb.split('_')
+            ret = self.download(debnames[0], debnames[1])
+            if ret:
+                logger.info(''.join([debnames[0], '_', debnames[1], ' download ok']))
+                # strip epoch
+                deb_ver = debnames[1].split(":")[-1]
+                self.dl_success.append('_'.join([debnames[0], deb_ver]))
+                if self.repomgr.upload_pkg(REPO_BIN, ret):
+                    logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', REPO_BIN]))
+                else:
+                    logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', REPO_BIN]))
+            else:
+                self.dl_failed.append(deb)
+
+    def start(self):
+        """Here define:
+        the complete set of binaries = base_bullseye.lst
+                                     + <layer>/os-std.lst
+                                     + <layer>/os-rt.lst
+        """
+        super(DebDownloader, self).clean()
+        if len(self.bin_lists):
+            for bin_list in self.bin_lists:
+                self.download_list(bin_list)
+        else:
+            logger.error("There are no lists of binary packages found")
+            sys.exit(1)
+
+
+class SrcDownloader(BaseDownloader):
+    def __init__(self, arch, _dl_dir, force):
+        super(SrcDownloader, self).__init__(arch, _dl_dir, force)
+        self.parser = None
+
+    def prepare(self):
+        build_dir = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'))
+        os.makedirs(build_dir, exist_ok=True)
+        recipes_dir = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'), 'recipes')
+        os.makedirs(recipes_dir, exist_ok=True)
+        if not self.parser:
+            try:
+                self.parser = debrepack.Parser(build_dir,
+                                               recipes_dir, 'debug')
+            except Exception as e:
+                logger.error(str(e))
+                logger.error("Failed to create debrepack parser")
+                return False
+
+        return True
+
+    def download_pkg_src(self, _pkg_path):
+        if not self.parser:
+            return False
+        try:
+            self.parser.download(_pkg_path, self.dl_dir)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to download source with %s", _pkg_path)
+            return False
+        return True
+
+    def download_all(self):
+        pkgs_list = []
+        pkgs_all = get_all_stx_pkgs()
+        for pkg in pkgs_all.keys():
+            pkgs_list.append(pkg)
+            self.dl_need.append(pkg)
+        if not len(pkgs_list):
+            logger.info("All source packages are already in mirror")
+        else:
+            logger.info("Start to download source packages: %d", len(pkgs_list))
+            logger.info("%s", sorted(pkgs_list))
+            for pkg in sorted(pkgs_list):
+                if self.download_pkg_src(pkgs_all[pkg]):
+                    self.dl_success.append(pkg)
+                else:
+                    self.dl_failed.append(pkg)
+
+    def start(self):
+        # stx package source downloading
+        super(SrcDownloader, self).clean()
+
+        if self.prepare():
+            self.download_all()
+        else:
+            logger.error("Failed to initialize source downloader")
+            sys.exit(1)
+
+
+def dl_signal_handler(signum, frame):
+    src_ret = 0
+    bin_ret = 0
+
+    logger.info("Received signal of keyboard interrupt")
+    if binary_dl:
+        bin_ret = binary_dl.reports()
+    if source_dl:
+        src_ret = source_dl.reports()
+    sys.exit(src_ret + bin_ret)
+
+
+def dl_register_signal_handler():
+    signal.signal(signal.SIGINT, dl_signal_handler)
+    signal.signal(signal.SIGHUP, dl_signal_handler)
+    signal.signal(signal.SIGTERM, dl_signal_handler)
+
+
+if __name__ == "__main__":
+    binary_dl = None
+    source_dl = None
+    binary_ret = 0
+    source_ret = 0
+
+    parser = argparse.ArgumentParser(description="downloader helper")
+    parser.add_argument('-b', '--download_binary', help="download binary debs",
+                        action='store_true')
+    parser.add_argument('-s', '--download_source', help="download stx source",
+                        action='store_true')
+    parser.add_argument('-c', '--clean_mirror', help="clean the whole mirror and download again, be careful to use",
+                        action='store_true')
+
+    args = parser.parse_args()
+    clean_mirror = args.clean_mirror
+
+    if args.download_binary:
+        all_binary_lists = get_all_binary_list()
+        binary_dl = DebDownloader(DEFAULT_ARCH, stx_bin_mirror, clean_mirror, all_binary_lists)
+    if args.download_source:
+        source_dl = SrcDownloader(DEFAULT_ARCH, stx_src_mirror, clean_mirror)
+
+    dl_register_signal_handler()
+    if binary_dl:
+        binary_dl.start()
+    if source_dl:
+        source_dl.start()
+
+    if binary_dl:
+        binary_ret = binary_dl.reports()
+    if source_dl:
+        logger.info('Show the download result for source packages:')
+        source_ret = source_dl.reports()
+
+    logger.info("Downloader done")
+    sys.exit(binary_ret + source_ret)
