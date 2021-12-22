@@ -613,9 +613,9 @@ EOM
 
    \mkdir -p $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/centos/x86_64-efi
 
-   \cp --preserve=all pxeboot/pxelinux.0 pxeboot/menu.c32 pxeboot/chain.c32 $OUTPUT_DIST_DIR/isolinux/pxeboot &&
+   \cp --preserve=all var/pxeboot/pxelinux.0 var/pxeboot/menu.c32 var/pxeboot/chain.c32 $OUTPUT_DIST_DIR/isolinux/pxeboot &&
    \cp --preserve=all usr/lib/grub/x86_64-efi/* $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/centos/x86_64-efi/ &&
-   \cp --preserve=all pxeboot/EFI/grubx64.efi $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/
+   \cp --preserve=all var/pxeboot/EFI/grubx64.efi $OUTPUT_DIST_DIR/isolinux/pxeboot/EFI/
    if [ $? -ne 0 ]; then
       echo "Error: Could not copy all files from installer"
       exit 1
@@ -634,13 +634,13 @@ EOM
       $OUTPUT_DIST_DIR/isolinux/images/pxeboot/vmlinuz \
       $OUTPUT_DIST_DIR/isolinux/initrd.img \
       $OUTPUT_DIST_DIR/isolinux/images/pxeboot/initrd.img
-   \cp --preserve=all pxeboot/rel-*/installer-bzImage_1.0 \
+   \cp --preserve=all var/pxeboot/rel-*/installer-bzImage_1.0 \
       $OUTPUT_DIST_DIR/isolinux/vmlinuz &&
-   \cp --preserve=all pxeboot/rel-*/installer-bzImage_1.0 \
+   \cp --preserve=all var/pxeboot/rel-*/installer-bzImage_1.0 \
       $OUTPUT_DIST_DIR/isolinux/images/pxeboot/vmlinuz &&
-   \cp --preserve=all pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
+   \cp --preserve=all var/pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
       $OUTPUT_DIST_DIR/isolinux/initrd.img &&
-   \cp --preserve=all pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
+   \cp --preserve=all var/pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
       $OUTPUT_DIST_DIR/isolinux/images/pxeboot/initrd.img
 
    if [ $? -ne 0 ]; then
