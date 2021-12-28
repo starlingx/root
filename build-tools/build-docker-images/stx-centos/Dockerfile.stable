@@ -15,8 +15,6 @@ RUN set -ex ;\
     mv /stx.repo /etc/yum.repos.d/ ;\
     yum upgrade --disablerepo=* ${REPO_OPTS} -y ;\
     yum install --disablerepo=* ${REPO_OPTS} -y \
-        yum-priorities ;\
-    yum install --disablerepo=* ${REPO_OPTS} -y \
         qemu-img \
         openssh-clients \
         python3 \

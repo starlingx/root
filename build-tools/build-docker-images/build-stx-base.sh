@@ -37,7 +37,6 @@ TAG_LATEST=no
 LATEST_TAG=latest
 HOST=${HOSTNAME}
 declare -i MAX_ATTEMPTS=1
-declare -A REPO_PRIORITY_LIST
 
 function usage {
     cat >&2 <<EOF
@@ -45,23 +44,22 @@ Usage:
 $(basename $0)
 
 Options:
-    --os:            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
-    --os-version:    Specify OS version
-    --version:       Specify version for output image
-    --stream:        Build stream, stable or dev (default: stable)
-    --repo:          Software repository (Format: name,baseurl), can be specified multiple times
-    --repo-priority: Define priority for added repo (Format: name,priority). The priority must be an integer from 1 to 99 (The default is 99). The lowest number have the highest priority.
-    --local:         Use local build for software repository (cannot be used with --repo)
-    --push:          Push to docker repo
-    --proxy:         Set proxy <URL>:<PORT>
-    --latest:        Add a 'latest' tag when pushing
-    --latest-tag:    Use the provided tag when pushing latest.
-    --user:          Docker repo userid
-    --registry:      Docker registry
-    --clean:         Remove image(s) from local registry
-    --hostname:      build repo host
-    --attempts:      Max attempts, in case of failure (default: 1)
-    --config-file:   Specify a path to a config file which will specify additional arguments to be passed into the command
+    --os:         Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-version: Specify OS version
+    --version:    Specify version for output image
+    --stream:     Build stream, stable or dev (default: stable)
+    --repo:       Software repository (Format: name,baseurl), can be specified multiple times
+    --local:      Use local build for software repository (cannot be used with --repo)
+    --push:       Push to docker repo
+    --proxy:      Set proxy <URL>:<PORT>
+    --latest:     Add a 'latest' tag when pushing
+    --latest-tag: Use the provided tag when pushing latest.
+    --user:       Docker repo userid
+    --registry:   Docker registry
+    --clean:      Remove image(s) from local registry
+    --hostname:   build repo host
+    --attempts:   Max attempts, in case of failure (default: 1)
+    --config-file:Specify a path to a config file which will specify additional arguments to be passed into the command
 
 EOF
 }
@@ -100,15 +98,11 @@ function get_args_from_file {
             repo)
                 REPO_LIST+=(${config_items[1]})
                 ;;
-            repo-priority)
-                priority_value=(${config_items[1]//,/ })
-                REPO_PRIORITY_LIST[${priority_value[0]}]=${priority_value[1]}
-                ;;
         esac
     done
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,repo-priority:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,hostname:,attempts:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,hostname:,attempts:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -192,11 +186,6 @@ while true; do
             CONFIG_FILE=$2
             shift 2
             ;;
-        --repo-priority)
-            priority_value=(${2//,/ })
-            REPO_PRIORITY_LIST[${priority_value[0]}]=${priority_value[1]}
-            shift 2
-            ;;
         -h | --help )
             usage
             exit 1
@@ -278,10 +267,6 @@ STX_REPO_FILE=${BUILDDIR}/stx.repo
 for repo in ${REPO_LIST[@]}; do
     repo_name=$(echo $repo | awk -F, '{print $1}')
     repo_baseurl=$(echo $repo | awk -F, '{print $2}')
-    priority=''
-    if [[ ! -z "${REPO_PRIORITY_LIST[$repo_name]}" ]] ; then
-        priority="priority=${REPO_PRIORITY_LIST[$repo_name]}"
-    fi
 
     if [ -z "${repo_name}" -o -z "${repo_baseurl}" ]; then
         echo "Invalid repo specified: ${repo}" >&2
@@ -297,7 +282,6 @@ enabled=1
 gpgcheck=0
 skip_if_unavailable=1
 metadata_expire=0
-${priority}
 
 EOF
 
