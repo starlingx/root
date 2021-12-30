@@ -375,7 +375,7 @@ function sign
 	#
 	# We place output in $TMPFILE to extract the output file name later
 	#
-	ssh $SIGNING_USER@$SIGNING_SERVER sudo $SIGNING_SCRIPT -i $UPLOAD_PATH/$(basename $FILE) $UNSIGNED_OPTION -t $TYPE > $TMPFILE 2>&1
+	ssh $SIGNING_USER@$SIGNING_SERVER sudo $SIGNING_SCRIPT -v -i $UPLOAD_PATH/$(basename $FILE) $UNSIGNED_OPTION -t $TYPE > $TMPFILE 2>&1
 	if [ $? -ne 0 ]; then
 		echo "Signing of $FILE failed"
 		\rm -f $TMPFILE
