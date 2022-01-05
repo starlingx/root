@@ -38,6 +38,7 @@ CLEAN=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
+DEFAULT_SPICE_REPO=https://github.com/freedesktop/spice-html5.git
 declare -a ONLY
 declare -a SKIP
 declare -i MAX_ATTEMPTS=1
@@ -174,7 +175,7 @@ function get_git {
 
 function get_loci {
     # Use a specific HEAD of loci, to provide a stable builder
-    local LOCI_REF="f022ecba553903df3df72d3668e143e9eb9ceded"
+    local LOCI_REF="efccd0a853879ac6af6066eda09792d0d3afe9c0"
     local LOCI_REPO="https://github.com/openstack/loci.git"
 
     local ORIGWD=${PWD}
@@ -336,6 +337,10 @@ function build_image_loci {
     PYTHON3=$(source ${image_build_file} && echo ${PYTHON3})
     local MIRROR_LOCAL
     MIRROR_LOCAL=$(source ${image_build_file} && echo ${MIRROR_LOCAL})
+    local SPICE_REPO
+    SPICE_REPO=$(source ${image_build_file} && echo ${SPICE_REPO})
+    local SPICE_REF
+    SPICE_REF=$(source ${image_build_file} && echo ${SPICE_REF})
 
     echo "Building ${LABEL}"
 
@@ -431,6 +436,16 @@ function build_image_loci {
 
     if [ -n "${PYTHON3}" ]; then
         BUILD_ARGS+=(--build-arg PYTHON3="${PYTHON3}")
+    fi
+
+    if [ -n "${SPICE_REPO}" ]; then
+        BUILD_ARGS+=(--build-arg SPICE_REPO="${SPICE_REPO}")
+    else
+        BUILD_ARGS+=(--build-arg SPICE_REPO="${DEFAULT_SPICE_REPO}")
+    fi
+
+    if [ -n "${SPICE_REF}" ]; then
+        BUILD_ARGS+=(--build-arg SPICE_REF="${SPICE_REF}")
     fi
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
