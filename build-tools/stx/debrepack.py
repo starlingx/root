@@ -61,11 +61,11 @@ def get_str_md5(text):
     return str(_hash)
 
 
-def tar_cmd(tarball_name):
+def tar_cmd(tarball_name, logger):
 
     targz = re.match(r'.*.(tar\.gz|tar\.bz2|tar\.xz|tgz)$', tarball_name)
     if targz is None:
-        self.logger.error('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
+        logger.error('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
         raise ValueError(f'{tarball_name} type is not supported')
 
     # Refer to untar.py of debmake python module
@@ -88,11 +88,11 @@ def tar_cmd(tarball_name):
 def get_topdir(tarball_file, logger):
 
     if not os.path.exists(tarball_file):
-        self.logger.error('Not such file %s', tarball_file)
+        logger.error('Not such file %s', tarball_file)
         raise IOError
 
     tarball_name = os.path.basename(tarball_file)
-    _, cmdx, _ = tar_cmd(tarball_name)
+    _, cmdx, _ = tar_cmd(tarball_name, logger)
     cmdx = cmdx + '| awk -F "/" \'{print $%s}\' | sort | uniq'
     topdir = run_shell_cmd(cmdx % (tarball_file, "1"), logger)
     subdir = run_shell_cmd(cmdx % (tarball_file, "2"), logger)
@@ -103,6 +103,18 @@ def get_topdir(tarball_file, logger):
     # Return None if no top directory
     else:
         return None
+
+
+def md5_checksum(dl_file, md5sum, logger):
+
+    if not os.path.exists(dl_file):
+        return False
+
+    md5 = run_shell_cmd('md5sum %s |cut -d" " -f1' % dl_file, logger)
+    if md5 != md5sum:
+        logger.debug(f"The {md5} not match the expected {md5sum}")
+        return False
+    return True
 
 
 def run_shell_cmd(cmd, logger):
@@ -192,8 +204,9 @@ class Parser():
         self.pkginfo["pkgpath"] = os.path.abspath(pkgpath)
         self.pkginfo["pkgname"] = os.path.basename(pkgpath)
         self.pkginfo["packdir"] = os.path.join(self.basedir, self.pkginfo["pkgname"])
-        if not os.path.exists(self.pkginfo["packdir"]):
-            os.mkdir(self.pkginfo["packdir"])
+        if os.path.exists(self.pkginfo["packdir"]):
+            shutil.rmtree(self.pkginfo["packdir"])
+        os.mkdir(self.pkginfo["packdir"])
 
         logfile = os.path.join(self.pkginfo["packdir"], self.pkginfo["pkgname"] + ".log")
         if os.path.exists(logfile):
@@ -220,7 +233,31 @@ class Parser():
             raise Exception("No debver defined in meta_data.yaml")
 
         if "debname" in self.meta_data:
-            self.pkginfo["pkgname"] = self.meta_data["debname"]
+            self.pkginfo["debname"] = self.meta_data["debname"]
+        else:
+            self.pkginfo["debname"] = self.pkginfo["pkgname"]
+
+        if "src_path" in self.meta_data and self.meta_data["src_path"] is not None:
+            src_dirname = self.meta_data["src_path"]
+            src_path = os.path.expandvars(src_dirname)
+            if not os.path.isabs(src_path):
+                src_path = os.path.abspath(os.path.join(self.pkginfo["pkgpath"], src_dirname))
+                if not os.path.exists(src_path):
+                    self.logger.error("%s: No such directory", src_path)
+                    raise ValueError(f"{src_path}: No such directory")
+            self.meta_data["src_path"] = src_path
+
+        if "src_files" in self.meta_data:
+            src_files = self.meta_data['src_files']
+            self.meta_data['src_files'] = []
+            for src_file in src_files:
+                src_path = os.path.expandvars(src_file)
+                if not os.path.exists(src_path):
+                    src_path = os.path.join(self.pkginfo["pkgpath"], src_file)
+                if not os.path.exists(src_path):
+                    self.logger.error("No such file %s", src_path)
+                    raise IOError
+                self.meta_data['src_files'].append(src_path)
 
         self.versions["full_version"] = str(self.meta_data["debver"])
         self.versions["upstream_version"] = BaseVersion(self.versions["full_version"]).upstream_version
@@ -228,10 +265,11 @@ class Parser():
         self.versions["epoch"] = BaseVersion(self.versions["full_version"]).epoch
 
         self.logger.info("=== Package Name: %s", self.pkginfo["pkgname"])
+        self.logger.info("=== Debian Package Name: %s", self.pkginfo["debname"])
         self.logger.info("=== Package Version: %s", self.versions["full_version"])
         self.logger.info("=== Package Path: %s", self.pkginfo["pkgpath"])
 
-        srcdir = self.pkginfo["pkgname"] + "-" + self.versions["upstream_version"]
+        srcdir = self.pkginfo["debname"] + "-" + self.versions["upstream_version"]
         self.pkginfo["srcdir"] = os.path.join(self.pkginfo["packdir"], srcdir)
         if os.path.exists(self.pkginfo["srcdir"]):
             shutil.rmtree(self.pkginfo["srcdir"])
@@ -262,16 +300,9 @@ class Parser():
         if "src_path" not in self.meta_data:
             return dist + "." + str(revision)
 
-        src_dirname = self.meta_data["src_path"]
-        if src_dirname is None:
+        src_path = self.meta_data["src_path"]
+        if src_path is None:
             return dist + "." + str(revision)
-
-        src_path = os.path.expandvars(src_dirname)
-        if not os.path.isabs(src_path):
-            src_path = os.path.abspath(os.path.join(self.pkginfo["pkgpath"], src_dirname))
-            if not os.path.exists(src_path):
-                self.logger.error("%s: No such directory", src_path)
-                raise ValueError(f"{src_path}: No such directory")
 
         if "SRC_GITREVCOUNT" in revision_data:
             if "SRC_BASE_SRCREV" not in revision_data:
@@ -284,6 +315,7 @@ class Parser():
 
     def checksum(self, pkgpath):
 
+        self.setup(pkgpath)
         if not os.path.isdir(pkgpath):
             self.logger.error("%s: No such file or directory", pkgpath)
             raise Exception(f"{pkgpath}: No such file or directory")
@@ -298,6 +330,35 @@ class Parser():
             for name in files:
                 f = open(os.path.join(root, name), 'r', encoding="ISO-8859-1")
                 content += f.read()
+
+        if "src_path" in self.meta_data and self.meta_data["src_path"] is not None:
+            for root, _, files in os.walk(self.meta_data["src_path"]):
+                for name in files:
+                    try:
+                        f = open(os.path.join(root, name), 'r', encoding="ISO-8859-1")
+                        content += f.read()
+                    except IOError:
+                        self.logger.error("Can't open %s" % name)
+                        raise IOError
+
+        if "src_files" in self.meta_data:
+            for src_file in self.meta_data['src_files']:
+                if os.path.isdir(src_file):
+                    for root, _, files in os.walk(src_file):
+                        for name in files:
+                            try:
+                                f = open(os.path.join(root, name), 'r', encoding="ISO-8859-1")
+                                content += f.read()
+                            except IOError:
+                                self.logger.error("Can't open %s" % name)
+                                raise IOError
+                else:
+                    try:
+                        f = open(src_file, 'r', encoding="ISO-8859-1")
+                        content += f.read()
+                    except IOError:
+                        self.logger.error("Can't open %s" % src_file)
+                        raise IOError
 
         return get_str_md5(content)
 
@@ -357,23 +418,34 @@ class Parser():
 
         if "src_files" in self.meta_data:
             for src_file in self.meta_data['src_files']:
-                src_path = os.path.expandvars(src_file)
-                if not os.path.exists(src_path):
-                    src_path = os.path.join(self.pkginfo["pkgpath"], src_file)
-                if not os.path.exists(src_path):
-                    self.logger.error("No such file %s", src_path)
-                    raise IOError
-                run_shell_cmd('cp -rL %s %s' % (src_path, self.pkginfo["srcdir"]),
+                run_shell_cmd('cp -rL %s %s' % (src_file, self.pkginfo["srcdir"]),
                               self.logger)
 
         if "dl_files" in self.meta_data:
+            pwd = os.getcwd()
+            os.chdir(self.pkginfo["packdir"])
             for dl_file in self.meta_data['dl_files']:
-                dl_file = os.path.join(self.pkginfo["packdir"], dl_file)
-                if not os.path.exists(dl_file):
-                    self.logger.error("No such file %s", dl_file)
+                dir_name = self.meta_data['dl_files'][dl_file]['topdir']
+                dl_path = os.path.join(self.pkginfo["packdir"], dl_file)
+                if not os.path.exists(dl_path):
+                    self.logger.error("No such file %s in local mirror", dl_file)
                     raise IOError
-                run_shell_cmd('cp -rL %s %s' % (dl_file, self.pkginfo["srcdir"]),
+                if dir_name is not None:
+                    cmd, _, cmdc = tar_cmd(dl_path, self.logger)
+                    # The tar ball has top directory
+                    if get_topdir(dl_path, self.logger) is not None:
+                        # Remove the top diretory
+                        cmd += '--strip-components 1 -C %s'
+                    # The tar ball is extracted under $PWD by default
+                    else:
+                        cmd += '-C %s'
+                    run_shell_cmd("mkdir -p %s" % dir_name, self.logger)
+                    run_shell_cmd(cmd % (dl_path, dir_name), self.logger)
+                    run_shell_cmd(cmdc % (dl_path, dir_name), self.logger)
+
+                run_shell_cmd('cp -rL %s %s' % (dl_path, self.pkginfo["srcdir"]),
                               self.logger)
+                os.chdir(pwd)
 
         files = os.path.join(self.pkginfo["debfolder"], "files")
         if not os.path.isdir(files) or not os.path.exists(files):
@@ -453,57 +525,12 @@ class Parser():
 
         return True
 
-    def download_files(self):
-
-        if "dl_files" not in self.meta_data:
-            return
-
-        pwd = os.getcwd()
-        os.chdir(self.pkginfo["packdir"])
-        for dl_file in self.meta_data['dl_files']:
-            url = self.meta_data['dl_files'][dl_file]['url']
-            dir_name = self.meta_data['dl_files'][dl_file]['topdir']
-            download(url, dl_file, self.logger)
-            if dir_name is None:
-                continue
-
-            cmd, _, cmdc = tar_cmd(dl_file)
-            # The tar ball has top directory
-            if get_topdir(dl_file, self.logger) is not None:
-                # Remove the top diretory
-                cmd += '--strip-components 1 -C %s'
-            # The tar ball is extracted under $PWD by default
-            else:
-                cmd += '-C %s'
-
-            run_shell_cmd('rm -rf %s;mkdir %s' % (dir_name, dir_name), self.logger)
-            run_shell_cmd(cmd % (dl_file, dir_name), self.logger)
-            run_shell_cmd(cmdc % (dl_file, dir_name), self.logger)
-            run_shell_cmd('rm -rf %s' % dir_name, self.logger)
-
-        os.chdir(pwd)
-
-    def download_tarball(self):
+    def extract_tarball(self):
 
         tarball_name = self.meta_data["dl_path"]["name"]
-        tarball_url = self.meta_data["dl_path"]["url"]
-        tarball_md5sum = self.meta_data["dl_path"]["md5sum"]
-
         tarball_file = os.path.join(self.pkginfo["packdir"], tarball_name)
-        if os.path.exists(tarball_file):
-            md5sum = run_shell_cmd('md5sum %s |cut -d" " -f1' % tarball_file, self.logger)
-            if md5sum != tarball_md5sum:
-                self.logger.info("The md5sum of existing %s is %s, but %s is expected, redownload", tarball_file, md5sum, tarball_md5sum)
-                os.remove(tarball_file)
 
-        if not os.path.exists(tarball_file):
-            download(tarball_url, tarball_file, self.logger)
-            md5sum = run_shell_cmd('md5sum %s |cut -d" " -f1' % tarball_file, self.logger)
-            if md5sum != tarball_md5sum:
-                self.logger.error("The md5sum of %s is %s, but %s is expected", tarball_file, md5sum, tarball_md5sum)
-                raise ValueError(f"The md5sum of {tarball_file} is {md5sum}, but {tarball_md5sum} is expected")
-
-        cmd, _, _ = tar_cmd(tarball_name)
+        cmd, _, _ = tar_cmd(tarball_name, self.logger)
         # The tar ball has top directory
         if get_topdir(tarball_file, self.logger) is not None:
             # Remove the top diretory
@@ -523,65 +550,13 @@ class Parser():
 
     def upload_deb_package(self):
 
-        self.logger.info("Uploading the dsc files of %s to local repo %s", self.pkginfo["pkgname"], self.srcrepo)
+        self.logger.info("Uploading the dsc files of %s to local repo %s", self.pkginfo["debname"], self.srcrepo)
         # strip epoch
         ver = self.versions["full_version"].split(":")[-1]
-        dsc_file = os.path.join(self.pkginfo["packdir"], self.pkginfo["pkgname"] + "_" + ver + ".dsc")
+        dsc_file = os.path.join(self.pkginfo["packdir"], self.pkginfo["debname"] + "_" + ver + ".dsc")
 
         cmd = "repo_manage.py upload_pkg -p %s  -r %s"
         run_shell_cmd(cmd % (dsc_file, self.srcrepo), self.logger)
-
-        return True
-
-    def download_deb_archive(self):
-
-        archive_url = self.meta_data["archive"]
-        dsc_filename = self.pkginfo["pkgname"] + "_" + self.versions["full_version"] + ".dsc"
-        dsc_file = os.path.join(archive_url, dsc_filename)
-        local_dsc = os.path.join(self.pkginfo["packdir"], dsc_filename)
-        download(dsc_file, local_dsc, self.logger)
-        with open(local_dsc) as f:
-            c = debian.deb822.Dsc(f)
-
-        for f in c['Files']:
-            local_f = os.path.join(self.pkginfo["packdir"], f['name'])
-            remote_f = os.path.join(archive_url, f['name'])
-            download(remote_f, local_f, self.logger)
-        run_shell_cmd("cd %s;dpkg-source -x %s" % (self.pkginfo["packdir"], dsc_filename), self.logger)
-
-        self.apply_deb_patches()
-
-        return True
-
-    def download_deb_package(self):
-
-        fullname = self.pkginfo["pkgname"] + "=" + self.versions["full_version"]
-        supported_versions = list()
-
-        apt_pkg.init()
-        sources = apt_pkg.SourceRecords()
-        source_lookup = sources.lookup(self.pkginfo["pkgname"])
-        while source_lookup and self.versions["full_version"] != sources.version:
-            supported_versions.append(sources.version)
-            source_lookup = sources.lookup(self.pkginfo["pkgname"])
-
-        if not source_lookup:
-            self.logger.error("No source for %s", fullname)
-            self.logger.info("The supported versions are %s", supported_versions)
-            raise ValueError(f"No source for {fullname}")
-        self.logger.info("Found %s", fullname)
-
-        self.logger.info("Fetch %s to %s", fullname, self.pkginfo["packdir"])
-        # first_binary = sources.binaries[0]
-        # cache = apt.cache.Cache()
-        # package = cache[first_binary]
-        # package.candidate.fetch_source(destdir=self.pkginfo["packdir"],unpack=True)
-        run_shell_cmd("cd %s; apt-get source %s" % (self.pkginfo["packdir"], fullname), self.logger)
-
-        self.logger.info("Deploy %s to %s", fullname, self.pkginfo["srcdir"])
-        if self.srcrepo is not None:
-            self.upload_deb_package()
-        self.apply_deb_patches()
 
         return True
 
@@ -601,22 +576,15 @@ class Parser():
             run_shell_cmd('rm -rf %s' % os.path.join(self.pkginfo["srcdir"], ".git"), self.logger)
 
         srcname = os.path.basename(self.pkginfo["srcdir"])
-        origtargz = self.pkginfo["pkgname"] + '_' + self.versions["upstream_version"] + '.orig.tar.gz'
+        origtargz = self.pkginfo["debname"] + '_' + self.versions["upstream_version"] + '.orig.tar.gz'
         run_shell_cmd('cd %s; tar czvf %s %s' % (self.pkginfo["packdir"], origtargz, srcname), self.logger)
 
     def create_src_package(self):
 
-        src_dirname = self.meta_data["src_path"]
-        if src_dirname is None:
+        src_path = self.meta_data["src_path"]
+        if src_path is None:
             os.mkdir(self.pkginfo["srcdir"])
         else:
-            src_path = os.path.expandvars(src_dirname)
-            if not os.path.isabs(src_path):
-                src_path = os.path.abspath(os.path.join(self.pkginfo["pkgpath"], src_dirname))
-                if not os.path.exists(src_path):
-                    self.logger.error("%s: No such directory", src_path)
-                    raise ValueError(f"{src_path}: No such directory")
-
             # cp the .git folder, the git meta files in .git are symbol link, so need -L
             run_shell_cmd('cp -rL %s %s' % (src_path, self.pkginfo["srcdir"]), self.logger)
 
@@ -651,21 +619,86 @@ class Parser():
         self.update_deb_folder()
         self.apply_deb_patches()
 
-    def package(self, pkgpath):
+    def download(self, pkgpath, mirror):
 
         self.setup(pkgpath)
-        self.download_files()
+        if not os.path.exists(mirror):
+            self.logger.error("No such %s directory", mirror)
+            raise ValueError(f"No such {mirror} directory")
+
+        saveto = os.path.join(mirror, self.pkginfo["pkgname"])
+        if not os.path.exists(saveto):
+            os.mkdir(saveto)
+
+        pwd = os.getcwd()
+        os.chdir(saveto)
+        if "dl_path" in self.meta_data:
+            dl_file = self.meta_data["dl_path"]["name"]
+            url = self.meta_data["dl_path"]["url"]
+            md5sum = self.meta_data["dl_path"]["md5sum"]
+            if not md5_checksum(dl_file, md5sum, self.logger):
+                download(url, dl_file, self.logger)
+        elif "archive" in self.meta_data:
+            url = self.meta_data["archive"]
+            ver = self.versions["full_version"].split(":")[-1]
+            dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
+            dsc_file = os.path.join(url, dsc_filename)
+            run_shell_cmd("dget -d %s" % dsc_file, self.logger)
+        elif "src_path" not in self.meta_data and "dl_hook" not in self.meta_data:
+            fullname = self.pkginfo["debname"] + "=" + self.versions["full_version"]
+            supported_versions = list()
+
+            apt_pkg.init()
+            sources = apt_pkg.SourceRecords()
+            source_lookup = sources.lookup(self.pkginfo["debname"])
+            while source_lookup and self.versions["full_version"] != sources.version:
+                supported_versions.append(sources.version)
+                source_lookup = sources.lookup(self.pkginfo["debname"])
+
+            if not source_lookup:
+                self.logger.error("No source for %s", fullname)
+                self.logger.info("The supported versions are %s", supported_versions)
+                raise ValueError(f"No source for {fullname}")
+
+            self.logger.info("Fetch %s to %s", fullname, self.pkginfo["packdir"])
+            run_shell_cmd("apt-get source -d %s" % fullname, self.logger)
+            if self.srcrepo is not None:
+                self.upload_deb_package()
+
+        if "dl_files" in self.meta_data:
+            for dl_file in self.meta_data['dl_files']:
+                url = self.meta_data['dl_files'][dl_file]['url']
+                md5sum = self.meta_data['dl_files'][dl_file]['md5sum']
+                if not md5_checksum(dl_file, md5sum, self.logger):
+                    download(url, dl_file, self.logger)
+        os.chdir(pwd)
+
+    def package(self, pkgpath, mirror):
+
+        self.setup(pkgpath)
+        if not os.path.exists(mirror):
+            self.logger.error("No such %s directory", mirror)
+            raise ValueError(f"No such {mirror} directory")
+
+        sources = os.path.join(mirror, self.pkginfo["pkgname"])
+        if os.path.exists(sources):
+            run_shell_cmd('cp -r %s %s' % (sources, self.basedir), self.logger)
+
         if "dl_hook" in self.meta_data:
             self.run_dl_hook()
         elif "dl_path" in self.meta_data:
-            self.download_tarball()
+            self.extract_tarball()
         elif "src_path" in self.meta_data:
             self.create_src_package()
-        elif "archive" in self.meta_data:
-            self.download_deb_archive()
         else:
-            self.download_deb_package()
-
+            ver = self.versions["full_version"].split(":")[-1]
+            dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
+            dsc_file = os.path.join(self.pkginfo["packdir"], dsc_filename)
+            if not os.path.exists(dsc_file):
+                self.logger.error("No dsc file \"%s\" was found in local mirror." % dsc_filename)
+                raise IOError
+            run_shell_cmd("cd %s;dpkg-source -x %s" % (self.pkginfo["packdir"], dsc_filename), self.logger)
+            self.apply_deb_patches()
         self.apply_src_patches()
 
         self.logger.info("Repackge the package %s", self.pkginfo["srcdir"])
@@ -691,7 +724,6 @@ class Parser():
             files.append(f['name'])
 
         for f in files:
-            target = os.path.join(self.output, f)
             source = os.path.join(self.pkginfo["packdir"], f)
             run_shell_cmd('cp -Lr %s %s' % (source, self.output), self.logger)
 
