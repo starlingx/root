@@ -563,7 +563,8 @@ class BuildController():
                 os.makedirs(pkgdir)
 
         try:
-            dsc_recipes = self.kits['dsc_maker'].package(pkg_meta)
+            src_mirror_dir = os.path.join(os.environ.get('STX_MIRROR'), 'sources')
+            dsc_recipes = self.kits['dsc_maker'].package(pkg_meta, src_mirror_dir)
         except Exception as e:
             logger.error(str(e))
             return None
