@@ -204,17 +204,6 @@ class Parser():
         self.pkginfo["pkgpath"] = os.path.abspath(pkgpath)
         self.pkginfo["pkgname"] = os.path.basename(pkgpath)
         self.pkginfo["packdir"] = os.path.join(self.basedir, self.pkginfo["pkgname"])
-        if os.path.exists(self.pkginfo["packdir"]):
-            shutil.rmtree(self.pkginfo["packdir"])
-        os.mkdir(self.pkginfo["packdir"])
-
-        logfile = os.path.join(self.pkginfo["packdir"], self.pkginfo["pkgname"] + ".log")
-        if os.path.exists(logfile):
-            os.remove(logfile)
-        logfile_handler = logging.FileHandler(logfile, 'w')
-        formatter = logging.Formatter('%(levelname)s - %(message)s')
-        logfile_handler.setFormatter(formatter)
-        self.logger.addHandler(logfile_handler)
 
         self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")
         if not os.path.isdir(self.pkginfo["debfolder"]):
@@ -252,7 +241,7 @@ class Parser():
             self.meta_data['src_files'] = []
             for src_file in src_files:
                 src_path = os.path.expandvars(src_file)
-                if not os.path.exists(src_path):
+                if not os.path.isabs(src_path):
                     src_path = os.path.join(self.pkginfo["pkgpath"], src_file)
                 if not os.path.exists(src_path):
                     self.logger.error("No such file %s", src_path)
@@ -676,6 +665,19 @@ class Parser():
     def package(self, pkgpath, mirror):
 
         self.setup(pkgpath)
+
+        if os.path.exists(self.pkginfo["packdir"]):
+            shutil.rmtree(self.pkginfo["packdir"])
+        os.mkdir(self.pkginfo["packdir"])
+
+        logfile = os.path.join(self.pkginfo["packdir"], self.pkginfo["pkgname"] + ".log")
+        if os.path.exists(logfile):
+            os.remove(logfile)
+        logfile_handler = logging.FileHandler(logfile, 'w')
+        formatter = logging.Formatter('%(levelname)s - %(message)s')
+        logfile_handler.setFormatter(formatter)
+        self.logger.addHandler(logfile_handler)
+
         if not os.path.exists(mirror):
             self.logger.error("No such %s directory", mirror)
             raise ValueError(f"No such {mirror} directory")
@@ -726,5 +728,7 @@ class Parser():
         for f in files:
             source = os.path.join(self.pkginfo["packdir"], f)
             run_shell_cmd('cp -Lr %s %s' % (source, self.output), self.logger)
+
+        self.logger.removeHandler(logfile_handler)
 
         return files
