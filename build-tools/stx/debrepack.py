@@ -434,7 +434,7 @@ class Parser():
 
                 run_shell_cmd('cp -rL %s %s' % (dl_path, self.pkginfo["srcdir"]),
                               self.logger)
-                os.chdir(pwd)
+            os.chdir(pwd)
 
         files = os.path.join(self.pkginfo["debfolder"], "files")
         if not os.path.isdir(files) or not os.path.exists(files):
