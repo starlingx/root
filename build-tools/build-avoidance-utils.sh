@@ -576,12 +576,24 @@ build_avoidance_copy_dir_rsync () {
         >&2 echo "Error: $FUNCNAME (${LINENO}): BUILD_AVOIDANCE_URL no set"
         return 1
     fi
+
     if [ "$VERBOSE" != "" ]; then
         FLAGS="$FLAGS -v"
         echo "rsync $FLAGS '$BUILD_AVOIDANCE_URL/$FROM/' '$TO/'"
     fi
+
     rsync $FLAGS "$BUILD_AVOIDANCE_URL/$FROM/" "$TO/"
-    return $?
+    if [ $? -ne 0 ]; then
+        >&2 echo "Error: $FUNCNAME (${LINENO}): command failed: rsync $FLAGS '$BUILD_AVOIDANCE_URL/$FROM/' '$TO/'"
+        return 1
+    fi
+
+    chmod -R 'ug+w' "$TO/"
+    if [ $? -ne 0 ]; then
+        >&2 echo "Error: $FUNCNAME (${LINENO}): command failed: chmod -R 'ug+w' '$TO/'"
+        return 1
+    fi
+    return 0
 }
 
 #
@@ -604,7 +616,18 @@ build_avoidance_copy_file_rsync () {
         FLAGS="$FLAGS -v"
         echo "rsync $FLAGS '$BUILD_AVOIDANCE_URL/$FROM' '$TO'"
     fi
+
     rsync $FLAGS "$BUILD_AVOIDANCE_URL/$FROM" "$TO"
+    if [ $? -ne 0 ]; then
+        >&2 echo "Error: $FUNCNAME (${LINENO}): command failed: rsync $FLAGS '$BUILD_AVOIDANCE_URL/$FROM' '$TO'"
+        return 1
+    fi
+
+    chmod -R 'ug+w' "$TO"
+    if [ $? -ne 0 ]; then
+        >&2 echo "Error: $FUNCNAME (${LINENO}): command failed: chmod -R 'ug+w' '$TO'"
+        return 1
+    fi
     return $?
 }
 
