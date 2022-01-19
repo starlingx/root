@@ -372,6 +372,12 @@ class RepoMgr():
             shutil.rmtree(self.workdir)
         self.logger.info('local repo can be accessed through: %s ' % repo_str)
 
+    # Merge all packages of several repositories into a new publication(aptly)
+    # NOTE: aptly only. Not find similar feature in pulp...
+    def merge(self, name, source_snapshots):
+        '''Merge several repositories into a new aptly publication.'''
+        self.repo.merge_repos(name, source_snapshots.split(','))
+
     # Construct a repository mirror to an upstream Debian repository
     # kwargs:url: URL of the upstream repo (http://deb.debian.org/debian)
     # kwargs:distribution: the distribution of the repo (bullseye)
@@ -627,6 +633,11 @@ def _handleMirror(args):
     repomgr.mirror(args.name, **kwargs)
 
 
+def _handleMerge(args):
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr.merge(args.name, args.repo_list)
+
+
 def _handleUploadPkg(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
     repomgr.upload_pkg(args.repository, args.package)
@@ -722,6 +733,14 @@ def subcmd_mirror(subparsers):
     mirror_parser.set_defaults(handle=_handleMirror)
 
 
+def subcmd_merge(subparsers):
+    merge_parser = subparsers.add_parser('merge',
+                                         help='Merge several repositories into a new publication.\n\n')
+    merge_parser.add_argument('--name', '-n', help='Name of the new merged publication', required=True)
+    merge_parser.add_argument('--repo_list', '-l', help='a set of repos, seperate by comma', required=True)
+    merge_parser.set_defaults(handle=_handleMerge)
+
+
 def main():
     # command line arguments
     parser = argparse.ArgumentParser(add_help=False,
@@ -735,6 +754,7 @@ def main():
     subcmd_download(subparsers)
     subcmd_sync(subparsers)
     subcmd_mirror(subparsers)
+    subcmd_merge(subparsers)
 
     clean_parser = subparsers.add_parser('clean', help='Clear all aptly repos.\n\n')
     clean_parser.set_defaults(handle=_handleClean)

@@ -27,6 +27,7 @@ from typing import Optional
 
 PREFIX_LOCAL = 'deb-local-'
 PREFIX_REMOTE = 'deb-remote-'
+PREFIX_MERGE = 'deb-merge-'
 
 # Class used to manage aptly data base, it can:
 #     create_remote: Create a repository link to a remote mirror
@@ -120,6 +121,79 @@ class Deb_aptly():
                 return False
             if task_state == 'SUCCEEDED':
                 return True
+
+    # Create a snapshot based on several others
+    # name : string, the name of new build snapshot
+    # source_snapshots: list, snapshots to be merged
+    # Return False if failed
+    def __merge_snapshot(self, name, source_snapshots):
+        '''Merge several snapshots into one, prepare for later deploy.'''
+        if not name.startswith(PREFIX_MERGE):
+            self.logger.error('%s did not start with %s, Failed.' % (name, PREFIX_MERGE))
+            return False
+        package_refs = []
+        source_snapshots = [x.strip() for x in source_snapshots if x.strip() != '']
+        snap_list = self.aptly.snapshots.list()
+        for snapshot in source_snapshots:
+            snap_exist = False
+            for snap in snap_list:
+                if snap.name == snapshot:
+                    snap_exist = True
+                    package_list = self.aptly.snapshots.list_packages(snap.name, with_deps=False, detailed=False)
+                    for package in package_list:
+                        package_refs.append(package.key)
+                    break
+            if not snap_exist:
+                self.logger.error('snapshot %s does not exist, merge failed.' % snapshot)
+                return False
+
+        # Remove a same name publish if exists
+        # For exist snapshot called NAME, we will:
+        # 1, rename it to backup-NAME
+        # 2, Create a new snapshot: NAME
+        # 3, delete snapshot backup-name
+        backup_name = None
+        publish_list = self.aptly.publish.list()
+        for publish in publish_list:
+            if publish.prefix == name:
+                task = self.aptly.publish.drop(prefix=name, distribution=publish.distribution, force_delete=True)
+                self.aptly.tasks.wait_for_task_by_id(task.id)
+                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                    self.logger.warning('Drop publication failed %s : %s' % (name, self.aptly.tasks.show(task.id).state))
+                    return False
+        # Remove the backup snapshot if it exists
+        snap_list = self.aptly.snapshots.list()
+        for snap in snap_list:
+            if snap.name == 'backup-' + name:
+                backup_name = 'backup-' + name
+                task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
+                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                    self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
+                    return False
+        # Rename the snapshot if it exists
+        for snap in snap_list:
+            if snap.name == name:
+                backup_name = 'backup-' + name
+                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(name, backup_name).id)
+
+        # crate a snapshot with package_refs. Duplicate package_refs is harmless.
+        # Note: The key is "package_refs" instead of "source_snapshots", for function
+        #       "create_from_packages", paramter "source_snapshots" almost has no means.
+        task = None
+        task = self.aptly.snapshots.create_from_packages(name, source_snapshots=source_snapshots, package_refs=package_refs)
+        self.aptly.tasks.wait_for_task_by_id(task.id)
+        if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+            if backup_name:
+                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(backup_name, name).id)
+            self.logger.warning('Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
+            return False
+        # Remove the backup snapshot if it is created above
+        if backup_name:
+            task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
+            self.aptly.tasks.wait_for_task_by_id(task.id)
+            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
+        return True
 
     # Create a snapshot based on "name" with same name
     # local: True ==> local_repo False ==> remote_mirror
@@ -418,7 +492,7 @@ class Deb_aptly():
     # pkg_name: package name
     # architecture: Architecture of the package, now, only check 'source' or not
     # pkg_version:  the version of the package, None means version insensitive
-    def pkg_exist(self, repo_list, pkg_name, architecture, pkg_version: Optional[str] = None):
+    def pkg_exist(self, repo_list, pkg_name, architecture, pkg_version=None):
         '''Search a package in a bundle of repositories including local repo and remote one.'''
         for repo_name in repo_list:
             if repo_name.startswith(PREFIX_LOCAL):
@@ -446,6 +520,19 @@ class Deb_aptly():
                             self.logger.debug('pkg_exist find package %s in %s.', pkg_name, repo_name)
                             return True
         return False
+
+    # Merge several repositories into a new one(just snapshot and publish)
+    # name: the name of the new build snapshot/publish
+    # source_snapshots: list, snapshots to be merged
+    def merge_repos(self, name, source_snapshots):
+        '''Merge several repositories into a new publish.'''
+        if not name.startswith(PREFIX_MERGE):
+            self.logger.warning('The name should started with %s.', PREFIX_MERGE)
+            return None
+
+        if self.__merge_snapshot(name, source_snapshots):
+            ret = self.__publish_snap(name)
+            return ret
 
     # deploy a loacl repository
     # Input: the name of the local repository
