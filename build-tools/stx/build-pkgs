@@ -29,6 +29,7 @@ import subprocess
 import sys
 import time
 import utils
+import yaml
 
 BUILDER_URL = os.environ.get('BUILDER_URL')
 REPOMGR_URL = os.environ.get('REPOMGR_URL')
@@ -270,6 +271,31 @@ def fetch_debian_folder(package):
     return None
 
 
+def get_package_jobs(package):
+    '''
+    Returns the number of parallel jobs of the package
+    If the serial build is not enabled by the meta file,
+    the default number of jobs is equal to the value of
+    environment variable MAX_CPUS.
+    '''
+    jobs = os.environ.get('MAX_CPUS', 1)
+    pkg_dir = fetch_debian_folder(package)
+    if pkg_dir:
+        pkg_meta_yaml = os.path.join(pkg_dir, 'debian/meta_data.yaml')
+        try:
+            with open(pkg_meta_yaml) as f:
+                yaml_doc = yaml.safe_load(f)
+        except Exception as e:
+            logger.error(str(e))
+        else:
+            # serial: true  [Disable parallel build]
+            # No 'serial:' or 'serial: false' [Support parallel build]
+            if yaml_doc.get('serial'):
+                jobs = 1
+    logger.debug('Requires the number of jobs %s for %s', jobs, package)
+    return jobs
+
+
 class BuildController():
     """
     builderClient helps to create or refresh the debian build recipes
@@ -500,6 +526,7 @@ class BuildController():
         req_params['user'] = USER
         req_params['name'] = package
         req_params['dsc'] = dsc
+        req_params['jobs'] = get_package_jobs(package)
         req_params['run_tests'] = self.attrs['run_tests']
 
         try:
