@@ -54,6 +54,7 @@ STX_SOURCE_REPOS = [
     'distributedcloud',
     'distributedcloud-client',
     'fault',
+    'gui',
     'ha',
     'helm-charts',
     'integ',
