@@ -398,7 +398,7 @@ function build_image_loci {
     BUILD_ARGS+=(--build-arg PROJECT_REPO=${PROJECT_REPO})
     BUILD_ARGS+=(--build-arg FROM=${BASE})
 
-    if [ "${PYTHON3}" != "yes" ] ; then
+    if [ "${PYTHON3}" == "no" ] ; then
         echo "Python2 service ${LABEL}"
         BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_PY2})
     else
@@ -871,11 +871,11 @@ function find_image_build_files {
                 # loci builders require a wheels tarball
                 if [[ "${BUILDER}" == "loci" ]] ; then
                     # python3 projects require $WHEELS
-                    if [[ "${PYTHON3}" == "yes" && -z "${WHEELS}" ]] ; then
+                    if [[ ( -z "${PYTHON3}" || "${PYTHON3}" != "no" ) && -z "${WHEELS}" ]] ; then
                         echo "You are building python3 services with loci, but you didn't specify --wheels!" >&2
                         exit 1
                     # python2 projects require WHEELS_PY2
-                    elif [[ "${PYTHON3}" != "yes" && -z "${WHEELS_PY2}" ]] ; then
+                    elif [[ "${PYTHON3}" == "no" && -z "${WHEELS_PY2}" ]] ; then
                         echo "You are building python2 services with loci, but you didn't specify --wheels-py2!" >&2
                         exit 1
                     fi
