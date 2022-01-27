@@ -124,15 +124,20 @@ class Deb_aptly():
 
     # Create a snapshot based on several others
     # name : string, the name of new build snapshot
-    # source_snapshots: list, snapshots to be merged
-    # Return False if failed
+    # source_snapshots: list of snapshots to be merge, order matters, snapshot at front of
+    #                   list has higher priority than snapshot later in the list.
+    # For each package, only the one in higher priority snapshot will be selected.
+    # Return False on failure
     def __merge_snapshot(self, name, source_snapshots):
         '''Merge several snapshots into one, prepare for later deploy.'''
         if not name.startswith(PREFIX_MERGE):
             self.logger.error('%s did not start with %s, Failed.' % (name, PREFIX_MERGE))
             return False
         package_refs = []
+        package_uniq_list = []
         source_snapshots = [x.strip() for x in source_snapshots if x.strip() != '']
+        # remove duplicates (keep order)
+        source_snapshots = list(dict.fromkeys(source_snapshots))
         snap_list = self.aptly.snapshots.list()
         for snapshot in source_snapshots:
             snap_exist = False
@@ -140,7 +145,21 @@ class Deb_aptly():
                 if snap.name == snapshot:
                     snap_exist = True
                     package_list = self.aptly.snapshots.list_packages(snap.name, with_deps=False, detailed=False)
+                    # Debug only
+                    # package_list.sort()
+                    # self.logger.debug('%s packages in repo %s' % (len(package_list), snapshot))
                     for package in package_list:
+                        key_list = package.key.split()
+                        # 0: pkg_arch  1: pkg_name  2: pkg_version 3: pkg_key of aptly
+                        uniq_pkg = [key_list[0], key_list[1]]
+                        # Source packages are useless for LAT, ignore them.
+                        if "Psource" == key_list[0]:
+                            continue
+                        # Ignore duplicate packages
+                        if uniq_pkg in package_uniq_list:
+                            self.logger.warn('Drop duplicate package: %s of %s.' % (package.key, snapshot))
+                            continue
+                        package_uniq_list.append(uniq_pkg)
                         package_refs.append(package.key)
                     break
             if not snap_exist:
@@ -167,6 +186,7 @@ class Deb_aptly():
             if snap.name == 'backup-' + name:
                 backup_name = 'backup-' + name
                 task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
+                self.aptly.tasks.wait_for_task_by_id(task.id)
                 if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
                     self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
                     return False
