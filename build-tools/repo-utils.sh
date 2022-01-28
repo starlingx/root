@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -189,7 +189,10 @@ manifest_get_revision_of_project () {
 manifest_get_default_revision () {
     local manifest="${1}"
 
-    grep '<default' $manifest |sed -e 's#.*revision=\([^ /]*\).*#\1#' -e 's#"##g' -e "s#'##g"
+    grep '<default' $manifest | \
+        sed -e 's#.*revision="\([^"]*\).*#\1#' \
+            -e 's#.*revision=\([^ >]*\).*#\1#' \
+            -e 's#/$##'
 }
 
 #
