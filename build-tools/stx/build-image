@@ -207,6 +207,8 @@ if __name__ == "__main__":
 
     repo_manager = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
                                        '/tmp/', logger)
+    repo_manager.upload_pkg(REPO_BUILD, None)
+    repo_manager.upload_pkg(REPO_BINARY, None)
 
     logger.info("\n")
     logger.info("=====Build Image start ......")
