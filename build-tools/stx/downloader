@@ -126,8 +126,10 @@ class BaseDownloader():
         self.dl_need = []
         self.dl_success = []
         self.dl_failed = []
+        rlogger = logging.getLogger('repo_manager')
+        utils.set_logger(rlogger)
         self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
-                                           '/tmp/', logger)
+                                           '/tmp/', rlogger)
         self.repomgr.upload_pkg(REPO_BIN, None)
 
     def clean(self):
@@ -177,21 +179,22 @@ class DebDownloader(BaseDownloader):
             self.repomgr.upload_pkg(REPO_BIN, None)
 
     def download(self, _name, _version):
-        package = self.apt_cache[_name]
-        candidate = package.versions.get(_version)
-        if not candidate:
-            logger.error(' '.join(['Fail to download', _name,
-                         'with wrong version', _version, '?']))
-            logger.error('May need to update the package list file')
-            return None
-
-        package.candidate = candidate
         try:
+            package = self.apt_cache[_name]
+            candidate = package.versions.get(_version)
+            if not candidate:
+                logger.error(' '.join(['Fail to download', _name,
+                             'with wrong version', _version, '?']))
+                logger.error('May need to update the package list file')
+                return None
+
+            package.candidate = candidate
             ret = package.candidate.fetch_binary(self.dl_dir)
             if ret:
                 return ret
-        except apt.package.FetchError:
+        except Exception as e:
             logger.debug("Fail to fetch binray %s_%s", _name, _version)
+            logger.debug(str(e))
         return None
 
     def reports(self):
@@ -246,7 +249,9 @@ class DebDownloader(BaseDownloader):
 
         for deb in self.need_upload:
             name, ver, arch = deb.split('_')
-            if not self.repomgr.search_pkg(REPO_BIN, name, ver):
+            if not self.repomgr.search_pkg(REPO_BIN, name, ver, True):
+                if name and ver:
+                    logger.debug('Package %s-%s not found in %s', name, ver, REPO_BIN)
                 if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb)):
                     logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
                                           'is uploaded to', REPO_BIN]))

@@ -25,6 +25,7 @@ import time
 import utils
 import yaml
 
+REPO_ALL = 'deb-merge-all'
 REPO_BINARY = 'deb-local-binary'
 REPO_BUILD = 'deb-local-build'
 DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
@@ -33,6 +34,50 @@ img_pkgs = []
 
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
+
+
+def merge_local_repos(repomgr):
+    logger.debug('Calls repo manager to create/udpate the snapshot %s which is merged from local repositories', REPO_ALL)
+    # REPO_BUILD is higher priority than REPO_BINARY for repomgr to select package
+    try:
+        pubname = repomgr.merge(REPO_ALL, ','.join([REPO_BUILD, REPO_BINARY]))
+    except Exception as e:
+        logger.error(str(e))
+        logger.error('Exception when repo_manager creates/updates snapshot %s', REPO_ALL)
+        return False
+    if pubname:
+        logger.debug('repo manager successfully created/updated snapshot %s', REPO_ALL)
+    else:
+        logger.debug('repo manager failed to create/update snapshot %s', REPO_ALL)
+        return False
+    return True
+
+
+def update_debootstrap_mirror(img_yaml):
+    repomgr_url = os.environ.get('REPOMGR_DEPLOY_URL')
+    if not repomgr_url:
+        logger.error('REPOMGR_URL is not in current sys ENV')
+        return False
+
+    repo_all_url = '/'.join([repomgr_url, REPO_ALL])
+    try:
+        with open(img_yaml) as f:
+            yaml_doc = yaml.safe_load(f)
+            if not yaml_doc['debootstrap-mirror']:
+                logger.warning("There is not debootstrap-mirror in %s", img_yaml)
+            else:
+                mirror = yaml_doc['debootstrap-mirror']
+                if mirror == REPO_ALL:
+                    yaml_doc['debootstrap-mirror'] = repo_all_url
+                    with open(img_yaml, 'w') as f:
+                        yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+                    logger.debug('Updating %s, setting debootstrap_mirror to %s', img_yaml, repo_all_url)
+                    return True
+    except IOError as e:
+        logger.error(str(e))
+        logger.debug('Failed to update %s, could not set debootstrap_mirror to %s', img_yaml, repo_all_url)
+    return False
+
 
 def update_ostree_osname(img_yaml):
 
@@ -52,6 +97,7 @@ def update_ostree_osname(img_yaml):
 
     logger.debug(' '.join(['Update', img_yaml, 'to update the ostree_osname']))
     return True
+
 
 def feed_lat_src_repos(img_yaml, repo_url):
     if not os.path.exists(img_yaml):
@@ -97,7 +143,7 @@ def check_base_os_binaries(repomgr):
                                'does not exist']))
         return False
 
-    results = query_repo(repomgr, REPO_BINARY, base_bins_list)
+    results = verify_pkgs_in_repo(repomgr, REPO_BINARY, base_bins_list)
     if results:
         logger.error("====OS binaries checking fail:")
         for deb in results:
@@ -117,7 +163,7 @@ def check_stx_binaries(repomgr, btype='std'):
         # Assume no such list here means ok
         return True
 
-    results = query_repo(repomgr, REPO_BINARY, stx_bins_list)
+    results = verify_pkgs_in_repo(repomgr, REPO_BINARY, stx_bins_list)
     if results:
         logger.error("====STX binaries checking fail:")
         for deb in results:
@@ -136,7 +182,7 @@ def check_stx_patched(repomgr, btype='std'):
                                 'does not exist']))
         return False
 
-    results = query_repo(repomgr, REPO_BUILD, stx_patched_list)
+    results = verify_pkgs_in_repo(repomgr, REPO_BUILD, stx_patched_list)
     if results:
         logger.error("====STX patched packages checking fail:")
         for deb in results:
@@ -147,7 +193,7 @@ def check_stx_patched(repomgr, btype='std'):
     return True
 
 
-def query_repo(repomgr, repo_name, pkg_list_path):
+def verify_pkgs_in_repo(repomgr, repo_name, pkg_list_path):
     failed_pkgs = []
     with open(pkg_list_path, 'r') as flist:
         lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
@@ -169,7 +215,7 @@ def query_repo(repomgr, repo_name, pkg_list_path):
                                  'is missing in local binary repo']))
                     failed_pkgs.append(pkg_name)
             else:
-                if repomgr.search_pkg(repo_name, name):
+                if repomgr.search_pkg(repo_name, name, None, True):
                     img_pkgs.append(name)
                     logger.debug(''.join(['Found package with name:', name]))
                 else:
@@ -205,8 +251,10 @@ if __name__ == "__main__":
             logger.error(e.msg)
             usage()
 
+    rmg_logger = logging.getLogger('repo_manager')
+    utils.set_logger(rmg_logger)
     repo_manager = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
-                                       '/tmp/', logger)
+                                       '/tmp/', rmg_logger)
     repo_manager.upload_pkg(REPO_BUILD, None)
     repo_manager.upload_pkg(REPO_BINARY, None)
 
@@ -242,8 +290,15 @@ if __name__ == "__main__":
         shutil.copyfile(base_yaml, lat_yaml)
         shutil.copyfile(base_initramfs_yaml, lat_initramfs_yaml)
     except IOError as e:
+        logger.error(str(e))
         logger.error('Fail to copy image yaml files to /localdisk/deploy')
         sys.exit(1)
+
+    if merge_local_repos(repo_manager):
+        if update_debootstrap_mirror(lat_yaml):
+            logger.debug("Debootstrap switches to mirror %s in %s", REPO_ALL, lat_yaml)
+        if update_debootstrap_mirror(lat_initramfs_yaml):
+            logger.debug("Debootstrap switches to mirror %s in %s", REPO_ALL, lat_initramfs_yaml)
 
     binary_repo_url = ''.join(['deb [trusted=yes] ',
                                os.environ.get('REPOMGR_DEPLOY_URL'),

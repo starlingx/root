@@ -450,12 +450,9 @@ class BuildController():
                 msg = ''.join(['package ', pkg_item[0], '(', pkg_item[1], ')'])
 
                 logger.info(' '.join(['Searching for binary', msg, 'in repository', REPO_BUILD]))
-                if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0],
-                                                    pkg_item[1]):
+                if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0], None, True):
                     logger.info('Found binary %s in repository %s', msg, REPO_BUILD)
-                    if self.kits['repo_mgr'].delete_pkg(REPO_BUILD,
-                                                        pkg_item[0], 'binary',
-                                                        pkg_item[1]):
+                    if self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0], 'binary', None):
                         logger.info('Successfully deleted binary %s from repository %s',
                                     msg, REPO_BUILD)
                     else:
