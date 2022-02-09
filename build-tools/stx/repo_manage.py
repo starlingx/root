@@ -376,7 +376,7 @@ class RepoMgr():
     # NOTE: aptly only. Not find similar feature in pulp...
     def merge(self, name, source_snapshots):
         '''Merge several repositories into a new aptly publication.'''
-        self.repo.merge_repos(name, source_snapshots.split(','))
+        return self.repo.merge_repos(name, source_snapshots.split(','))
 
     # Construct a repository mirror to an upstream Debian repository
     # kwargs:url: URL of the upstream repo (http://deb.debian.org/debian)
