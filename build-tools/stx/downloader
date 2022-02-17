@@ -26,7 +26,6 @@ import sys
 import utils
 
 DEFAULT_ARCH = 'amd64'
-REPO_SOURCE = 'deb-local-source'
 REPO_BIN = 'deb-local-binary'
 mirror_root = os.environ.get('STX_MIRROR')
 stx_src_mirror = os.path.join(mirror_root, 'sources')
@@ -130,7 +129,6 @@ class BaseDownloader():
         utils.set_logger(rlogger)
         self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
                                            '/tmp/', rlogger)
-        self.repomgr.upload_pkg(REPO_BIN, None)
 
     def clean(self):
         if os.path.exists(self.dl_dir):
