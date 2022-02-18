@@ -20,17 +20,21 @@ import git
 import hashlib
 import logging
 import os
+import pathlib
 import progressbar
 import re
 import shutil
 import subprocess
 import sys
-# import urllib.request
+import urllib.parse
+import urllib.request
 import yaml
 
 
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
 DIST = os.environ.get('STX_DIST')
+CENGN_BASE = os.path.join(os.environ.get('CENGNURL'), "debian")
+CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
 
 
 class DownloadProgress():
@@ -51,6 +55,64 @@ class DownloadProgress():
             self.pbar.update(downloaded)
         else:
             self.pbar.finish()
+
+
+def url_to_cengn(url):
+
+    url_change = urllib.parse.urlparse(url)
+    url_path = pathlib.Path(url_change.path)
+    if url_change.netloc != '':
+        path = pathlib.Path(url_change.netloc, url_path.relative_to("/"))
+    else:
+        path = url_path
+
+    # FIXME: the ":" in a path is converted to "%25", after
+    # uploading to CENGN, the "%25" in the path is converted
+    # to "%2525".
+    return os.path.join(CENGN_BASE, path).replace("%25", "%2525")
+
+
+def get_download_url(url, strategy):
+
+    cengn_url = url_to_cengn(url)
+    if strategy == "cengn":
+        rt_url = cengn_url
+    elif strategy == "upstream":
+        rt_url = url
+    elif strategy == "cengn_first":
+        try:
+            urllib.request.urlopen(cengn_url)
+            rt_url = cengn_url
+        except:
+            rt_url = url
+    elif strategy == "upstream_first":
+        try:
+            urllib.request.urlopen(url)
+            rt_url = url
+        except:
+            rt_url = cengn_url
+    else:
+        raise Exception(f'Invalid value "{strategy}" of CENGN_STRATEGY')
+
+    return rt_url
+
+
+def checksum_dsc(dsc_file, logger):
+
+    logger.info("validating %s" % dsc_file)
+    if not os.path.exists(dsc_file):
+        return False
+
+    with open(dsc_file) as f:
+         c = debian.deb822.Dsc(f)
+
+    base_dir = os.path.dirname(dsc_file)
+    for f in c['Files']:
+        local_f = os.path.join(base_dir, f['name'])
+        if not md5_checksum(local_f, f['md5sum'], logger):
+            return False
+
+    return True
 
 
 def get_str_md5(text):
@@ -179,6 +241,12 @@ class Parser():
         console = logging.StreamHandler(sys.stdout)
         console.setFormatter(formatter)
         self.logger.addHandler(console)
+
+        self.strategy = "cengn_first"
+        if CENGN_STRATEGY is not None:
+            self.strategy = CENGN_STRATEGY
+            # dry run to check the value of CENGN_STRATEGY
+            get_download_url("https://testurl/tarball.tgz", self.strategy)
 
         if not os.path.isdir(basedir):
             self.logger.error("%s: No such file or directory", basedir)
@@ -621,19 +689,35 @@ class Parser():
 
         pwd = os.getcwd()
         os.chdir(saveto)
+        if "dl_files" in self.meta_data:
+            for dl_file in self.meta_data['dl_files']:
+                url = self.meta_data['dl_files'][dl_file]['url']
+                md5sum = self.meta_data['dl_files'][dl_file]['md5sum']
+                if not md5_checksum(dl_file, md5sum, self.logger):
+                    dl_url = get_download_url(url, self.strategy)
+                    download(dl_url, dl_file, self.logger)
+
         if "dl_path" in self.meta_data:
             dl_file = self.meta_data["dl_path"]["name"]
             url = self.meta_data["dl_path"]["url"]
             md5sum = self.meta_data["dl_path"]["md5sum"]
             if not md5_checksum(dl_file, md5sum, self.logger):
-                download(url, dl_file, self.logger)
+                dl_url = get_download_url(url, self.strategy)
+                download(dl_url, dl_file, self.logger)
         elif "archive" in self.meta_data:
-            url = self.meta_data["archive"]
             ver = self.versions["full_version"].split(":")[-1]
             dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
-            dsc_file = os.path.join(url, dsc_filename)
-            run_shell_cmd("dget -d %s" % dsc_file, self.logger)
+            if checksum_dsc(dsc_filename, self.logger) is False:
+                dsc_file_upstream = os.path.join(self.meta_data["archive"], dsc_filename)
+                dl_url = get_download_url(dsc_file_upstream, self.strategy)
+                run_shell_cmd("dget -d %s" % dl_url, self.logger)
         elif "src_path" not in self.meta_data and "dl_hook" not in self.meta_data:
+            ver = self.versions["full_version"].split(":")[-1]
+            dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
+            if checksum_dsc(dsc_filename, self.logger) is True:
+                os.chdir(pwd)
+                return
+
             fullname = self.pkginfo["debname"] + "=" + self.versions["full_version"]
             supported_versions = list()
 
@@ -654,12 +738,6 @@ class Parser():
             if self.srcrepo is not None:
                 self.upload_deb_package()
 
-        if "dl_files" in self.meta_data:
-            for dl_file in self.meta_data['dl_files']:
-                url = self.meta_data['dl_files'][dl_file]['url']
-                md5sum = self.meta_data['dl_files'][dl_file]['md5sum']
-                if not md5_checksum(dl_file, md5sum, self.logger):
-                    download(url, dl_file, self.logger)
         os.chdir(pwd)
 
     def package(self, pkgpath, mirror):
