@@ -22,7 +22,10 @@ SUPPORTED_OS_ARGS=('centos')
 OS=centos
 LABEL=""
 APP_NAME="stx-openstack"
+APP_VERSION_BASE="helm-charts-release-info.inc"
+APP_VERSION_FILE=""
 APP_VERSION=""
+APP_RPM_VERSION=""
 declare -a IMAGE_RECORDS
 declare -a PATCH_DEPENDENCIES
 declare -a APP_HELM_FILES
@@ -31,13 +34,21 @@ declare -a APP_RPMS
 function usage {
     cat >&2 <<EOF
 Usage:
-$(basename $0) [ --os <os> ] [-a, --app <app-name>] [-r, --rpm <rpm-name>] [-i, --image-record <image-record>] [--label <label>] [-p, --patch-dependency <patch-dependency>] [ --verbose ]
+$(basename $0) [--os <os>] [-a, --app <app-name>]
+               [-A, --app-version-file /path/to/$APP_VERSION_BASE]
+               [-r, --rpm <rpm-name>] [-i, --image-record <image-record>] [--label <label>]
+               [-p, --patch-dependency <patch-dependency>] [ --verbose ]
 Options:
     --os:
             Specify base OS (eg. centos)
 
     -a, --app:
             Specify the application name
+
+    -A,--app-version-file:
+            Specify the file containing version information for the helm
+            charts. By default we will search for a file named
+            $APP_VERSION_BASE in all git repos.
 
     -r, --rpm:
             Specify the application rpms
@@ -206,10 +217,12 @@ function extract_application_rpm {
     local helm_rpm=$1
     extract_chartfile ${helm_rpm}
 
-    APP_VERSION=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' ${chartfile} | sed 's/\.tis//')
-    if [ -z "${APP_VERSION}" ]; then
-        echo "Failed to get the application version" >&2
-        exit 1
+    if [[ -z "$APP_VERSION" ]] ; then
+        APP_RPM_VERSION=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' ${chartfile} | sed 's/\.tis//')
+        if [ -z "${APP_RPM_VERSION}" ]; then
+            echo "Failed to get the application version" >&2
+            exit 1
+        fi
     fi
 
     helm_files=$(rpm -qpR ${chartfile})
@@ -223,13 +236,21 @@ function extract_application_rpm {
 }
 
 function extract_application_rpms {
-if [ ${#APP_RPMS[@]} -gt 0 ]; then
-    for app_rpm in ${APP_RPMS[@]}; do
-        extract_application_rpm ${app_rpm}
-    done
-else
-    extract_application_rpm "${APP_NAME}-helm"
-fi
+    if [ ${#APP_RPMS[@]} -gt 0 ]; then
+        for app_rpm in ${APP_RPMS[@]}; do
+            extract_application_rpm ${app_rpm}
+        done
+    else
+        extract_application_rpm "${APP_NAME}-helm"
+    fi
+    if [[ -z "$APP_VERSION" ]] ; then
+        if [[ -z "$APP_RPM_VERSION" ]] ; then
+            echo "Failed to determine application version" >&2
+            exit 1
+        fi
+        APP_VERSION="$APP_RPM_VERSION"
+    fi
+    echo "APP_VERSION=$APP_VERSION" >&2
 }
 
 function build_application_tarball {
@@ -327,9 +348,33 @@ yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), Dumper=yaml.RoundTripDu
     python -c "${yaml_script}" ${@}
 }
 
+# Find a file named $APP_VERSION_BASE at top-level of each git repo
+function find_app_version_file {
+    echo "searching for $APP_VERSION_BASE" >&2
+    local dir file version_file root_dir
+    root_dir="$(cd "$MY_REPO"/.. && pwd)"
+    for dir in $(cd "$root_dir" && repo forall -c 'echo $REPO_PATH') ; do
+        file="$root_dir/$dir/$APP_VERSION_BASE"
+        [[ -f "$file" ]] || continue
+        if [[ -n "$version_file" ]] ; then
+            echo "Multiple $APP_VERSION_BASE files found:" >&2
+            echo "    $version_file" >&2
+            echo "    $file" >&2
+            return 1
+        fi
+        version_file="$file"
+    done
+    if [[ -z "$version_file" && -f "$MY_REPO/stx/utilities/utilities/build-info/$APP_VERSION_BASE" ]] ; then
+        version_file="$MY_REPO/stx/utilities/utilities/build-info/$APP_VERSION_BASE"
+    fi
+    if [[ -n "$version_file" ]] ; then
+        echo "$version_file"
+    fi
+    return 0
+}
 
 # TODO(awang): remove the deprecated image-file option
-OPTS=$(getopt -o h,a:,r:,i:,l:,p: -l help,os:,app:,rpm:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
+OPTS=$(getopt -o h,a:,A:,r:,i:,l:,p: -l help,os:,app:,app-version-file:,rpm:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -350,6 +395,10 @@ while true; do
             ;;
         -a | --app)
             APP_NAME=$2
+            shift 2
+            ;;
+        -A | --app-version-file)
+            APP_VERSION_FILE="$2"
             shift 2
             ;;
         -r | --rpm)
@@ -404,6 +453,23 @@ if [ ${VALID_OS} -ne 0 ]; then
     echo "Unsupported OS specified: ${OS}" >&2
     echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
     exit 1
+fi
+
+# Read APP_VERSION_FILE
+if [[ -z "$APP_VERSION_FILE" ]] ; then
+    APP_VERSION_FILE=$(find_app_version_file) || exit 1
+fi
+if [[ -n "$APP_VERSION_FILE" ]] ; then
+    echo "reading $APP_VERSION_FILE" >&2
+    APP_VERSION=$(
+        VERSION= RELEASE=
+        source "$APP_VERSION_FILE" || exit 1
+        if [[ -z "$VERSION" ]] ; then
+            echo "$APP_VERSION_FILE: missing VERSION" >&2
+            exit 1
+        fi
+        echo "${VERSION}-${RELEASE:-0}"
+    ) || exit 1
 fi
 
 # Commenting out this code that attempts to validate the APP_NAME.
