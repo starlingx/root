@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021 WindRiver Corporation
+# Copyright (C) 2021-2022  WindRiver Corporation
 #
 # Requires aptly-api-client:
 # https://github.com/masselstine/aptly-api-client
@@ -28,6 +28,8 @@ from typing import Optional
 PREFIX_LOCAL = 'deb-local-'
 PREFIX_REMOTE = 'deb-remote-'
 PREFIX_MERGE = 'deb-merge-'
+SIGN_KEY = 'E82373F817C276756FA64756FAAD0555200D6582'
+SIGN_PASSWD = 'starlingx'
 
 # Class used to manage aptly data base, it can:
 #     create_remote: Create a repository link to a remote mirror
@@ -301,7 +303,8 @@ class Deb_aptly():
         # task = self.aptly.publish.publish(**extra_param)
         task = self.aptly.publish.publish(source_kind='snapshot', sources=extra_param['sources'],
                                           architectures=extra_param['architectures'], prefix=extra_param['prefix'],
-                                          distribution=extra_param['distribution'], sign_skip=extra_param['sign_skip'])
+                                          distribution=extra_param['distribution'],
+                                          sign_gpgkey=SIGN_KEY, sign_passphrase=SIGN_PASSWD)
         self.aptly.tasks.wait_for_task_by_id(task.id)
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
             self.logger.warning('Publish for %s create failed: %s', name, self.aptly.tasks.show(task.id).state)
