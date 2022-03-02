@@ -48,6 +48,14 @@ if [ ! -d $pxe_network_installer_dir ];then
     mkdir -p $pxe_network_installer_dir
 fi
 
+firmware_list_file=${pxe_network_installer_dir}/firmware-list
+if [ -f ${firmware_list_file} ]; then
+    mv ${firmware_list_file} ${firmware_list_file}-bak-${timestamp}
+fi
+if [ -n "${UPDATE_FW_LIST}" ] && [ -f "${UPDATE_FW_LIST}" ]; then
+    cp -f ${UPDATE_FW_LIST} ${firmware_list_file}
+fi
+
 cd $pxe_network_installer_dir
 
 echo "step 1: copy original images: vmlinuz, initrd.img, squashfs.img"
@@ -106,13 +114,41 @@ find_and_copy_rpm 'bnxt_en kernel module'            'kmod-bnxt_en-[0-9]*.x86_64
 echo " -------- successfully found standard kernel rpm and related kernel modules --------"
 echo ""
 
+echo "step 3: prepare necessary firmware RPMs"
+mkdir -p ${pxe_network_installer_dir}/firmware-rpms
+
+if [ -f "${firmware_list_file}" ]; then
+
+    firmware_rpms_std="${pxe_network_installer_dir}/firmware-rpms/std"
+    firmware_rpms_rt="${pxe_network_installer_dir}/firmware-rpms/rt"
+
+    echo "--> get ${firmware_rpms_std} ready"
+    echo "--> get ${firmware_rpms_rt} ready"
+
+    if [ -d ${firmware_rpms_std} ];then
+        mv ${firmware_rpms_std} ${firmware_rpms_std}-bak-${timestamp}
+    fi
+    mkdir -p ${firmware_rpms_std}
+
+    if [ -d ${firmware_rpms_rt} ];then
+        mv ${firmware_rpms_rt} ${firmware_rpms_rt}-bak-${timestamp}
+    fi
+    mkdir -p ${firmware_rpms_rt}
+
+    echo " -------- start to search standard firmware rpm -------"
+    find_and_copy_rpm 'standard firmware'                  'linux-firmware-[0-9]*.noarch.rpm'           std "${firmware_rpms_std}"
+    echo " -------- successfully found standard firmware rpm --------"
+    echo ""
+
+fi
+
 rootfs_rpms="$pxe_network_installer_dir/rootfs-rpms"
 if [ -d $rootfs_rpms ];then
     mv $rootfs_rpms $rootfs_rpms-bak-$timestamp
 fi
 mkdir -p $rootfs_rpms
 
-echo " step 3:  start to search rpms for rootfs"
+echo "step 4:  start to search rpms for rootfs"
 find_and_copy_rpm 'anaconda'                   'anaconda-[0-9]*.x86_64.rpm'                   installer "$rootfs_rpms/."
 find_and_copy_rpm 'anaconda-core'              'anaconda-core-[0-9]*.x86_64.rpm'              installer "$rootfs_rpms/."
 find_and_copy_rpm 'anaconda-tui'               'anaconda-tui-[0-9]*.x86_64.rpm'               installer "$rootfs_rpms/."
@@ -132,7 +168,7 @@ find_and_copy_rpm 'bind-utils'    'bind-utils-[0-9]*.x86_64.rpm'    std "$rootfs
 find_and_copy_rpm 'ima-evm-utils' 'ima-evm-utils-[0-9]*.x86_64.rpm' std "$rootfs_rpms/."
 echo " ---------------- successfully found rpms for rootfs --------------------------------"
 
-echo "step 4: make installer images in this work dir"
+echo "step 5: make installer images in this work dir"
 same_folder="$(dirname ${BASH_SOURCE[0]})"
 mk_images_tool="$same_folder/make-installer-images.sh"
 sudo $mk_images_tool $pxe_network_installer_dir
