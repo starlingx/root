@@ -107,9 +107,9 @@ def checksum_dsc(dsc_file, logger):
          c = debian.deb822.Dsc(f)
 
     base_dir = os.path.dirname(dsc_file)
-    for f in c['Files']:
+    for f in c['Checksums-Sha256']:
         local_f = os.path.join(base_dir, f['name'])
-        if not md5_checksum(local_f, f['md5sum'], logger):
+        if not checksum(local_f, f['sha256'], "sha256sum", logger):
             return False
 
     return True
@@ -167,14 +167,14 @@ def get_topdir(tarball_file, logger):
         return None
 
 
-def md5_checksum(dl_file, md5sum, logger):
+def checksum(dl_file, checksum, cmd, logger):
 
     if not os.path.exists(dl_file):
         return False
 
-    md5 = run_shell_cmd('md5sum %s |cut -d" " -f1' % dl_file, logger)
-    if md5 != md5sum:
-        logger.debug(f"The {md5} not match the expected {md5sum}")
+    check_sum = run_shell_cmd('%s %s |cut -d" " -f1' % (cmd, dl_file), logger)
+    if check_sum != checksum:
+        logger.debug(f"{cmd} checksum mismatch of {dl_file}")
         return False
     return True
 
@@ -691,17 +691,30 @@ class Parser():
         os.chdir(saveto)
         if "dl_files" in self.meta_data:
             for dl_file in self.meta_data['dl_files']:
-                url = self.meta_data['dl_files'][dl_file]['url']
-                md5sum = self.meta_data['dl_files'][dl_file]['md5sum']
-                if not md5_checksum(dl_file, md5sum, self.logger):
+                dl_file_info = self.meta_data['dl_files'][dl_file]
+                url = dl_file_info['url']
+                if "sha256sum" in dl_file_info:
+                    check_cmd = "sha256sum"
+                    check_sum = dl_file_info['sha256sum']
+                else:
+                    self.logger.warning(f"{dl_file} missing sha256sum")
+                    check_cmd = "md5sum"
+                    check_sum = dl_file_info['md5sum']
+                if not checksum(dl_file, check_sum, check_cmd, self.logger):
                     dl_url = get_download_url(url, self.strategy)
                     download(dl_url, dl_file, self.logger)
 
         if "dl_path" in self.meta_data:
             dl_file = self.meta_data["dl_path"]["name"]
             url = self.meta_data["dl_path"]["url"]
-            md5sum = self.meta_data["dl_path"]["md5sum"]
-            if not md5_checksum(dl_file, md5sum, self.logger):
+            if "sha256sum" in self.meta_data["dl_path"]:
+                check_cmd = "sha256sum"
+                check_sum = self.meta_data["dl_path"]['sha256sum']
+            else:
+                self.logger.warning(f"{dl_file} missing sha256sum")
+                check_cmd = "md5sum"
+                check_sum = self.meta_data["dl_path"]['md5sum']
+            if not checksum(dl_file, check_sum, check_cmd, self.logger):
                 dl_url = get_download_url(url, self.strategy)
                 download(dl_url, dl_file, self.logger)
         elif "archive" in self.meta_data:
