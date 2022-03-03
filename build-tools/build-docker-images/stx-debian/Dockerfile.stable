@@ -1,0 +1,23 @@
+# Expected build arguments:
+#   RELEASE: debian release
+#
+ARG RELEASE=bullseye-20220228
+FROM debian:${RELEASE}
+
+COPY stx.apt.sources.list /etc/apt/sources.list
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && \
+    apt-get upgrade -y && \
+    apt-get install -y \
+# FIXME: uncomment once qemu is ported to debian (starlingx/integ)
+#        qemu-utils \
+        openssh-client \
+        python3 \
+        python3-pip \
+        python3-wheel \
+        libapache2-mod-wsgi-py3 \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*

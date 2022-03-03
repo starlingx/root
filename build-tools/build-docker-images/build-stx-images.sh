@@ -19,7 +19,7 @@ fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
 
-SUPPORTED_OS_ARGS=('centos' 'distroless')
+SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
 OS=centos
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp

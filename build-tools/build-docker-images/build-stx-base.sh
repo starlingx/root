@@ -17,9 +17,9 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-SUPPORTED_OS_ARGS=('centos')
-OS=centos
-OS_VERSION=7.5.1804
+SUPPORTED_OS_ARGS=('centos' 'debian')
+OS=                      # default: autodetect
+OS_VERSION=              # default: lookup "ARG RELEASE" in Dockerfile
 BUILD_STREAM=stable
 IMAGE_VERSION=
 PUSH=no
@@ -48,7 +48,11 @@ Options:
     --os-version: Specify OS version
     --version:    Specify version for output image
     --stream:     Build stream, stable or dev (default: stable)
-    --repo:       Software repository (Format: name,baseurl), can be specified multiple times
+    --repo:       Software repository, can be specified multiple times
+                    * CentOS format: "NAME,BASEURL"
+                    * Debian format: "TYPE [OPTION=VALUE...] URL DISTRO COMPONENTS..."
+                      This will be added to /etc/apt/sources.list as is,
+                      see also sources.list(5) manpage.
     --local:      Use local build for software repository (cannot be used with --repo)
     --push:       Push to docker repo
     --proxy:      Set proxy <URL>:<PORT>
@@ -66,40 +70,48 @@ EOF
 
 function get_args_from_file {
     # get additional args from specified file.
-    local -a config_items
+    local line key value
 
     echo "Get args from file: $1"
-    for i in $(cat $1)
+    while read line
     do
-        config_items=($(echo $i | sed s/=/\ /g))
-        echo "--${config_items[0]} ${config_items[1]}"
-        case ${config_items[0]} in
+        # skip comments & empty lines
+        if echo "$line" | grep -q -E '^\s*(#.*)?$' ; then
+            continue
+        fi
+        key="${line%%=*}"
+        value=${line#*=}
+        echo "--$key '$value'"
+        case "$key" in
             version)
                 if [ -z "${IMAGE_VERSION}" ]; then
-                    IMAGE_VERSION=${config_items[1]}
+                    IMAGE_VERSION="$value"
                 fi
                 ;;
             user)
                 if [ -z "${DOCKER_USER}" ]; then
-                    DOCKER_USER=${config_items[1]}
+                    DOCKER_USER="$value"
                 fi
                 ;;
             proxy)
                 if [ -z "${PROXY}" ]; then
-                    PROXY=${config_items[1]}
+                    PROXY="$value"
                 fi
                 ;;
             registry)
                 if [ -z "${DOCKER_REGISTRY}" ]; then
                     # Add a trailing / if needed
-                    DOCKER_REGISTRY="${config_items[1]%/}/"
+                    DOCKER_REGISTRY="${value%/}/"
                 fi
                 ;;
             repo)
-                REPO_LIST+=(${config_items[1]})
+                REPO_LIST+=("$value")
+                ;;
+            *)
+                echo "WARNING: $line: ignoring unknown option \"$key\"" >&2
                 ;;
         esac
-    done
+    done <"$1"
 }
 
 OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,hostname:,attempts:,config-file: -- "$@")
@@ -198,6 +210,13 @@ while true; do
 done
 
 # Validate the OS option
+if [ -z "$OS" ] ; then
+    OS="$(ID= && source /etc/os-release 2>/dev/null && echo $ID || true)"
+    if [[ -z "$OS" ]] ; then
+        echo "Unable to determine OS, please re-run with \`--os' option" >&2
+        exit 1
+    fi
+fi
 VALID_OS=1
 for supported_os in ${SUPPORTED_OS_ARGS[@]}; do
     if [ "$OS" = "${supported_os}" ]; then
@@ -209,6 +228,18 @@ if [ ${VALID_OS} -ne 0 ]; then
     echo "Unsupported OS specified: ${OS}" >&2
     echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
     exit 1
+fi
+
+SRC_DOCKERFILE=${MY_SCRIPT_DIR}/stx-${OS}/Dockerfile.${BUILD_STREAM}
+if [[ -z "$OS_VERSION" ]]; then
+    OS_VERSION=$(
+        sed -n -r 's/^\s*ARG\s+RELEASE\s*=\s*([^ \t#]+).*/\1/ip' $SRC_DOCKERFILE | head -n 1
+        [[ ${PIPESTATUS[0]} -eq 0 ]]
+    )
+    if [[ -z "$OS_VERSION" ]] ; then
+        echo "$SRC_DOCKERFILE: failed to determine OS_VERSION" >&2
+        exit 1
+    fi
 fi
 
 if [ -z "${IMAGE_VERSION}" ]; then
@@ -233,8 +264,13 @@ fi
 if [ ${#REPO_LIST[@]} -eq 0 ]; then
     # Either --repo or --local must be specified
     if [ "${LOCAL}" = "yes" ]; then
-        REPO_LIST+=("local-std,http://${HOST}:8088${MY_WORKSPACE}/std/rpmbuild/RPMS")
-        REPO_LIST+=("stx-distro,http://${HOST}:8088${MY_REPO}/cgcs-${OS}-repo/Binary")
+        if [[ "$OS" == "centos" ]] ; then
+            REPO_LIST+=("local-std,http://${HOST}:8088${MY_WORKSPACE}/std/rpmbuild/RPMS")
+            REPO_LIST+=("stx-distro,http://${HOST}:8089${MY_REPO}/cgcs-${OS}-repo/Binary")
+        else
+            REPO_LIST+=("deb [trusted=yes] http://stx-stx-repomgr:80/deb-local-binary bullseye main")
+            REPO_LIST+=("deb [trusted=yes] http://stx-stx-repomgr:80/deb-local-build bullseye main")
+        fi
     elif [ "${BUILD_STREAM}" != "dev" -a "${BUILD_STREAM}" != "master" ]; then
         echo "Either --local or --repo must be specified" >&2
         exit 1
@@ -259,22 +295,22 @@ if [ $? -ne 0 ]; then
 fi
 
 # Get the Dockerfile
-SRC_DOCKERFILE=${MY_SCRIPT_DIR}/stx-${OS}/Dockerfile.${BUILD_STREAM}
 cp ${SRC_DOCKERFILE} ${BUILDDIR}/Dockerfile
 
 # Generate the stx.repo file
-STX_REPO_FILE=${BUILDDIR}/stx.repo
-for repo in ${REPO_LIST[@]}; do
-    repo_name=$(echo $repo | awk -F, '{print $1}')
-    repo_baseurl=$(echo $repo | awk -F, '{print $2}')
+if [[ "$OS" == "centos" ]] ; then
+    STX_REPO_FILE=${BUILDDIR}/stx.repo
+    for repo in ${REPO_LIST[@]}; do
+        repo_name=$(echo $repo | awk -F, '{print $1}')
+        repo_baseurl=$(echo $repo | awk -F, '{print $2}')
 
-    if [ -z "${repo_name}" -o -z "${repo_baseurl}" ]; then
-        echo "Invalid repo specified: ${repo}" >&2
-        echo "Expected format: name,baseurl" >&2
-        exit 1
-    fi
+        if [ -z "${repo_name}" -o -z "${repo_baseurl}" ]; then
+            echo "Invalid repo specified: ${repo}" >&2
+            echo "Expected format: name,baseurl" >&2
+            exit 1
+        fi
 
-    cat >>${STX_REPO_FILE} <<EOF
+        cat >>${STX_REPO_FILE} <<EOF
 [${repo_name}]
 name=${repo_name}
 baseurl=${repo_baseurl}
@@ -285,8 +321,15 @@ metadata_expire=0
 
 EOF
 
-    REPO_OPTS="${REPO_OPTS} --enablerepo=${repo_name}"
-done
+        REPO_OPTS="${REPO_OPTS} --enablerepo=${repo_name}"
+    done
+else
+    STX_APT_SOURCES_FILE=${BUILDDIR}/stx.apt.sources.list
+    rm -f "$STX_APT_SOURCES_FILE"
+    for repo in "${REPO_LIST[@]}" ; do
+        echo "$repo" >>"$STX_APT_SOURCES_FILE"
+    done
+fi
 
 # Check to see if the OS image is already pulled
 docker images --format '{{.Repository}}:{{.Tag}}' ${OS}:${OS_VERSION} | grep -q "^${OS}:${OS_VERSION}$"
@@ -301,7 +344,9 @@ IMAGE_NAME_LATEST=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${LATEST_TAG}
 
 declare -a BUILD_ARGS
 BUILD_ARGS+=(--build-arg RELEASE=${OS_VERSION})
-BUILD_ARGS+=(--build-arg REPO_OPTS=${REPO_OPTS})
+if [[ "$OS" == "centos" ]] ; then
+    BUILD_ARGS+=(--build-arg "REPO_OPTS=${REPO_OPTS}")
+fi
 
 # Add proxy to docker build
 if [ ! -z "$PROXY" ]; then
