@@ -83,7 +83,7 @@ images:
   - name: docker.io/starlingx/notificationservice-base
     src_build_tag: master-centos-stable-20220309T060239Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/f626e3a6b890b4e9990f39d8fe98b39057ee5ed4
-    tag: stx.5.0-v1.0.5
+    tag: stx.7.0-v1.0.5
   - name: docker.io/starlingx/locationservice-base
     src_build_tag: master-centos-stable-20210204T224209Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/545e6b6bb093235c2f8dab8d171f30c6ae8682d3
