@@ -205,7 +205,7 @@ class Deb_aptly():
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
             if backup_name:
                 self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(backup_name, name).id)
-            self.logger.warning('Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
+            self.logger.warning('merge_snapshot: Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
             return False
         # Remove the backup snapshot if it is created above
         if backup_name:
@@ -250,7 +250,7 @@ class Deb_aptly():
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
             if backup_name:
                 self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(backup_name, name).id)
-            self.logger.warning('Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
+            self.logger.warning('create_snapshot: Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
             return False
         if backup_name:
             task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
@@ -456,15 +456,15 @@ class Deb_aptly():
             return False
 
         repo_list = self.aptly.repos.list()
-        repo_find = False
+        repo_found = False
         for repo in repo_list:
             if repo_name == repo.name:
-                self.logger.debug('%s find, can be used', repo_name)
-                repo_find = True
+                self.logger.debug('repo %s was found and can be used', repo_name)
+                repo_found = True
                 break
 
-        if not repo_find:
-            self.logger.warning('%s not exist, please create it firstly.', repo_name)
+        if not repo_found:
+            self.logger.warning('repo %s does not exist, please create it first.', repo_name)
             return False
 
         # For files with ":" in its filename, tools like 'apt' may replace it
@@ -506,6 +506,23 @@ class Deb_aptly():
                 self.aptly.tasks.wait_for_task_by_id(task.id)
                 if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
                     self.logger.warning('Delete package failed %s : %s' % (pkg_name, self.aptly.tasks.show(task.id).state))
+
+    def pkg_list(self, repo_list):
+        '''list packages available from any of the listed repos, local or remote.'''
+        pkg_list=[]
+        for repo_name in repo_list:
+            if repo_name.startswith(PREFIX_LOCAL):
+                query = 'Name'
+                pkgs_raw = self.aptly.repos.search_packages(repo_name, query=query)
+            elif repo_name.startswith(PREFIX_REMOTE):
+                pkgs_raw = self.aptly.mirrors.packages(repo_name)
+            for pkg in pkgs_raw:
+                pkg_name = pkg.key.split()[1]
+                pkg_ver = pkg.key.split()[2]
+                pkg_arch = pkg.key.split()[0][1:]
+                pkg_list.append("%s_%s_%s.deb" % (pkg_name, pkg_ver, pkg_arch))
+        return pkg_list
+
 
     # Search a package in a set of repos, return True if find, or False
     # repolist: a list of repo names, including local repo and mirror
@@ -554,7 +571,7 @@ class Deb_aptly():
             ret = self.__publish_snap(name)
             return ret
 
-    # deploy a loacl repository
+    # deploy a local repository
     # Input: the name of the local repository
     # Output: None or DebAptDistributionResponse
     def deploy_local(self, name):
@@ -571,7 +588,7 @@ class Deb_aptly():
                 repo_find = True
                 break
         if not repo_find:
-            self.logger.warning('local repo %s not find.', name)
+            self.logger.warning('local repo %s not found.', name)
             return None
 
         if self.__create_snapshot(name, True):

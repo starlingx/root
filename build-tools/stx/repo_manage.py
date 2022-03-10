@@ -420,9 +420,37 @@ class RepoMgr():
         '''Clear all meta files. Construct a clean environment'''
         self.repo.clean_all()
 
+    # list a repository
+    # repo_name: the name of the repo been listed.
+    # Output: True is all works in order
+    def list_pkgs(self, repo_name, quiet=False):
+        '''List a specified repository.'''
+        local_list = self.repo.list_local(quiet=True)
+        remote_list = self.repo.list_remotes(quiet=True)
+        pkg_list = []
+        for repo in local_list:
+            if repo == repo_name:
+                self.logger.info('List a local repo')
+                pkgs = self.repo.pkg_list([repo])
+                pkg_list.extend(pkgs)
+                if not quiet:
+                    self.logger.info("Local repo %s:" % repo_name)
+                    for pkg in pkgs:
+                        self.logger.info("  %s:" % pkg)
+        for repo in remote_list:
+            if repo == repo_name:
+                self.logger.info('List a remote mirror')
+                pkgs = self.repo.pkg_list([repo])
+                pkg_list.extend(pkgs)
+                if not quiet:
+                    self.logger.info("Remote repo %s:" % repo_name)
+                    for pkg in pkgs:
+                        self.logger.info("  %s:" % pkg)
+        return pkg_list
+
     # delete a repository
     # repo_name: the name of the repo been deleted.
-    # Output: Ture is all works in order
+    # Output: True is all works in order
     def remove_repo(self, repo_name):
         '''Remove a specified repository.'''
         local_list = self.repo.list_local(quiet=True)
@@ -437,7 +465,7 @@ class RepoMgr():
                 self.logger.info('Remove a remote mirror')
                 self.repo.remove_remote(repo)
                 return True
-        self.logger.warn('Remove repo failed, not find spesified repo')
+        self.logger.warn("Remove repo failed: repo '%'s not found" % repo_name)
         return False
 
     # Before uploading a source package into a local repo, scan all repos,
@@ -669,6 +697,11 @@ def _handleList(_args):
     repomgr.list()
 
 
+def _handleListPkgs(args):
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr.list_pkgs(args.repository)
+
+
 def _handleClean(_args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
     repomgr.clean()
@@ -743,7 +776,7 @@ def subcmd_merge(subparsers):
 
 def main():
     # command line arguments
-    parser = argparse.ArgumentParser(add_help=False,
+    parser = argparse.ArgumentParser(add_help=True,
                                      description='Repository management Tool',
                                      epilog='''Tips: Use %(prog)s --help to get help for all of '
                                             'parameters\n\n''')
@@ -802,6 +835,12 @@ def main():
                                         help='List all aptly repos, including local repo and '
                                              'remote mirror.\n\n')
     list_parser.set_defaults(handle=_handleList)
+
+    list_pkgs_parser = subparsers.add_parser('list_pkgs',
+                                        help='List contents of a specific repo.\n\n')
+    list_pkgs_parser.add_argument('--repository', '-r',
+                                  help='Name of the repo to be listed')
+    list_pkgs_parser.set_defaults(handle=_handleListPkgs)
 
     args = parser.parse_args()
 
