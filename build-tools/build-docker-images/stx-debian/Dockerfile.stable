@@ -4,11 +4,32 @@
 ARG RELEASE=bullseye-20220228
 FROM debian:${RELEASE}
 
-COPY stx.apt.sources.list /etc/apt/sources.list
-
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -y && \
+# repo templates:
+#   /etc/apt/sources.list.d/
+#     debian.list.disabled         - vanilla debian repos
+#     stx.list.disabled            - starlingx binary & build repos
+#
+# To enable a repo list:
+#     cp /etc/apt/sources.list.d/$repo_list.disabled \
+#        /etc/apt/sources.list.d/$repo_list
+#
+# To disable a repo list:
+#     rm -f /etc/apt/sources.list.d/$repo_list
+#
+# By default only stx.list is enabled, which includes only the packages
+# built by stx tools, and the binary packages from the curated binary
+# download lists (bullseye-base.lst etc).
+#
+# Enabling the upstream repos ("debian.list") is dangerous because it
+# may conflict with packages in stx.list.
+#
+COPY stx.apt.sources.list /etc/apt/sources.list.d/stx.list.disabled
+RUN mv /etc/apt/sources.list /etc/apt/sources.list.d/debian.list.disabled
+
+RUN cp -f /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list && \
+    apt-get update -y && \
     apt-get upgrade -y && \
     apt-get install -y \
 # FIXME: uncomment once qemu is ported to debian (starlingx/integ)
