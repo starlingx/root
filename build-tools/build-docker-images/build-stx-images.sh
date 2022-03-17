@@ -20,7 +20,7 @@ fi
 source ${MY_REPO}/build-tools/git-utils.sh
 
 SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
-OS=centos
+OS=
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PREFIX=dev
@@ -98,6 +98,27 @@ function is_in {
 
 function is_empty {
     test $# -eq 0
+}
+
+function url_basename {
+    # http://foo/bar.tar?xxx#yyy => bar.tar
+    echo "$1" | sed -r -e 's/[?#].*//' -e 's#.*/##'
+}
+
+# Usage: download $URL $OUTPUT_FILE
+function download_file {
+    local url="$1"
+    local out_file="$2"
+    if echo "$url" | grep -E -q -e '^https?:' -e '^ftp:' ; then
+        \rm -f "$out_file.tmp" || return 1
+        with_retries 5 wget -O "$out_file.tmp" "$url" || return 1
+        \mv -f "$out_file.tmp" "$out_file" || exit 1
+    else
+        local src_file
+        src_file="$(echo "$url" | sed -e 's#^file:/+##')"
+        \cp -a "$src_file" "$out_file" || return 1
+    fi
+    return 0
 }
 
 #
@@ -193,6 +214,60 @@ function get_loci {
 
     cd ${ORIGWD}
 
+    return 0
+}
+
+function patch_loci {
+    # Loci contains a Docker file, which runs a script that installs
+    # Python modules etc based on build parameters. We replace the call
+    # to Loci's install script with our own, so that we can perform
+    # additional actions within the Dockerfile before Loci does its thing.
+    #
+    # loci/                <-- clone of Loci git repo
+    #   Dockerfile
+    #   ...
+    #   Dockerfile.stx     <-- create this by replacing "RUN..." in Dockerfile
+    #                          with the contents of loci/docker/Dockerfile.part
+    #   stx-scripts/       <-- copy of build-docker-images/loci/docker/stx-scripts
+    #   stx-wheels/        <-- copy of wheels tarball(s) specified on cmd line
+    #
+
+    echo "Patching ${WORKDIR}/loci/Dockerfile" >&2
+
+    # Make a copy of Dockerfile
+    \cp -f "${WORKDIR}/loci/Dockerfile" "${WORKDIR}/loci/Dockerfile.stx" || exit 1
+
+    # Replace "RUN .../install.sh" with our own commands
+    sed -i -r  "${WORKDIR}/loci/Dockerfile.stx" -e "
+        \\%^\\s*(RUN|run)\\s+/opt/loci/scripts/install.sh\\s*\$% {
+            s/^(.*)$/#\\1/
+            r ${MY_SCRIPT_DIR}/loci/docker/Dockerfile.part
+        }
+    " || exit 1
+    if diff -q "${WORKDIR}/loci/Dockerfile" "${WORKDIR}/loci/Dockerfile.stx" >/dev/null ; then
+        echo "${WORKDIR}/loci/Dockerfile: failed to patch Loci Dockerfile" >&2
+        exit 1
+    fi
+
+    # Copy stx-scripts to Loci dir
+    \rm -rf "${WORKDIR}/loci/stx-scripts" || exit 1
+    \cp -ar "${MY_SCRIPT_DIR}/loci/docker/stx-scripts" "${WORKDIR}/loci/" || exit 1
+
+    #diff -u "${WORKDIR}/loci/Dockerfile" "${WORKDIR}/loci/Dockerfile.stx" >&2
+
+    # clear wheels dir
+    \rm -rf "${WORKDIR}/loci/stx-wheels" || exit 1
+    mkdir -p "${WORKDIR}/loci/stx-wheels" || exit 1
+
+}
+
+function download_loci_wheels {
+    local url="$1"
+    out_file="${WORKDIR}/loci/stx-wheels/$(url_basename "$url")"
+    if [[ ! -f "$out_file" ]] ; then
+        echo "Downloading $url => $out_file" >&2
+        download_file "$url" "$out_file" || return 1
+    fi
     return 0
 }
 
@@ -345,6 +420,8 @@ function build_image_loci {
     SPICE_REPO=$(source ${image_build_file} && echo ${SPICE_REPO})
     local SPICE_REF
     SPICE_REF=$(source ${image_build_file} && echo ${SPICE_REF})
+    local DIST_REPOS
+    DIST_REPOS=$(source ${image_build_file} && echo ${DIST_REPOS})
 
     echo "Building ${LABEL}"
 
@@ -404,10 +481,14 @@ function build_image_loci {
 
     if [ "${PYTHON3}" == "no" ] ; then
         echo "Python2 service ${LABEL}"
-        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_PY2})
+        download_loci_wheels "$WHEELS_PY2" || exit 1
+        #BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_PY2})
+        BUILD_ARGS+=(--build-arg WHEELS="/opt/loci/stx-wheels/$(url_basename "$WHEELS_PY2")")
     else
         echo "Python3 service ${LABEL}"
-        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
+        download_loci_wheels "$WHEELS" || exit 1
+        #BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
+        BUILD_ARGS+=(--build-arg WHEELS="/opt/loci/stx-wheels/$(url_basename "$WHEELS")")
     fi
 
     if [ ! -z "$HTTP_PROXY" ]; then
@@ -451,6 +532,13 @@ function build_image_loci {
     if [ -n "${SPICE_REF}" ]; then
         BUILD_ARGS+=(--build-arg SPICE_REF="${SPICE_REF}")
     fi
+
+    if [ -n "${DIST_REPOS}" ]; then
+        BUILD_ARGS+=(--build-arg DIST_REPOS="${DIST_REPOS}")
+    fi
+
+    # Use patched docker file
+    BUILD_ARGS+=(--file "${WORKDIR}/loci/Dockerfile.stx")
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
@@ -810,6 +898,13 @@ while true; do
 done
 
 # Validate the OS option
+if [ -z "$OS" ] ; then
+    OS="$(ID= && source /etc/os-release 2>/dev/null && echo $ID || true)"
+    if [[ -z "$OS" ]] ; then
+        echo "Unable to determine OS, please re-run with \`--os' option" >&2
+        exit 1
+    fi
+fi
 VALID_OS=1
 for supported_os in ${SUPPORTED_OS_ARGS[@]}; do
     if [ "$OS" = "${supported_os}" ]; then
@@ -837,6 +932,18 @@ if [[ -z "$WHEELS_PY2" && -n "$WHEELS" ]]; then
         exit 1
     fi
 fi
+
+# Resolve local wheel file names to absolute paths
+for var in WHEELS WHEELS_PY2 ; do
+    # skip empty vars
+    [[ -n "${!var}" ]] || continue
+    # skip network urls
+    echo "${!var}" | grep -E -q -e '^https?:' -e '^ftp:' && continue
+    # remove file:/ prefix if any
+    declare "$var=$(echo "${!var}" | sed -r 's#^file:/+##')"
+    # resolve it to an absolute path
+    declare "$var=$(readlink -f "${!var}")" || exit 1
+done
 
 # Find the directives files
 IMAGE_BUILD_FILES=()
@@ -951,6 +1058,8 @@ if [ $? -ne 0 ]; then
     # Error is reported by the function already
     exit 1
 fi
+
+patch_loci
 
 # Replace mod_wsgi dependency and add rh_python36_mod_wsgi in loci/bindep.txt for python3 package
 # refer to patch https://review.opendev.org/#/c/718603/
