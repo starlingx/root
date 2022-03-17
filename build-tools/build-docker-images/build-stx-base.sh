@@ -352,6 +352,10 @@ fi
 if [ ! -z "$PROXY" ]; then
     BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
 fi
+
+# Don't use docker cache
+BUILD_ARGS+=("--no-cache")
+
 BUILD_ARGS+=(--tag ${IMAGE_NAME} ${BUILDDIR})
 
 # Build base image
