@@ -31,6 +31,7 @@ HTTPS_PROXY=""
 NO_PROXY=""
 DOCKER_USER=${USER}
 DOCKER_REGISTRY=
+PULL_BASE=yes
 BASE=
 WHEELS=
 WHEELS_PY2=
@@ -53,6 +54,9 @@ Options:
     --version:       Specify version for output image
     --stream:        Build stream, stable or dev (default: stable)
     --base:          Specify base docker image (required option)
+ -N,--no-pull-base:  Don't pull base image before building; this will use
+                     your local base image if one exists, without overwriting
+                     it by "docker pull"
     --wheels:        Specify path to wheels tarball or image, URL or docker tag
                      (required when building loci projects)
     --wheels-py2:    Use this wheels tarball for Python2 projects
@@ -692,7 +696,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o h -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts: -- "$@")
+OPTS=$(getopt -o hN -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -789,6 +793,10 @@ while true; do
         --attempts)
             MAX_ATTEMPTS=$2
             shift 2
+            ;;
+        -N|--no-pull-base)
+            PULL_BASE=no
+            shift
             ;;
         -h | --help )
             usage
@@ -933,7 +941,9 @@ docker images --format '{{.Repository}}:{{.Tag}}' ${BASE} | grep -q "^${BASE}$"
 BASE_IMAGE_PRESENT=$?
 
 # Pull the image anyway, to ensure it's up to date
-docker pull ${BASE}
+if [[ "$PULL_BASE" == "yes" ]] ; then
+    docker pull ${BASE}
+fi
 
 # Download loci, if needed.
 get_loci
