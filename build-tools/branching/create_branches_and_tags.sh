@@ -183,6 +183,7 @@ update_field () {
 
 update_gitreview () {
     local DIR=$1
+    local review_method=$2
     local need_rm=0
     local need_commit=0
     local message="Update .gitreview for ${branch}"
@@ -216,7 +217,7 @@ update_gitreview () {
 
         if [ $need_commit -eq 1 ]; then
             echo_stderr "determinging git review method in ${DIR}"
-            review_method=$(git_repo_review_method)
+            [ -n "${review_method}" ] || review_method=$(git_repo_review_method)
             if [ "${review_method}" == "gerrit" ] ; then
                 echo_stderr "running git review -s in ${DIR}"
                 with_retries -d 45 -t 15 -k 5 5 git review -s >&2
@@ -457,7 +458,7 @@ if [ $MANIFEST -eq 1 ]; then
         exit 1
     fi
 
-    update_gitreview ${manifest_dir} || exit 1
+    update_gitreview ${manifest_dir} ${review_method} || exit 1
 
     echo "Creating manifest ${new_manifest_name}"
     manifest_set_revision "${manifest}" "${new_manifest}" "$branch" "${LOCK_DOWN}" "${SET_DEFAULT_REVISION}" "${projects// /,}" "${ld_exclude_projects// /,}" || exit 1
