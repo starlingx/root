@@ -23,7 +23,7 @@ import utils
 
 REPO_BUILD = 'deb-local-build'
 REPO_BIN = 'deb-local-binary'
-DL_BINARY_DIR = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'), 'binaries')
+DL_BINARY_DIR = os.path.join(os.environ.get('STX_MIRROR'), 'binaries')
 
 logger = logging.getLogger('debdownloader')
 utils.set_logger(logger)
