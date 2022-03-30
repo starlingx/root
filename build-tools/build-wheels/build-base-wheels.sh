@@ -18,15 +18,16 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-DOCKER_PATH=${MY_REPO}/build-tools/build-wheels/docker
 KEEP_IMAGE=no
 KEEP_CONTAINER=no
-OS=centos
-OS_VERSION=7.5.1804
+SUPPORTED_OS_LIST=('centos' 'debian')
+OS=
+OS_VERSION=
 BUILD_STREAM=stable
 HTTP_PROXY=""
 HTTPS_PROXY=""
 NO_PROXY=""
+: ${PYTHON3:=python3}
 declare -i MAX_ATTEMPTS=1
 
 function usage {
@@ -35,8 +36,8 @@ Usage:
 $(basename $0) [ --os <os> ] [ --keep-image ] [ --keep-container ] [ --stream <stable|dev> ]
 
 Options:
-    --os:             Specify base OS (eg. centos)
-    --os-version:     Specify OS version
+    --os:             Override base OS (eg. centos; default: auto)
+    --os-version:     Override OS version (default: auto)
     --keep-image:     Skip deletion of the wheel build image in docker
     --keep-container: Skip deletion of container used for the build
     --http_proxy:     Set http proxy <URL>:<PORT>, urls splitted by ","
@@ -114,24 +115,36 @@ while true; do
     esac
 done
 
+if [ -z "$OS" ] ; then
+    OS="$(ID= && source /etc/os-release 2>/dev/null && echo $ID || true)"
+    if ! [ -n "$OS" ]; then
+        echo "Unable to determine OS" >&2
+        echo "Re-run with \"--os\" option" >&2
+        exit 1
+    fi
+fi
+
 BUILD_IMAGE_NAME="${USER}-$(basename ${MY_WORKSPACE})-wheelbuilder:${OS}-${BUILD_STREAM}"
 
 # BUILD_IMAGE_NAME can't have caps if it's passed to docker build -t $BUILD_IMAGE_NAME.
 # The following will substitute caps with lower case.
 BUILD_IMAGE_NAME="${BUILD_IMAGE_NAME,,}"
 
-DOCKER_FILE=${DOCKER_PATH}/${OS}-dockerfile
-
-function supported_os_list {
-    for f in ${DOCKER_PATH}/*-dockerfile; do
-        echo $(basename ${f%-dockerfile})
-    done | xargs echo
-}
+DOCKER_FILE=${MY_SCRIPT_DIR}/${OS}/Dockerfile
 
 if [ ! -f ${DOCKER_FILE} ]; then
     echo "Unsupported OS specified: ${OS}" >&2
-    echo "Supported OS options: $(supported_os_list)" >&2
+    echo "Supported OS options: ${SUPPORTED_OS_LIST[@]}" >&2
     exit 1
+fi
+
+if [ -z "$OS_VERSION" ]; then
+    OS_VERSION="$(sed -r -n 's/^\s*ARG\s+RELEASE\s*=\s*(\S+).*/\1/p' "$DOCKER_FILE")"
+    if [ -z "$OS_VERSION" ]; then
+        echo "Unable to determine OS_VERSION" >&2
+        echo "Re-run with \"--os-version\" option" >&2
+        exit 1
+    fi
 fi
 
 # Print a loud message
@@ -191,10 +204,11 @@ function prepare_output_dir {
     fi
 }
 
+DOCKER_BUILD_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/docker
 BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base
 BUILD_OUTPUT_PATH_PY2=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base-py2
-WHEELS_CFG=${DOCKER_PATH}/${BUILD_STREAM}-wheels.cfg
-WHEELS_CFG_PY2=${DOCKER_PATH}/${BUILD_STREAM}-wheels-py2.cfg
+WHEELS_CFG=${MY_SCRIPT_DIR}/${OS}/${BUILD_STREAM}-wheels.cfg
+WHEELS_CFG_PY2=${MY_SCRIPT_DIR}/${OS}/${BUILD_STREAM}-wheels-py2.cfg
 
 # make sure .cfg files exist
 require_file "${WHEELS_CFG}"
@@ -276,6 +290,53 @@ if all_wheels_exist "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}" && \
     exit 0
 fi
 
+# Create a directory containing docker files
+\rm -rf "${DOCKER_BUILD_PATH}"
+mkdir -p "${DOCKER_BUILD_PATH}"
+\cp -r "${MY_SCRIPT_DIR}/docker-common" "${MY_SCRIPT_DIR}/${OS}" "${DOCKER_BUILD_PATH}" || exit 1
+# Replace "@...@" vars in apt/*.in files
+if [[ "${OS}" == "debian" ]] ; then
+    (
+        # REPOMGR_DEPLOY_URL must be defined in the environment and refer
+        # to the k8s repomgr service. It is normally defined by the helm
+        # chart of STX tools.
+        if [[ -z "$REPOMGR_DEPLOY_URL" ]] ; then
+            echo "REPOMGR_DEPLOY_URL must be defined in the environment!" >&2
+            exit 1
+        fi
+
+        # Make sure pyhon3 exists
+        $PYTHON3 --version >/dev/null || exit 1
+
+        # Extract host name from repomgr URL
+        REPOMGR_HOST=$(
+            $PYTHON3 -c '
+import sys
+from urllib.parse import urlparse
+print (urlparse (sys.argv[1]).hostname)
+' "$REPOMGR_DEPLOY_URL"
+        )
+        if [[ $? -ne 0 || -z "$REPOMGR_HOST" ]] ; then
+            echo "failed to parse REPOMGR_DEPLOY_URL !" >&2
+            exit 1
+        fi
+
+        # replace @...@ vars in apt/*.in files
+        count=0
+        for src in "${DOCKER_BUILD_PATH}/${OS}/apt"/*.in ; do
+            dst="${src%.in}"
+            sed -e "s#@REPOMGR_URL@#$REPOMGR_DEPLOY_URL#g" \
+                -e "s#@REPOMGR_HOST@#$REPOMGR_HOST#g" \
+                "$src" >"$dst" || exit 1
+            let ++count
+        done
+        if [[ $count -eq 0 ]] ; then
+            echo "No *.in files found in ${DOCKER_BUILD_PATH}/${OS}/apt !" >&2
+            exit 1
+        fi
+    ) || exit 1
+fi
+
 # Check to see if the OS image is already pulled
 docker images --format '{{.Repository}}:{{.Tag}}' ${OS}:${OS_VERSION} | grep -q "^${OS}:${OS_VERSION}$"
 BASE_IMAGE_PRESENT=$?
@@ -297,7 +358,7 @@ if [ ! -z "$NO_PROXY" ]; then
 fi
 
 BUILD_ARGS+=(-t ${BUILD_IMAGE_NAME})
-BUILD_ARGS+=(-f ${DOCKER_PATH}/${OS}-dockerfile ${DOCKER_PATH})
+BUILD_ARGS+=(-f ${DOCKER_BUILD_PATH}/${OS}/Dockerfile ${DOCKER_BUILD_PATH})
 
 # Build image
 with_retries ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
@@ -321,6 +382,7 @@ if [ ! -z "$NO_PROXY" ]; then
     RUN_ARGS+=(--env no_proxy=$NO_PROXY)
 fi
 RUN_ARGS+=(--env DISPLAY_RESULT=no)
+RUN_ARGS+=(--env CPUCOUNT=2)
 
 # Run container to build wheels
 rm -f ${BUILD_OUTPUT_PATH}/failed.lst

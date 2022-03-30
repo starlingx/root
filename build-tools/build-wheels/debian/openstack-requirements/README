@@ -1,0 +1,6 @@
+This directory contains the patched versions of openstack/requirements files:
+
+ussuri/                    - openstack/ussuri release
+  upstream/                - original unpatched versions
+  global-requirements.txt  - patched for Debian/bullseye
+  upper-constraints.txt    - patched for Debian/bullseye

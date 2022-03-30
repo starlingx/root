@@ -17,9 +17,9 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-SUPPORTED_OS_ARGS=('centos')
-OS=centos
-OS_VERSION=7.5.1804
+SUPPORTED_OS_ARGS=('centos' 'debian')
+OS=
+OS_VERSION=
 BUILD_STREAM=stable
 VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PUSH=no
@@ -27,6 +27,7 @@ HTTP_PROXY=""
 HTTPS_PROXY=""
 NO_PROXY=""
 CLEAN=no
+KEEP_IMAGE=no
 DOCKER_USER=${USER}
 declare -i MAX_ATTEMPTS=1
 PYTHON2=no
@@ -72,11 +73,12 @@ Options:
     --version:    Version for pushed image (if used with --push)
     --attempts:   Max attempts, in case of failure (default: 1)
     --python2:    Build a python2 tarball
+    --keep-image: Don't delete wheel builder image at the end
 
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2 -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2,keep-image -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -143,6 +145,10 @@ while true; do
             PYTHON2=yes
             shift
             ;;
+        --keep-image)
+            KEEP_IMAGE=yes
+            shift
+            ;;
         -h | --help )
             usage
             exit 1
@@ -155,6 +161,14 @@ while true; do
 done
 
 # Validate the OS option
+if [ -z "$OS" ] ; then
+    OS="$(ID= && source /etc/os-release 2>/dev/null && echo $ID || true)"
+    if ! [ -n "$OS" ]; then
+        echo "Unable to determine OS" >&2
+        echo "Re-run with \"--os\" option" >&2
+        exit 1
+    fi
+fi
 VALID_OS=1
 for supported_os in ${SUPPORTED_OS_ARGS[@]}; do
     if [ "$OS" = "${supported_os}" ]; then
@@ -169,7 +183,8 @@ if [ ${VALID_OS} -ne 0 ]; then
 fi
 
 # Read openstack URLs
-source "${MY_SCRIPT_DIR}/openstack.cfg" || exit 1
+OPENSTACK_CFG="${MY_SCRIPT_DIR}/$OS/openstack.cfg"
+source "$OPENSTACK_CFG" || exit 1
 
 # Set python version-specific variables
 if [ "${PYTHON2}" = "yes" ]; then
@@ -179,7 +194,10 @@ fi
 
 # Build the base wheels and retrieve the StarlingX wheels
 declare -a BUILD_BASE_WL_ARGS
-BUILD_BASE_WL_ARGS+=(--os ${OS} --os-version ${OS_VERSION} --stream ${BUILD_STREAM})
+BUILD_BASE_WL_ARGS+=(--os ${OS} --stream ${BUILD_STREAM})
+if [ -n "$OS_VERSION" ]; then
+    BUILD_BASE_WL_ARGS+=(--os-version "${OS_VERSION}")
+fi
 if [ ! -z "$HTTP_PROXY" ]; then
     BUILD_BASE_WL_ARGS+=(--http_proxy ${HTTP_PROXY})
 fi
@@ -190,6 +208,10 @@ fi
 
 if [ ! -z "$NO_PROXY" ]; then
     BUILD_BASE_WL_ARGS+=(--no_proxy ${NO_PROXY})
+fi
+
+if [ "$KEEP_IMAGE" = "yes" ]; then
+    BUILD_BASE_WL_ARGS+=(--keep-image)
 fi
 
 ${MY_SCRIPT_DIR}/build-base-wheels.sh ${BUILD_BASE_WL_ARGS[@]} --attempts ${MAX_ATTEMPTS}
@@ -234,17 +256,21 @@ else
     fi
 fi
 
-with_retries ${MAX_ATTEMPTS} wget "${OPENSTACK_REQ_URL}/global-requirements.txt"
-if [ $? -ne 0 ]; then
-    echo "Failed to download global-requirements.txt" >&2
-    exit 1
-fi
-
-with_retries ${MAX_ATTEMPTS} wget "${OPENSTACK_REQ_URL}/upper-constraints.txt"
-if [ $? -ne 0 ]; then
-    echo "Failed to download upper-constraints.txt" >&2
-    exit 1
-fi
+for url in "${OPENSTACK_REQ_URL}/global-requirements.txt" "${OPENSTACK_REQ_URL}/upper-constraints.txt" ; do
+    if echo "$url" | grep -q -E '^(https?|ftp):' >/dev/null ; then
+        with_retries ${MAX_ATTEMPTS} wget "$url"
+        if [ $? -ne 0 ]; then
+            echo "Failed to download $url" >&2
+            exit 1
+        fi
+    else
+        # Remove "file:" from url and treat what remains as a file name.
+        # Local files should be relative to the location of openstack.cfg,
+        # so leading slashes are menaingless, remove them as well.
+        url="$(echo "$url" | sed -r 's,^(file:)?/*,,')"
+        \cp "$(dirname "$OPENSTACK_CFG")"/"$url" ./ || exit 1
+    fi
+done
 
 # Delete $SKIP_CONSTRAINTS from upper-constraints.txt, if any present
 for name in ${SKIP_CONSTRAINTS[@]}; do
@@ -259,7 +285,14 @@ done
 shopt -s nullglob
 
 # Copy the base and stx wheels, updating upper-constraints.txt as necessary
-for wheel in ../base${PY_SUFFIX}/*.whl ../stx/wheels/*.whl; do
+# FIXME: debian packages install *.whl files under /usr/share/..., rather than
+#        /wheels. Do a deep search on that platform
+if [ "${OS}" == "debian" ]; then
+    stx_find_wheels_cmd=(find ../stx -name '*.whl')
+else
+    stx_find_wheels_cmd=(find ../stx/wheels -mindepth 1 -maxdepth 1 -name '*.whl')
+fi
+for wheel in ../base${PY_SUFFIX}/*.whl $("${stx_find_wheels_cmd[@]}") ; do
     # Get the wheel name and version from the METADATA
     METADATA=$(unzip -p ${wheel} '*/METADATA')
     name=$(echo "${METADATA}" | grep '^Name:' | awk '{print $2}')

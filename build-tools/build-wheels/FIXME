@@ -1,0 +1,20 @@
+Debian
+======
+
+debian/Dockerfile:
+- disable upstream repo, use only the managed packages.
+  Requires additions to download lists in stx-tool.
+- convert thrifty & nss to wheels and don't install them in Dockerfile
+
+build-wheel-tarball.sh:
+- current DEB wheel packages install wheels at random locations, rather
+  than under /wheels as in CentOS. Fix them and remove the workaround
+  in this script.
+
+build-wheel-tarball.sh:
+- look for wheels in non-Starlingx DEBs. Requires accessing repomgr via
+  the REST API (?)
+- support layered builds (ie scan DEBs from lower layers)
+
+debian/openstack-requirements:
+- requirements are not compatible with debian/bullseye

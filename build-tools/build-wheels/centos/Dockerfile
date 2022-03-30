@@ -32,15 +32,15 @@ RUN set -ex ;\
 # while setuptools is larger than 45.3, it no longer support "Features" in setup.py
     python3 -m pip install --user setuptools==45.3 ;\
     python3 -m pip install --user --upgrade wheel
-COPY docker-build-wheel.sh /
-COPY ${BUILD_STREAM}-wheels.cfg /wheels.cfg
+COPY docker-common/docker-build-wheel.sh /
+COPY centos/${BUILD_STREAM}-wheels.cfg /wheels.cfg
 
 # Python2 packages
 RUN set -ex; \
     yum -y install python python-devel ;\
     wget https://bootstrap.pypa.io/pip/2.7/get-pip.py ;\
     python get-pip.py
-COPY ${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
+COPY centos/${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
 
 # root CA cert expired on October 1st, 2021
 RUN yum update -y ca-certificates

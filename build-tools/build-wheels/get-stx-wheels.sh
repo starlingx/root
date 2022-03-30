@@ -14,8 +14,8 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-SUPPORTED_OS_ARGS=('centos')
-OS=centos
+SUPPORTED_OS_ARGS=('centos' 'debian')
+OS=
 BUILD_STREAM=stable
 
 function usage {
@@ -69,6 +69,14 @@ while true; do
 done
 
 # Validate the OS option
+if [ -z "$OS" ] ; then
+    OS="$(ID= && source /etc/os-release 2>/dev/null && echo $ID || true)"
+    if ! [ -n "$OS" ]; then
+        echo "Unable to determine OS" >&2
+        echo "Re-run with \"--os\" option" >&2
+        exit 1
+    fi
+fi
 VALID_OS=1
 for supported_os in ${SUPPORTED_OS_ARGS[@]}; do
     if [ "$OS" = "${supported_os}" ]; then
@@ -85,12 +93,14 @@ fi
 source ${MY_REPO}/build-tools/git-utils.sh
 
 # For backward compatibility.  Old repo location or new?
-CENTOS_REPO=${MY_REPO}/centos-repo
-if [ ! -d ${CENTOS_REPO} ]; then
-    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+if [ "${OS}" = "centos" ]; then
+    CENTOS_REPO=${MY_REPO}/centos-repo
     if [ ! -d ${CENTOS_REPO} ]; then
-        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
-        exit 1
+        CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
+        if [ ! -d ${CENTOS_REPO} ]; then
+            echo "ERROR: directory ${MY_REPO}/centos-repo not found."
+            exit 1
+        fi
     fi
 fi
 
@@ -99,6 +109,11 @@ function get_wheels_files {
 }
 
 function get_lower_layer_wheels_files {
+    # FIXME: debian: these are in repomgr pod, can't get to them easily
+    if [[ "${OS}" != "centos" ]] ; then
+        echo "$OS: lower layer wheels not supported!" >&2
+        return 1
+    fi
     find ${CENTOS_REPO}/layer_wheels_inc -maxdepth 1 -name "*_${OS}_${BUILD_STREAM}_wheels.inc"
 }
 
@@ -114,6 +129,18 @@ function find_wheel_rpm {
     done | head -n 1
 }
 
+function find_wheel_deb {
+    local wheel="$1"
+    local repo=
+    # FIXME: debian: we should also scan non-stx RPMs, but they are in repomgr
+    #        pod and we can't easily get to them.
+    for repo in ${MY_WORKSPACE}/std ; do
+        if [ -d $repo ]; then
+            find $repo -name "${wheel}_[^-]*-[^-]*[.][^.]*[.]deb"
+        fi
+    done | head -n 1
+}
+
 declare -a WHEELS_FILES=($(get_wheels_files) $(get_lower_layer_wheels_files))
 if [ ${#WHEELS_FILES[@]} -eq 0 ]; then
     echo "Could not find ${OS} wheels.inc files" >&2
@@ -121,6 +148,7 @@ if [ ${#WHEELS_FILES[@]} -eq 0 ]; then
 fi
 
 BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/stx
+echo "BUILD_OUTPUT_PATH: $BUILD_OUTPUT_PATH" >&2
 if [ -d ${BUILD_OUTPUT_PATH} ]; then
     # Wipe out the existing dir to ensure there are no stale files
     rm -rf ${BUILD_OUTPUT_PATH}
@@ -146,6 +174,22 @@ for wheel in $(sed -e 's/#.*//' ${WHEELS_FILES[@]} | sort -u); do
             echo Extracting ${wheelfile}
 
             rpm2cpio ${wheelfile} | cpio -vidu
+            if [ ${PIPESTATUS[0]} -ne 0 -o ${PIPESTATUS[1]} -ne 0 ]; then
+                echo "Failed to extract content of ${wheelfile}" >&2
+                FAILED+=($wheel)
+            fi
+
+            ;;
+        debian)
+            wheelfile="$(find_wheel_deb ${wheel})"
+            if [ ! -e "${wheelfile}" ]; then
+                echo "Could not find ${wheel}" >&2
+                FAILED+=($wheel)
+                continue
+            fi
+
+            echo Extracting ${wheelfile}
+            ar p ${wheelfile} data.tar.xz | tar -xJ
             if [ ${PIPESTATUS[0]} -ne 0 -o ${PIPESTATUS[1]} -ne 0 ]; then
                 echo "Failed to extract content of ${wheelfile}" >&2
                 FAILED+=($wheel)
