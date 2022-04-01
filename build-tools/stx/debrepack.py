@@ -76,6 +76,7 @@ def url_to_cengn(url):
 
 def get_download_url(url, strategy):
 
+    alt_rt_url = None
     cengn_url = url_to_cengn(url)
     if strategy == "cengn":
         rt_url = cengn_url
@@ -85,18 +86,20 @@ def get_download_url(url, strategy):
         try:
             urllib.request.urlopen(cengn_url)
             rt_url = cengn_url
+            alt_rt_url = url
         except:
             rt_url = url
     elif strategy == "upstream_first":
         try:
             urllib.request.urlopen(url)
             rt_url = url
+            alt_rt_url = cengn_url
         except:
             rt_url = cengn_url
     else:
         raise Exception(f'Invalid value "{strategy}" of CENGN_STRATEGY')
 
-    return rt_url
+    return (rt_url, alt_rt_url)
 
 
 def checksum_dsc(dsc_file, logger):
@@ -213,8 +216,6 @@ def download(url, savepath, logger):
     logger.info(f"Download {url} to {savepath}")
     download_cmd = "wget -t 5 --wait=15 %s -O %s"
     run_shell_cmd(download_cmd % (url, savepath), logger)
-    # urllib.request.urlretrieve(url, savepath, DownloadProgress())
-
     return True
 
 
@@ -248,7 +249,7 @@ class Parser():
         if CENGN_STRATEGY is not None:
             self.strategy = CENGN_STRATEGY
             # dry run to check the value of CENGN_STRATEGY
-            get_download_url("https://testurl/tarball.tgz", self.strategy)
+            get_download_url("https://testurl/tarball.tgz", self.strategy)[0]
 
         if not os.path.isdir(basedir):
             self.logger.error("%s: No such file or directory", basedir)
@@ -725,8 +726,15 @@ class Parser():
                     check_cmd = "md5sum"
                     check_sum = dl_file_info['md5sum']
                 if not checksum(dl_file, check_sum, check_cmd, self.logger):
-                    dl_url = get_download_url(url, self.strategy)
-                    download(dl_url, dl_file, self.logger)
+                    (dl_url, alt_dl_url) = get_download_url(url, self.strategy)
+                    if alt_dl_url:
+                        try:
+                            download(dl_url, dl_file, self.logger)
+                        except:
+                            download(alt_dl_url, dl_file, self.logger)
+
+                    else:
+                        download(dl_url, dl_file, self.logger)
 
         if "dl_path" in self.meta_data:
             dl_file = self.meta_data["dl_path"]["name"]
@@ -739,15 +747,29 @@ class Parser():
                 check_cmd = "md5sum"
                 check_sum = self.meta_data["dl_path"]['md5sum']
             if not checksum(dl_file, check_sum, check_cmd, self.logger):
-                dl_url = get_download_url(url, self.strategy)
-                download(dl_url, dl_file, self.logger)
+                (dl_url, alt_dl_url) = get_download_url(url, self.strategy)
+                if alt_dl_url:
+                    try:
+                        download(dl_url, dl_file, self.logger)
+                    except:
+                        download(alt_dl_url, dl_file, self.logger)
+                else:
+                    download(dl_url, dl_file, self.logger)
+
         elif "archive" in self.meta_data:
             ver = self.versions["full_version"].split(":")[-1]
             dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
             if checksum_dsc(dsc_filename, self.logger) is False:
                 dsc_file_upstream = os.path.join(self.meta_data["archive"], dsc_filename)
-                dl_url = get_download_url(dsc_file_upstream, self.strategy)
-                run_shell_cmd("dget -d %s" % dl_url, self.logger)
+                (dl_url, alt_dl_url) = get_download_url(dsc_file_upstream, self.strategy)
+                if alt_dl_url:
+                    try:
+                        run_shell_cmd("dget -d %s" % dl_url, self.logger)
+                    except:
+                        run_shell_cmd("dget -d %s" % alt_dl_url, self.logger)
+                else:
+                    run_shell_cmd("dget -d %s" % dl_url, self.logger)
+
         elif "src_path" not in self.meta_data and "dl_hook" not in self.meta_data:
             ver = self.versions["full_version"].split(":")[-1]
             dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
