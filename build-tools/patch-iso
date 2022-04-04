@@ -290,10 +290,10 @@ fi
 extract_pkg_from_patch_repo pxe-network-installer
 if [ $? -eq 0 ]; then
     # Replace files
-    \rm -f ${BUILDDIR}/var/pxeboot/pxelinux.0 \
-        ${BUILDDIR}/var/pxeboot/menu.c32 \
-        ${BUILDDIR}/var/pxeboot/chain.c32 &&
-    \cp --preserve=all pxeboot/pxelinux.0 pxeboot/menu.c32 pxeboot/chain.c32 ${BUILDDIR}/var/pxeboot/
+    \rm -f ${BUILDDIR}/pxeboot/pxelinux.0 \
+        ${BUILDDIR}/pxeboot/menu.c32 \
+        ${BUILDDIR}/pxeboot/chain.c32 &&
+    \cp --preserve=all var/pxeboot/pxelinux.0 var/pxeboot/menu.c32 var/pxeboot/chain.c32 ${BUILDDIR}/pxeboot/
     if [ $? -ne 0 ]; then
         echo "Error: Could not copy all files from installer"
         exit 1
@@ -309,17 +309,17 @@ if [ $? -eq 0 ]; then
     # Replace vmlinuz and initrd.img with our own pre-built ones
     \rm -f \
         ${BUILDDIR}/vmlinuz \
-        ${BUILDDIR}/images/var/pxeboot/vmlinuz \
+        ${BUILDDIR}/images/pxeboot/vmlinuz \
         ${BUILDDIR}/initrd.img \
-        ${BUILDDIR}/images/var/pxeboot/initrd.img &&
-    \cp --preserve=all pxeboot/rel-*/installer-bzImage_1.0 \
+        ${BUILDDIR}/images/pxeboot/initrd.img &&
+    \cp --preserve=all var/pxeboot/rel-*/installer-bzImage_1.0 \
         ${BUILDDIR}/vmlinuz &&
-    \cp --preserve=all pxeboot/rel-*/installer-bzImage_1.0 \
-        ${BUILDDIR}/images/var/pxeboot/vmlinuz &&
-    \cp --preserve=all pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
+    \cp --preserve=all var/pxeboot/rel-*/installer-bzImage_1.0 \
+        ${BUILDDIR}/images/pxeboot/vmlinuz &&
+    \cp --preserve=all var/pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
         ${BUILDDIR}/initrd.img &&
-    \cp --preserve=all pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
-        ${BUILDDIR}/images/var/pxeboot/initrd.img
+    \cp --preserve=all var/pxeboot/rel-*/installer-intel-x86-64-initrd_1.0 \
+        ${BUILDDIR}/images/pxeboot/initrd.img
     if [ $? -ne 0 ]; then
         echo "Error: Failed to copy installer images"
         exit 1
