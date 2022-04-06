@@ -96,8 +96,8 @@ def get_all_stx_pkgs():
         Map of all STX buildable packages and path to debian folder
     """
     pkgs = {}
-    stx_root = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), 'cgcs-root/stx')
-    for root, dirs, files in os.walk(stx_root):
+    projects_root = os.environ.get('MY_REPO')
+    for root, dirs, files in os.walk(projects_root):
         if dirs:
             pass
         for r in files:
