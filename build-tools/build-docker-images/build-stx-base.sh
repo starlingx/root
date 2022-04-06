@@ -268,8 +268,12 @@ if [ ${#REPO_LIST[@]} -eq 0 ]; then
             REPO_LIST+=("local-std,http://${HOST}:8088${MY_WORKSPACE}/std/rpmbuild/RPMS")
             REPO_LIST+=("stx-distro,http://${HOST}:8089${MY_REPO}/cgcs-${OS}-repo/Binary")
         else
-            REPO_LIST+=("deb [trusted=yes] http://stx-stx-repomgr:80/deb-local-binary bullseye main")
-            REPO_LIST+=("deb [trusted=yes] http://stx-stx-repomgr:80/deb-local-build bullseye main")
+            if [[ -z "$REPOMGR_DEPLOY_URL" ]] ; then
+                echo "Required env variable REPOMGR_DEPLOY_URL is not defined!" >&2
+                exit 1
+            fi
+            REPO_LIST+=("deb [trusted=yes] $REPOMGR_DEPLOY_URL/deb-local-binary bullseye main")
+            REPO_LIST+=("deb [trusted=yes] $REPOMGR_DEPLOY_URL/deb-local-build bullseye main")
         fi
     elif [ "${BUILD_STREAM}" != "dev" -a "${BUILD_STREAM}" != "master" ]; then
         echo "Either --local or --repo must be specified" >&2
