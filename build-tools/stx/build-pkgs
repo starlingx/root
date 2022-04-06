@@ -597,7 +597,7 @@ class BuildController():
     def run_build_loop(self, pkgs_dsc, build_type=STX_DEFAULT_BUILD_TYPE):
         build_dir = os.path.join(BUILD_ROOT, build_type)
         dsc_list_file = os.path.join(build_dir, 'dsc.lst')
-        deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, logger)
+        deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, [], logger)
         build_counter = {}
         dscs_list = get_dsc_list_from_dict(pkgs_dsc)
         logger.debug('There are %d packages to be built this round', len(dscs_list))

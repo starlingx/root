@@ -29,6 +29,7 @@ import copy
 import os
 import re
 import shutil
+from debian import deb822
 
 # Debian repository. You can also choose a nearby mirror site, see web page below:
 # https://www.debian.org/mirror/list
@@ -70,25 +71,27 @@ def get_aptcache(rootdir):
     return apt_cache
 
 
-def get_direct_depends(pkg_name, aptcache):
+def get_direct_depends(pkg_name, aptcache, ctl_info=None):
     '''
     Get direct runtime depend packages of a binary package
     '''
     pkgs_set = set()
-    # For package doesn't exist in apt cache, it must belong to StarlingX.
-    # The relationship of StarligX's packages will be scaned by other method
-    # like scan_meta_info...
     if pkg_name not in aptcache.keys():
-        return pkgs_set
+        if ctl_info and pkg_name in ctl_info.keys():
+            return ctl_info[pkg_name]
+        else:
+            return pkgs_set
 
     pkg = aptcache[pkg_name]
     # No package version provided, just use the 'candidate' one as 'i'
     for i in pkg.candidate.dependencies:
         [pkgs_set.add(j.name) for j in i]
+    if ctl_info and pkg_name in ctl_info.keys():
+        pkgs_set = pkgs_set.union(ctl_info[pkg_name])
     return pkgs_set
 
 
-def get_runtime_depends(bin_pkg_set, aptcache):
+def get_runtime_depends(bin_pkg_set, aptcache, ctl_info=None):
     '''
     Get all runtime depend packages of a bundle of packages
     '''
@@ -100,7 +103,7 @@ def get_runtime_depends(bin_pkg_set, aptcache):
         # pkgs_t0 contains all packages not cheked, for each packages in it,
         # find their 'depen_on' packages and insert into pkgs_t1
         for pkg in pkgs_t0:
-            pkgs_t1 = pkgs_t1.union(get_direct_depends(pkg, aptcache))
+            pkgs_t1 = pkgs_t1.union(get_direct_depends(pkg, aptcache, ctl_info))
         # Get packages do not exist in pkgs_set, store them in pkgs_t0
         pkgs_t0 = pkgs_t1 - pkgs_set
         # No new package, pkgs_set is alreay complete
@@ -219,9 +222,13 @@ class Circular_dsc_order():
 
     def get_state(self):
         # Get group status.
+        building_packages = []
+        if self.building_index >= 0:
+            building_packages.append(self.build_order[self.building_index])
         pkg_state = {'pkg_count': len(self.pkgs),
                      'build_count': len(self.build_order),
                      'building_index': self.building_index,
+                     'building_packages': building_packages,
                      'next_index': self.next_index}
         self.logger.info('%d packages in current group' % len(self.pkgs))
         self.logger.info('%d packages need to be built' % len(self.build_order))
@@ -445,10 +452,15 @@ class Simple_dsc_order():
         '''
         Dump group state
         '''
+        building_packages = []
+        for pkg, prio in self.build_able_pkg.items():
+            if prio < 0:
+                building_packages.append(pkg)
         pkg_state = {'pkg_count': self.count['pkg'],
                      'pkg_wait': self.count['wait'],
                      'pkg_can_build': self.count['can_build'],
                      'pkg_building': self.count['building'],
+                     'building_packages': building_packages,
                      'pkg_accomplished': self.count['accomplished']}
         assert self.count['pkg'] == (self.count['wait'] +
                                      self.count['can_build'] +
@@ -571,7 +583,8 @@ class Circular_break():
         while len(ret_pkgs) != 0:
             tmp_set = ret_pkgs.copy()
             find_pkg = False
-            for pkg in tmp_set:
+            # for multi version package, build higher version firsty.
+            for pkg in sorted(tmp_set, key=lambda x:os.path.basename(x), reverse=True):
                 # If it depends on nothing, it can be built now.
                 if not dep_on[pkg]:
                     find_pkg = True
@@ -640,7 +653,8 @@ class Circular_break():
         dict_pkg_meta = dict()
         ret_pkgs = pkgs.copy()
         # construct the "dep_on" and "dep_by" of "pkgs
-        for pkg in pkgs:
+        # for multi version package, build higher version firstly.
+        for pkg in sorted(pkgs, key=lambda x:os.path.basename(x)):
             # Get source package name from 'pkg'
             # Here 'pkg' maybe source package name, or the pathname of a dsc file
             dict_pkg_meta[os.path.basename(pkg).split('_')[0]] = pkg
@@ -880,12 +894,19 @@ class Circular_break():
                 s_grp += 1
             else:
                 l_grp += 1
+        building_packages = []
+        if self.current_group_index >= 0:
+            pkg_group = self.package_grp[self.current_group_index]
+            group_state = pkg_group['grp_order'].get_state()
+            for pkg in group_state['building_packages']:
+                building_packages.append(pkg)
         build_state['pkg_num'] = pkg_num
         build_state['build_num'] = build_num
         build_state['acomplish_num'] = acomplish_num
         build_state['group_num'] = len(self.package_grp)
         build_state['simple_group_num'] = s_grp
         build_state['circular_group_num'] = l_grp
+        build_state['building_packages'] = building_packages
         return build_state
 
 
@@ -894,15 +915,60 @@ class Dsc_build_order(Circular_break):
     Manage the build order of a set of dsc files.
     '''
 
-    def __init__(self, dsc_list, logger, circular_conf_file=DEFAULT_CIRCULAR_CONFIG):
+    def __init__(self, dsc_list, target_pkgs, logger, circular_conf_file=DEFAULT_CIRCULAR_CONFIG):
         '''
         Construct the build relationship of all those dsc files in "dsc_list"
         '''
         self.logger = logger
         self.aptcache = get_aptcache(apt_rootdir)
         self.meta_info = [dict(), dict()]
+        # information from file debian/control, for runtime depend relationship:
+        # self.ctl_info[A] = {B, C} Binary package A runtime depend on B and C.
+        self.ctl_info = dict()
         self.__scan_dsc_list(dsc_list)
+        self.__recheck_target_pkgs(set(target_pkgs))
         super().__init__(logger, self.meta_info, circular_conf_file)
+
+    def __depth_check(self, node, dependencies, set_pkgs):
+        '''
+        Search the dependency tree. Add dependencies[node] into "set_pkgs"
+        '''
+        if node in set_pkgs:
+            return
+        if node:
+            set_pkgs.add(node)
+        else:
+            self.logger.warning('A None node detected, please check dsc and config file.')
+            return
+        if node in list(dependencies.keys()) and dependencies[node]:
+            for nd in dependencies[node]:
+                self.__depth_check(nd, dependencies, set_pkgs)
+
+    def __get_build_pkgs(self, depend_on, target_pkgs, build_pkgs):
+        '''
+        Base on target packages and the build relationships, find all source
+        packages need to be built. Add them into "build_pkgs"
+        '''
+        for pkg in target_pkgs:
+            self.__depth_check(pkg, depend_on, build_pkgs)
+
+    def __recheck_target_pkgs(self, target_pkgs):
+        '''
+        Remove packages no need to be built
+        '''
+        # Empty target_pkgs ==> build all
+        if not target_pkgs:
+            return
+        if not target_pkgs.issubset(set(self.meta_info[0].keys())):
+            self.logger.error('Not all target packages exist in meta data.')
+            raise Exception('TARGET PACKAGES CONFLICT WITH META DATA')
+        build_pkgs = set()
+        depend_on, depend_by = scan_meta_info(self.meta_info)
+        self.__get_build_pkgs(depend_on, target_pkgs, build_pkgs)
+        non_build_pkgs = set(self.meta_info[0].keys()) - build_pkgs
+        for pkg in non_build_pkgs:
+            self.meta_info[0].pop(pkg)
+            self.meta_info[1].pop(pkg)
 
     def __get_depends(self, depend_str):
         '''
@@ -921,6 +987,48 @@ class Dsc_build_order(Circular_break):
             if 0 != len(pkg):
                 depends.add(pkg)
         return depends
+
+    def __scan_control_file(self, list_line):
+        '''
+        Scan file debian/control and get the runtime depend relationships from it.
+        Stroe those runtime relationships into dictionary self.ctl_info.
+        '''
+        # remove empty line, comment string/lines
+        dsc_file = list_line.strip().split('#')[0]
+        if not dsc_file:
+            return None
+        if not dsc_file.endswith('dsc'):
+            self.logger.error('%s: is not a dsc file.' % list_line)
+            raise Exception('dsc list error, please check line: %s' % list_line)
+        # locate the control file based on pathname of the dsc file.
+        base_dir = os.path.dirname(dsc_file)
+        base_name = os.path.basename(dsc_file)
+        # p-p_x.y.z.dsc => p-p-x.y.z/debian/control
+        # p-p_x.y-z.dsc => p-p-x.y/debian/control
+        src_dir = base_name.split('_')[0] + '-' + base_name.split('_')[1].split('-')[0]
+        if src_dir.endswith('.dsc'):
+            src_dir = os.path.splitext(src_dir)[0]
+        ctl_file = os.path.join(base_dir, src_dir, 'debian/control')
+        try:
+            with open(ctl_file, 'r') as f_ctl:
+                for ctl in deb822.Deb822.iter_paragraphs(f_ctl):
+                    if 'Package' in ctl.keys():
+                        depend_pkgs = set()
+                        deps = ''
+                        if 'Depends' in ctl.keys():
+                            deps = ctl['Depends']
+                        if 'Pre-Depends' in ctl.keys():
+                            deps = deps + ',' + ctl['Pre-Depends']
+                        for p in deps.replace('|', ',').replace(' ', '').split(','):
+                            pkg = re.sub(u"\\${.*\\}|\\(.*\\)| ", "", p.strip()).strip()
+                            if pkg:
+                                depend_pkgs.add(pkg)
+                        if depend_pkgs:
+                            self.ctl_info[ctl['Package']] = depend_pkgs
+        except Exception as e:
+            self.logger.debug(str(e))
+            self.logger.debug('Control file of %s read error, ignore.' % dsc_file)
+            # raise Exception('Control file of %s read error.' % dsc_file)
 
     def __scan_dsc_file(self, list_line, build_bin, depend_on_b):
         '''
@@ -945,28 +1053,29 @@ class Dsc_build_order(Circular_break):
             raise Exception('dsc list error, please check line: %s' % list_line)
 
         # open and read dsc file
-        if not os.access(dsc_name, os.R_OK):
-            self.logger.error('dsc file %s does not exist.' % dsc_name)
-            raise Exception('dsc file %s does not exist' % dsc_name)
-        dsc_f = open(dsc_name, 'r')
-        # scan the dsc file, get Binary Build-Depends and Build-Depends-Indep
-        build_depends_arch = build_depends_indep = build_depends = ''
-        build = b_depends = ''
-        for dsc_line in dsc_f:
-            dsc_line = dsc_line.strip()
-            if dsc_line.startswith('Binary:'):
-                build = dsc_line[8:]
-                self.logger.debug('%s build : %s' % (dsc_name, build))
-            elif dsc_line.startswith('Build-Depends:'):
-                build_depends = dsc_line[14:]
-                self.logger.debug('%s build_depends : %s' % (dsc_name, build_depends))
-            elif dsc_line.startswith('Build-Depends-Indep:'):
-                build_depends_indep = dsc_line[21:]
-                self.logger.debug('%s build_depends_indep : %s' % (dsc_name, build_depends_indep))
-            elif dsc_line.startswith('Build-Depends-Arch:'):
-                build_depends_arch = dsc_line[20:]
-                self.logger.debug('%s build_depends_arch : %s' % (dsc_name, build_depends_arch))
-        dsc_f.close()
+        try:
+            with open(dsc_name, 'r') as fh:
+                dsc = deb822.Dsc(fh)
+                # scan the dsc file, get Binary Build-Depends and Build-Depends-Indep
+                build = b_depends = ''
+                build_depends_arch = build_depends_indep = build_depends = ''
+                pkg_name = dsc['Source']
+                pkg_version = dsc['Version']
+                if 'Binary' in dsc.keys():
+                    build = dsc['Binary']
+                    self.logger.debug('%s build package : %s' % (dsc_name, build))
+                if 'Build-Depends' in dsc.keys():
+                    build_depends = dsc['Build-Depends']
+                    self.logger.debug('%s build_depends : %s' % (dsc_name, build_depends))
+                if 'Build-Depends-Indep' in dsc.keys():
+                    build_depends_indep = dsc['Build-Depends-Indep']
+                    self.logger.debug('%s build_depends_indep : %s' % (dsc_name, build_depends_indep))
+                if 'Build-Depends-Arch' in dsc.keys():
+                    build_depends_arch = dsc['Build-Depends-Arch']
+                    self.logger.debug('%s build_depends_arch : %s' % (dsc_name, build_depends_arch))
+        except Exception as e:
+            self.logger.error(str(e))
+            raise Exception('dsc file read error, please check line: %s' % list_line)
 
         b_depends = build_depends
         if build_depends_indep:
@@ -975,14 +1084,14 @@ class Dsc_build_order(Circular_break):
             b_depends = b_depends + ', ' + build_depends_arch
         # Store binary depend_on relationship in dictionary "depend_on_b"
         direct_depends = self.__get_depends(b_depends)
-        depend_on_b[dsc_name] = get_runtime_depends(direct_depends, self.aptcache)
+        depend_on_b[dsc_name] = get_runtime_depends(direct_depends, self.aptcache, self.ctl_info)
 
         # Deal with "Binary", binary deb build from the dsc, store in "src"
         build_list = build.replace(' ', '').split(',')
         # assert len(depend_on_b[dsc_name]) != 0
         assert len(build_list) != 0
         build_bin[dsc_name] = set(build_list)
-        return None
+        return pkg_name + '_' + pkg_version
 
     def __scan_dsc_list(self, dsc_list_file):
         build_bin = self.meta_info[0]
@@ -991,11 +1100,31 @@ class Dsc_build_order(Circular_break):
         if not os.access(dsc_list_file, os.R_OK):
             self.logger.error('dsc list file %s not read-able.' % dsc_list_file)
             return
-        dsc_list = open(dsc_list_file, 'r')
-        # scan the dsc list
-        for list_line in dsc_list:
-            self.__scan_dsc_file(list_line, build_bin, depend_on_b)
-        dsc_list.close()
+        pkgs = set()
+        duplicate_pkgs = set()
+        try:
+            with open(dsc_list_file, 'r') as fh_dsc:
+                lines = fh_dsc.readlines()
+                # Scan all debian/control files firstly, get all runtime relationship
+                for line in lines:
+                    self.__scan_control_file(line)
+                for line in lines:
+                    pkg_ver = self.__scan_dsc_file(line, build_bin, depend_on_b)
+                    if not pkg_ver:
+                        continue
+                    if pkg_ver not in pkgs:
+                        pkgs.add(pkg_ver)
+                    else:
+                        duplicate_pkgs.add(pkg_ver)
+        except Exception as e:
+            self.logger.error(str(e))
+            raise Exception('dsc file file %s read error.' % dsc_list_file)
+        else:
+            if duplicate_pkgs:
+                self.logger.error('Duplicate source packages detected, please check.')
+                for pkg_ver in duplicate_pkgs:
+                    self.logger.error('Source package: %s.' % pkg_ver)
+                raise Exception('Duplicate packages detected.')
 
 
 class Pkg_build(Circular_break):
