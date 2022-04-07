@@ -40,6 +40,9 @@ STX_ROOT = os.environ.get('MY_REPO_ROOT_DIR')
 PKGBUILDER_ROOT = "/localdisk/pkgbuilder"
 USER = os.environ.get('MYUNAME')
 PROJECT = os.environ.get('PROJECT')
+# Different reasons can lead to package build failure
+# Set maximum retry count for failed packages
+MAX_PKG_BUILD_COUNT = 3
 
 # TODO - Do we want a seperate repo for each layer? each build type?
 REPO_BUILD = 'deb-local-build'
@@ -101,6 +104,13 @@ def get_pkg_dir_from_dsc(dscs, dsc_path):
         if dsc.strip() in dsc_path:
             return pkg_dir
     return None
+
+
+def get_dsc_list_from_dict(dscs_dict):
+    dsc_list = []
+    for pkg_dir, dsc in dscs_dict.items():
+        dsc_list.append(dsc)
+    return dsc_list
 
 
 def get_pkgname_ver_with_deb(deb_name):
@@ -581,8 +591,10 @@ class BuildController():
         build_dir = os.path.join(BUILD_ROOT, build_type)
         dsc_list_file = os.path.join(build_dir, 'dsc.lst')
         deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, logger)
+        build_counter = {}
+        dscs_list = get_dsc_list_from_dict(pkgs_dsc)
 
-        for p in range(len(pkgs_dsc)):
+        while dscs_list:
             pkgs_can_build = deps_resolver.get_build_able_pkg(1)
             if not pkgs_can_build:
                 logger.warning("Depends resolver returns none")
@@ -593,17 +605,30 @@ class BuildController():
                 pkg_dir = get_pkg_dir_from_dsc(pkgs_dsc, dsc_path)
                 pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
                 status = self.req_add_task(pkg_dir, dsc_path, build_type=build_type)
+                if pkg_name in build_counter.keys():
+                    build_counter[pkg_name] += 1
+                else:
+                    build_counter[pkg_name] = 1
+                logger.debug("Attempting to build package %s for the %d time", pkg_name, build_counter[pkg_name])
+
                 if 'success' in status:
                     logger.info(' '.join(['Successfully built',
                                           pkg_name]))
                     deps_resolver.pkg_accomplish(dsc_path)
+                    dscs_list.remove(dsc_path)
                     self.lists['success'].append(pkg_dir)
                     pkg_md5 = self.pkgs_digests[pkg_dir]
                     self.kits['dsc_cache'][build_type].set_package_digest(pkg_dir, pkg_md5)
                 else:
-                    logger.info(' '.join(['Failed to build', pkg_name, str(p)]))
                     self.lists['fail'].append(pkg_dir)
-                    deps_resolver.pkg_fail(dsc_path)
+                    if build_counter[pkg_name] >= MAX_PKG_BUILD_COUNT:
+                        deps_resolver.pkg_accomplish(dsc_path)
+                        dscs_list.remove(dsc_path)
+                        logger.error("Failed to build package %s after %d attempts, giving up", pkg_name, build_counter[pkg_name])
+                        logger.info("For the detailed reasons, please check the logs:")
+                        logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<failed package>/*.build\'")
+                    else:
+                        deps_resolver.pkg_fail(dsc_path)
                     self.req_stop_task()
                     if self.attrs['exit_on_fail']:
                         return
@@ -793,10 +818,11 @@ class BuildController():
         """
         ret_val = 0
         logger.info("Total packages needing to be built: %d", len(self.lists['build-needed']))
-        success_number = len(self.lists['success'])
+        success_list = list(set(self.lists['success']))
+        success_number = len(success_list)
         if success_number > 0:
             logger.info("Successfully built: %d", success_number)
-            for pkg_dir in sorted(self.lists['success']):
+            for pkg_dir in sorted(success_list):
                 pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
                 logger.info(pkg_name)
 
