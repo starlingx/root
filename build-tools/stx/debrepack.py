@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021 WindRiver Corporation
+# Copyright (C) 2021-2022 WindRiver Corporation
 
 # import apt
 import apt_pkg
@@ -35,6 +35,7 @@ RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE')
 DIST = os.environ.get('STX_DIST')
 CENGN_BASE = os.path.join(os.environ.get('CENGNURL'), "debian")
 CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
+BTYPE = "@KERNEL_TYPE@"
 
 
 class DownloadProgress():
@@ -234,7 +235,7 @@ class Parser():
         'crit': logging.CRITICAL
     }
 
-    def __init__(self, basedir, output, loglevel='info', srcrepo=None):
+    def __init__(self, basedir, output, loglevel='info', srcrepo=None, btype="std"):
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(self.level_relations.get(loglevel))
@@ -260,6 +261,7 @@ class Parser():
         self.output = os.path.abspath(output)
 
         self.srcrepo = srcrepo
+        self.btype = btype
         self.meta_data = dict()
         self.versions = dict()
         self.pkginfo = dict()
@@ -332,12 +334,33 @@ class Parser():
         if os.path.exists(self.pkginfo["srcdir"]):
             shutil.rmtree(self.pkginfo["srcdir"])
 
+    def set_build_type(self):
+
+        local_debian = os.path.join(self.pkginfo["packdir"], "local_debian")
+        run_shell_cmd('cp -r %s %s' % (self.pkginfo["debfolder"], local_debian), self.logger)
+
+        # clean @KERNEL_TYPE@ if build type is std
+        if self.btype == "std":
+            btype = ""
+        else:
+            btype = "-" + self.btype
+
+        sed_cmd = 'sed -i s#%s#%s#g %s'
+        for root, _, files in os.walk(local_debian):
+            for name in files:
+                run_shell_cmd(sed_cmd % (BTYPE, btype, os.path.join(root, name)), self.logger)
+
+        self.pkginfo["debfolder"] = os.path.join(local_debian)
+
     def set_revision(self):
 
         revision = 0
         dist = ""
         if "revision" not in self.meta_data:
             return dist
+
+        # reset the debfolder
+        self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")
 
         revision_data = self.meta_data["revision"]
         if "dist" in revision_data:
@@ -782,6 +805,8 @@ class Parser():
         if os.path.exists(self.pkginfo["packdir"]):
             shutil.rmtree(self.pkginfo["packdir"])
         os.mkdir(self.pkginfo["packdir"])
+
+        self.set_build_type()
 
         logfile = os.path.join(self.pkginfo["packdir"], self.pkginfo["pkgname"] + ".log")
         if os.path.exists(logfile):
