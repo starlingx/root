@@ -16,7 +16,6 @@
 import apt_pkg
 import debian.deb822
 from debian.debian_support import BaseVersion
-import discovery
 import git
 import hashlib
 import logging
@@ -272,7 +271,7 @@ class Parser():
             raise Exception(f"{pkgpath}: No such file or directory")
 
         self.pkginfo["pkgpath"] = os.path.abspath(pkgpath)
-        self.pkginfo["pkgname"] = discovery.package_dir_to_package_name(pkgpath, 'debian')
+        self.pkginfo["pkgname"] = os.path.basename(pkgpath)
         self.pkginfo["packdir"] = os.path.join(self.basedir, self.pkginfo["pkgname"])
 
         self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")

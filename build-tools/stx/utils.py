@@ -13,9 +13,7 @@
 # limitations under the License.
 #
 # Copyright (C) 2021 Wind River Systems,Inc
-
 import logging
-import os
 
 
 def set_logger(logger):
@@ -69,44 +67,3 @@ def set_logger(logger):
     fh.setFormatter(ColorFormatter())
     logger.addHandler(fh)
     logger.propagate = 0
-
-
-# Read file 'lst_file', sprip out blank lines and lines starting with '#'.
-# Return the remaining lines as a list.  Optionally subject the lines
-# to additional processing via the entry_handler prior to inclusion in
-# the list
-def bc_safe_fetch(lst_file, entry_handler=None, entry_handler_arg=None):
-    entries = []
-    try:
-        with open(lst_file, 'r') as flist:
-            lines = list(line for line in (p.strip() for p in flist) if line)
-    except IOError as e:
-        logger.error(str(e))
-    except Exception as e:
-        logger.error(str(e))
-    else:
-        for entry in lines:
-            entry = entry.strip()
-            if entry.startswith('#'):
-                continue
-            if entry == "":
-                continue
-            if entry_handler:
-                if entry_handler_arg:
-                    entries.extend(entry_handler(entry, entry_handler_arg))
-                else:
-                    entries.extend(entry_handler(entry))
-            else:
-                entries.append(entry)
-    return entries
-
-
-def limited_walk(dir, max_depth=1):
-    dir = dir.rstrip(os.path.sep)
-    assert os.path.isdir(dir)
-    num_sep_dir = dir.count(os.path.sep)
-    for root, dirs, files in os.walk(dir):
-        yield root, dirs, files
-        num_sep_root = root.count(os.path.sep)
-        if num_sep_dir + max_depth <= num_sep_root:
-            del dirs[:]
