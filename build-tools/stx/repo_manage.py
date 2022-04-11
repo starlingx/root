@@ -465,7 +465,7 @@ class RepoMgr():
                 self.logger.info('Remove a remote mirror')
                 self.repo.remove_remote(repo)
                 return True
-        self.logger.warn("Remove repo failed: repo '%'s not found" % repo_name)
+        self.logger.warn("Remove repo failed: repo '%s' not found" % repo_name)
         return False
 
     # Before uploading a source package into a local repo, scan all repos,
