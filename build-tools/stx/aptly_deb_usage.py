@@ -471,9 +471,14 @@ class Deb_aptly():
         # with '%3a' by mistake, this will cause error in aptly.
         new_name = pkg_name.replace('%3a', ':')
         os.rename(pkg_name, new_name)
-        # Add the package into local repo
-        self.aptly.files.upload('tmp_folder', new_name)
-        task = self.aptly.repos.add_uploaded_file(repo_name, 'tmp_folder', remove_processed_files=True)
+        # In corner cases the process been interrupted thus related file folders
+        # remained. Remove them firstly.
+        for file in self.aptly.files.list():
+            self.aptly.files.delete(file)
+        # Upload package file into related file folder.
+        self.aptly.files.upload(repo_name, new_name)
+        # Add uploaded file into local repository.
+        task = self.aptly.repos.add_uploaded_file(repo_name, repo_name, remove_processed_files=True)
         self.aptly.tasks.wait_for_task_by_id(task.id)
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
             self.logger.warning('add_upload_file failed %s : %s : %s', new_name, repo_name, self.aptly.tasks.show(task.id).state)
