@@ -435,8 +435,8 @@ class RepoMgr():
                 pkg_list.extend(pkgs)
                 if not quiet:
                     self.logger.info("Local repo %s:" % repo_name)
-                    for pkg in pkgs:
-                        self.logger.info("  %s:" % pkg)
+                    for pkg in sorted(pkgs):
+                        self.logger.info("  %s" % pkg)
         for repo in remote_list:
             if repo == repo_name:
                 self.logger.info('List a remote mirror')
@@ -444,8 +444,8 @@ class RepoMgr():
                 pkg_list.extend(pkgs)
                 if not quiet:
                     self.logger.info("Remote repo %s:" % repo_name)
-                    for pkg in pkgs:
-                        self.logger.info("  %s:" % pkg)
+                    for pkg in sorted(pkgs):
+                        self.logger.info("  %s" % pkg)
         return pkg_list
 
     # delete a repository
