@@ -300,10 +300,10 @@ if __name__ == "__main__":
         if update_debootstrap_mirror(lat_initramfs_yaml):
             logger.debug("Debootstrap switches to mirror %s in %s", REPO_ALL, lat_initramfs_yaml)
 
-    binary_repo_url = ''.join(['deb [trusted=yes] ',
+    binary_repo_url = ''.join(['deb ',
                                os.environ.get('REPOMGR_DEPLOY_URL'),
                                REPO_BINARY, ' bullseye main'])
-    build_repo_url = ''.join(['deb [trusted=yes] ',
+    build_repo_url = ''.join(['deb ',
                               os.environ.get('REPOMGR_DEPLOY_URL'),
                               REPO_BUILD, ' bullseye main'])
 
