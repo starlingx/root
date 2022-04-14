@@ -508,15 +508,16 @@ class RepoMgr():
     # upload a Debian package and deploy it
     # repo_name: the name of the repository used to contain and deploy the package
     # package: pathname of the package(xxx.deb or xxx.dsc) to be uploaded
+    # deploy: If True, deploy the repository after "binary" package been uploaded.
     # Output: True if all works.
-    def upload_pkg(self, repo_name, package):
+    def upload_pkg(self, repo_name, package, deploy=True):
         '''Upload a Debian package into a specified repository.'''
         local_list = self.repo.list_local(quiet=True)
         if repo_name not in local_list:
             self.logger.info('upload_pkg: repository %s does not exist, creating it.' % repo_name)
             self.repo.create_local(repo_name)
 
-        if not package:
+        if not package and deploy:
             # No repo found, no package specified, just create & deploy the repo and return
             self.repo.deploy_local(repo_name)
             return True
@@ -556,16 +557,19 @@ class RepoMgr():
                 return False
 
             pkg_files = set()
+            pkg_files.add(package)
             for meta_file in dsc['Files']:
                 pkg_files.add(os.path.join(os.path.dirname(package), meta_file['name']))
-            pkg_files.add(package)
             self.repo.upload_pkg_local(pkg_files, repo_name)
         else:
             self.logger.warning('Only Debian style files, like deb and dsc, are supported.')
             return False
         self.logger.debug('upload_pkg: package %s been uploaded into %s' % (package, repo_name))
-        self.repo.deploy_local(repo_name)
+        # deploy = False only effect on binary package.
+        if 'binary' == pkg_type and not deploy:
+            return True
 
+        self.repo.deploy_local(repo_name)
         # Double check if the package been uploaded successfully
         if not self.search_pkg(repo_name, pkg_name, pkg_version, pkg_type == 'binary'):
             self.logger.error('upload_pkg: verify failed, no %s package %s %s in %s'
@@ -604,13 +608,24 @@ class RepoMgr():
             return False
         return True
 
+    # Deploy a local repository
+    def deploy_repo(self, repo_name):
+        '''Deploy a local repository manually.'''
+        local_list = self.repo.list_local(quiet=True)
+        if repo_name not in local_list:
+            self.logger.error('Local repository deploy failed, %s does not exist.' % repo_name)
+            return False
+        self.repo.deploy_local(repo_name)
+        return True
+
+
     # Delete a Debian package from a local repository
     # repo_name: name of the LOCAL repository to delete the package from
     # pkg_name: name of the binary package to be deleted
     # pkg_type: 'source' or 'binary'
     # pkg_version: version number of the package to be deleted
     # Output: True if find and delete, or False
-    def delete_pkg(self, repo_name, pkg_name, pkg_type, pkg_version=''):
+    def delete_pkg(self, repo_name, pkg_name, pkg_type, pkg_version='', deploy=True):
         '''Find and delete a binary package from a specified local repo.'''
         repo_find = False
         repo = None
@@ -634,6 +649,9 @@ class RepoMgr():
             return False
 
         self.repo.delete_pkg_local(repo_name, pkg_name, pkg_type, pkg_version)
+        # deploy = False only effect on binary packages
+        if 'binary' == pkg_type and not deploy:
+            return True
         self.repo.deploy_local(repo_name)
         return True
 

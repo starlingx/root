@@ -305,7 +305,23 @@ class Deb_aptly():
                                           architectures=extra_param['architectures'], prefix=extra_param['prefix'],
                                           distribution=extra_param['distribution'],
                                           sign_gpgkey=SIGN_KEY, sign_passphrase=SIGN_PASSWD)
-        self.aptly.tasks.wait_for_task_by_id(task.id)
+        # In corner cases, "publish" may spend more than 60 seconds, cause
+        # "wait_for_task_by_id" timeout. To cover such cases, we "wait_for_task_by_id"
+        # up to 3 times, to enlarge the whole timeout to 180 seconds.
+        try:
+            # 1st 60 seconds
+            self.aptly.tasks.wait_for_task_by_id(task.id)
+        except Exception as e:
+            self.logger.error('Error: %s' % e)
+            self.logger.error('Publish local repo %s timeout first time, wait one more minute...' % name)
+            try:
+                # 2nd 60 seconds
+                self.aptly.tasks.wait_for_task_by_id(task.id)
+            except Exception as e:
+                self.logger.error('Error: %s' % e)
+                self.logger.error('Publish local repo %s timeout second time, wait one more minute...' % name)
+                # 3th 60 seconds
+                self.aptly.tasks.wait_for_task_by_id(task.id)
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
             self.logger.warning('Publish for %s create failed: %s', name, self.aptly.tasks.show(task.id).state)
             return None
