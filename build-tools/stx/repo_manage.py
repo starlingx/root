@@ -295,10 +295,10 @@ class RepoMgr():
 
         # Add packages into local repo
         destdir = self.workdir + '/downloads/'
+        package_files = set()
         for filename in os.listdir(destdir):
-            fp = os.path.join(destdir, filename)
-            # print(fp)
-            self.repo.upload_pkg_local(fp, repo_name)
+            package_files.add(os.path.join(destdir, filename))
+        self.repo.upload_pkg_local(package_files, repo_name)
 
         # Deploy local repo
         repo_str = self.repo.deploy_local(repo_name)
@@ -363,8 +363,10 @@ class RepoMgr():
 
         # Add packages into local repo
         destdir = self.workdir + '/downloads/'
+        pkg_files = set()
         for filename in os.listdir(destdir):
-            self.repo.upload_pkg_local(os.path.join(destdir, filename), repo_name)
+            pkg_files.add(os.path.join(destdir, filename))
+        self.repo.upload_pkg_local(pkg_files, repo_name)
 
         # Deploy local repo
         repo_str = self.repo.deploy_local(repo_name)
@@ -530,7 +532,7 @@ class RepoMgr():
                 raise Exception('Binary package error.')
             pkg_version = deb['Version']
             pkg_name = deb['Package']
-            self.repo.upload_pkg_local(package, repo_name)
+            self.repo.upload_pkg_local({package}, repo_name)
         elif '.dsc' == os.path.splitext(package)[-1]:
             pkg_type = 'source'
             try:
@@ -553,10 +555,11 @@ class RepoMgr():
                                       (package, repo, str(meta_files)))
                 return False
 
+            pkg_files = set()
             for meta_file in dsc['Files']:
-                self.repo.upload_pkg_local(os.path.join(os.path.dirname(package),
-                                           meta_file['name']), repo_name)
-            self.repo.upload_pkg_local(package, repo_name)
+                pkg_files.add(os.path.join(os.path.dirname(package), meta_file['name']))
+            pkg_files.add(package)
+            self.repo.upload_pkg_local(pkg_files, repo_name)
         else:
             self.logger.warning('Only Debian style files, like deb and dsc, are supported.')
             return False

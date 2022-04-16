@@ -198,7 +198,7 @@ class Deb_aptly():
 
         # crate a snapshot with package_refs. Duplicate package_refs is harmless.
         # Note: The key is "package_refs" instead of "source_snapshots", for function
-        #       "create_from_packages", paramter "source_snapshots" almost has no means.
+        #       "create_from_packages", parameter "source_snapshots" almost has no means.
         task = None
         task = self.aptly.snapshots.create_from_packages(name, source_snapshots=source_snapshots, package_refs=package_refs)
         self.aptly.tasks.wait_for_task_by_id(task.id)
@@ -434,23 +434,25 @@ class Deb_aptly():
         repo = self.aptly.repos.create(local_name, default_distribution='bullseye', default_component='main')
         return repo
 
-    # upload a Debian package to a local repository
+    # Upload a bundle of Debian package files into a local repository.
+    # For source package, all its package files need to be uploaded in one
+    # function call, or, uploaded files will not be inserted into repository
+    # but just deleted.
     # Input:
-    #       pkg_name: the path-name of the deb file. If the file name
-    #                 contains "%3a", it will be replaced by ":".
+    #       pkg_files: the path-name of the package files. If the file name
+    #                  contains "%3a", it will be replaced by ":".
     #       repo_name: the name of the local repository
     # Output: Bool
-    def upload_pkg_local(self, pkg_name, repo_name):
-        '''Upload a file into a local repository.
-        Please note: here we say file, not package, for binary package, one single
-        file is a package; while for source package, it contains several files,
-        to upload a source package, you must upload all these files, or, you will
-        see nothing in the future, it will not been deployed but just disappeared.
-        '''
-        # sanity check: pkg_name can be read, repo_name exists and do be local
-        if not os.access(pkg_name, os.R_OK):
-            self.logger.warning('%s is NOT accessible to read.', pkg_name)
+    def upload_pkg_local(self, pkg_files, repo_name):
+        '''Upload a bundle of package files into a local repository.'''
+        # sanity check: every package file is readable, local repository exists
+        if not pkg_files:
+            self.logger.warning('pkg_files should not be empty!')
             return False
+        for pkg_file in set(pkg_files):
+            if not os.access(pkg_file, os.R_OK):
+                self.logger.warning('%s is NOT accessible to read.', pkg_file)
+                return False
         if not repo_name.startswith(PREFIX_LOCAL):
             self.logger.warning('%s is NOT a well formed name.', repo_name)
             return False
@@ -467,21 +469,32 @@ class Deb_aptly():
             self.logger.warning('repo %s does not exist, please create it first.', repo_name)
             return False
 
-        # For files with ":" in its filename, tools like 'apt' may replace it
-        # with '%3a' by mistake, this will cause error in aptly.
-        new_name = pkg_name.replace('%3a', ':')
-        os.rename(pkg_name, new_name)
-        # In corner cases the process been interrupted thus related file folders
-        # remained. Remove them firstly.
+        # If the process was interrupted, leaving behind a file folder,
+        # clean it up by removing it before we start.
         for file in self.aptly.files.list():
             self.aptly.files.delete(file)
-        # Upload package file into related file folder.
-        self.aptly.files.upload(repo_name, new_name)
+        for pkg_file in set(pkg_files):
+            # For files with ":" in its filename, tools like 'apt' may replace it
+            # with '%3a' by mistake, this will cause error in aptly.
+            if pkg_file.find('%3a') >= 0:
+                rename_file = pkg_file.replace('%3a', ':')
+                try:
+                    os.rename(pkg_file, rename_file)
+                except Exception as e:
+                    self.logger.error('Error: %s' % e)
+                    self.logger.error('Package file %s rename error.' % pkg_file)
+                    raise Exception('Package file %s rename error, upload failed.' % pkg_file)
+                else:
+                    # Upload package file into related file folder.
+                    self.aptly.files.upload(repo_name, rename_file)
+            else:
+                self.aptly.files.upload(repo_name, pkg_file)
+
         # Add uploaded file into local repository.
         task = self.aptly.repos.add_uploaded_file(repo_name, repo_name, remove_processed_files=True)
         self.aptly.tasks.wait_for_task_by_id(task.id)
         if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-            self.logger.warning('add_upload_file failed %s : %s : %s', new_name, repo_name, self.aptly.tasks.show(task.id).state)
+            self.logger.warning('add_upload_file failed %s : %s : %s', list(pkg_files)[0], repo_name, self.aptly.tasks.show(task.id).state)
         return True
 
     # Delete a Debian package from a local repository.
