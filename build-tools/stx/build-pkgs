@@ -264,11 +264,9 @@ class BuildController():
             'dsc_maker': {},
         }
         self.lists = {
-            'success': [],
-            'fail': [],
-            'build-needed': [],
             'uploaded': []
         }
+        self.build_types = []
         self.pkgs_digests = {}
         if not self.kits['repo_mgr']:
             rlogger = logging.getLogger('repo_manager')
@@ -289,8 +287,13 @@ class BuildController():
         build_types_to_init = ALL_BUILD_TYPES
         if build_types is not None:
             build_types_to_init = build_types
+        self.build_types = build_types_to_init
 
         for build_type in build_types_to_init:
+            self.lists['success_' + build_type] = []
+            self.lists['fail_' + build_type] = []
+            self.lists['build-needed_' + build_type] = []
+
             if not build_type in self.kits['dsc_cache']:
                 pkl_file = os.path.join(BUILD_ROOT, build_type, 'dsc.pkl')
                 self.kits['dsc_cache'][build_type] = dsccache.DscCache(logger, pkl_file)
@@ -392,7 +395,7 @@ class BuildController():
 
         return ret
 
-    def upload_with_deb(self, package, debs_dir):
+    def upload_with_deb(self, package, debs_dir, build_type):
         """
         upload the local build debian binaries to repo manager
         Params:
@@ -400,8 +403,12 @@ class BuildController():
             debs_dir: the directory to debian binaries
         """
         logger.debug(' '.join(['Remove all old version of debs for', package]))
-        debs_clue = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'),
-                                 'debs_entry.pkl')
+        if build_type == 'rt':
+            debs_clue = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'),
+                                     'debs_entry_rt.pkl')
+        else:
+            debs_clue = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'),
+                                     'debs_entry.pkl')
         subdebs = debsentry.get_subdebs(debs_clue, package, logger)
         if subdebs:
             for deb in subdebs:
@@ -502,7 +509,7 @@ class BuildController():
                                     'Finished at')
                 if 'success' in ret:
                     self.upload_with_deb(pkg_name, os.path.join(BUILD_ROOT,
-                                         build_type, pkg_name))
+                                         build_type, pkg_name), build_type)
                     self.req_kill_task('sbuild')
                     status = 'success'
         return status
@@ -555,7 +562,7 @@ class BuildController():
                 skip_build = True
 
         if self.attrs['avoid'] and skip_build:
-            self.lists['success'].append(pkg_dir)
+            self.lists['success_' + build_type].append(pkg_dir)
             logger.info(' '.join(['Skip build', pkg_name, 'again']))
             logger.info(' '.join(['Force to build, please use -c/--clean']))
             return []
@@ -593,6 +600,7 @@ class BuildController():
         deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, logger)
         build_counter = {}
         dscs_list = get_dsc_list_from_dict(pkgs_dsc)
+        logger.debug('There are %d packages to be built this round', len(dscs_list))
 
         while dscs_list:
             pkgs_can_build = deps_resolver.get_build_able_pkg(1)
@@ -603,28 +611,38 @@ class BuildController():
                 logger.info(' '.join(['Depends resolver tells to build',
                             os.path.basename(dsc_path)]))
                 pkg_dir = get_pkg_dir_from_dsc(pkgs_dsc, dsc_path)
+                if pkg_dir in self.lists['success_' + build_type]:
+                    logger.warning("Package %s has been built, wrong layer location? skip", pkg_dir)
+                    dscs_list.remove(dsc_path)
+                    continue
+
                 pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
                 status = self.req_add_task(pkg_dir, dsc_path, build_type=build_type)
-                if pkg_name in build_counter.keys():
-                    build_counter[pkg_name] += 1
+                if pkg_dir in build_counter.keys():
+                    build_counter[pkg_dir] += 1
                 else:
-                    build_counter[pkg_name] = 1
-                logger.debug("Attempting to build package %s for the %d time", pkg_name, build_counter[pkg_name])
+                    build_counter[pkg_dir] = 1
+                logger.debug("Attempting to build package %s for the %d time", pkg_dir, build_counter[pkg_dir])
 
                 if 'success' in status:
                     logger.info(' '.join(['Successfully built',
-                                          pkg_name]))
+                                          pkg_dir]))
                     deps_resolver.pkg_accomplish(dsc_path)
                     dscs_list.remove(dsc_path)
-                    self.lists['success'].append(pkg_dir)
+                    logger.info('Removed dsc %s from list after successfully build', dsc_path)
+                    self.lists['success_' + build_type].append(pkg_dir)
+                    logger.info('Added %s to success list success_%s', pkg_dir, build_type)
                     pkg_md5 = self.pkgs_digests[pkg_dir]
                     self.kits['dsc_cache'][build_type].set_package_digest(pkg_dir, pkg_md5)
                 else:
-                    self.lists['fail'].append(pkg_dir)
-                    if build_counter[pkg_name] >= MAX_PKG_BUILD_COUNT:
+                    self.lists['fail_' + build_type].append(pkg_dir)
+                    logger.error('Added %s to fail list fail_%s', pkg_dir, build_type)
+                    if build_counter[pkg_dir] >= MAX_PKG_BUILD_COUNT:
                         deps_resolver.pkg_accomplish(dsc_path)
+                        logger.warning('Notify depends resolver after %d attempts for %s', MAX_PKG_BUILD_COUNT, pkg_dir)
                         dscs_list.remove(dsc_path)
-                        logger.error("Failed to build package %s after %d attempts, giving up", pkg_name, build_counter[pkg_name])
+                        logger.info('Removed dsc %s from list after failed attempts', dsc_path)
+                        logger.error("Failed to build package %s after %d attempts, giving up", pkg_dir, build_counter[pkg_dir])
                         logger.info("For the detailed reasons, please check the logs:")
                         logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<failed package>/*.build\'")
                     else:
@@ -763,12 +781,13 @@ class BuildController():
     def build_packages(self, pkg_dirs, build_type=STX_DEFAULT_BUILD_TYPE):
         # remove duplication
         pkg_dirs = list(set(pkg_dirs))
-
         logger.debug(' '.join(['build_packages: Building: ', str(pkg_dirs)]))
 
         fdsc_file = None
         packages_dscs = {}
-        self.lists['build-needed'] = pkg_dirs
+        logger.debug('Length of build-needed_%s:%d before extending', build_type, len(self.lists['build-needed_' + build_type]))
+        self.lists['build-needed_' + build_type].extend(pkg_dirs)
+        logger.debug('Length of build-needed_%s:%d after extending', build_type, len(self.lists['build-needed_' + build_type]))
 
         build_dir = os.path.join(BUILD_ROOT, build_type)
         os.makedirs(build_dir, exist_ok=True)
@@ -817,34 +836,34 @@ class BuildController():
         packages want to build
         """
         ret_val = 0
-        logger.info("Total packages needing to be built: %d", len(self.lists['build-needed']))
-        success_list = list(set(self.lists['success']))
-        success_number = len(success_list)
-        if success_number > 0:
-            logger.info("Successfully built: %d", success_number)
-            for pkg_dir in sorted(success_list):
-                pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
-                logger.info(pkg_name)
+        for build_type in self.build_types:
+            logger.info("Total %s packages needing to be built: %d", build_type, len(self.lists['build-needed_' + build_type]))
+            success_list = list(set(self.lists['success_' + build_type]))
+            success_number = len(success_list)
+            if success_number > 0:
+                logger.info("Successfully built: %d", success_number)
+                for pkg_dir in sorted(success_list):
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
+                    logger.info(pkg_name)
 
-        # failed_pkg_dirs is the universal set of failed packages for various reasons
-        failed_pkg_dirs = list(set(self.lists['build-needed']) - set(self.lists['success']))
-        failed_number = len(failed_pkg_dirs)
-        if failed_number > 0:
-            ret_val = 1
-            logger.error("Failed to build: %d", failed_number)
-            for pkg_dir in sorted(failed_pkg_dirs):
-                pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
-                logger.error(pkg_name)
-            # self.lists['fail'] is the subset of failed_pkg_dirs
-            # particularly refer to those failed packages reported by pkgbuilder
-            if len(self.lists['fail']) > 0:
-                logger.info("List of failed packages:")
-                for pkg_dir in sorted(list(set(self.lists['fail']))):
+            failed_pkg_dirs = list(set(self.lists['build-needed_' + build_type]) - set(self.lists['success_' + build_type]))
+            failed_number = len(failed_pkg_dirs)
+            if failed_number > 0:
+                ret_val = 1
+                logger.error("Failed to build: %d", failed_number)
+                for pkg_dir in sorted(failed_pkg_dirs):
                     pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
                     logger.error(pkg_name)
-            logger.info("For the failure reason, you can check with:")
-            logger.info("\'cat /localdisk/builder.log | grep ERROR\' or")
-            logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<Failed package>/*.build\'")
+                # self.lists['fail'] is the subset of failed_pkg_dirs
+                # particularly refer to those failed packages reported by pkgbuilder
+                if len(self.lists['fail_' + build_type]) > 0:
+                    logger.info("List of failed packages:")
+                    for pkg_dir in sorted(list(set(self.lists['fail_' + build_type]))):
+                        pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
+                        logger.error(pkg_name)
+                logger.info("For the failure reason, you can check with:")
+                logger.info("\'cat /localdisk/builder.log | grep ERROR\' or")
+                logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<Failed package>/*.build\'")
         return ret_val
 
 
