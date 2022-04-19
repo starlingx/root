@@ -210,7 +210,11 @@ class Circular_dsc_order():
             self.logger.error('Circular group, %s is not in building stage' % pkg_name)
             return False
         self.building_index = -1
-        self.next_index -= 1
+        if -1 == self.next_index:
+            self.next_index = len(self.build_order) - 1
+        else:
+            self.next_index -= 1
+
         return True
 
     def get_state(self):
