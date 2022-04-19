@@ -629,9 +629,6 @@ class BuildController():
 
         for p in range(len(pkgs_dsc)):
             pkgs_can_build = deps_resolver.get_build_able_pkg(1)
-            if not pkgs_can_build:
-                logger.warning("Depends resolver returns none package")
-                return
             for dsc in pkgs_can_build:
                 logger.info(' '.join(['Depends resolver tells to build',
                             os.path.basename(dsc)]))
