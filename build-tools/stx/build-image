@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021 Wind River Systems,Inc
+# Copyright (C) 2021-2022 Wind River Systems,Inc
 
+import argparse
 import getopt
 import logging
 import os
@@ -25,12 +26,17 @@ import time
 import utils
 import yaml
 
+LAT_ROOT = '/localdisk/lat/'
 REPO_ALL = 'deb-merge-all'
 REPO_BINARY = 'deb-local-binary'
 REPO_BUILD = 'deb-local-build'
 DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
 PKG_LIST_DIR = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), DEB_CONFIG_DIR)
 img_pkgs = []
+kernel_type = 'std'
+stx_std_kernel = 'linux-image-5.10.0-6-amd64-unsigned'
+stx_rt_kernel =  'linux-rt-image-5.10.0-6-amd64-unsigned'
+
 
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
@@ -96,6 +102,77 @@ def update_ostree_osname(img_yaml):
         return False
 
     logger.debug(' '.join(['Update', img_yaml, 'to update the ostree_osname']))
+    return True
+
+
+def replace_in_yaml(dst_yaml, field, field_type, src_str, dst_str):
+    logger.debug("Start to replace %s in field %s of yaml %s", src_str, field, dst_yaml)
+
+    try:
+        with open(dst_yaml) as f:
+            main_doc = yaml.safe_load(f)
+    except Exception as e:
+        logger.error(str(e))
+        logger.error("Failed to open the yaml file %s", dst_yaml)
+        return False
+    else:
+        if field_type == 'yaml_string':
+            string_orig = main_doc[field]
+            if not string_orig:
+                logger.error("Failed to find the field %s", field)
+                return False
+            if not string_orig == src_str:
+                logger.error("Found field %s, but the value %s does not match target %s", field, string_orig, src_str)
+                return False
+            main_doc[field] = dst_str
+            logger.debug("Successfully updated the field %s with %s", field, dst_str)
+        elif field_type == 'yaml_list':
+            list_new = []
+            list_orig = main_doc[field]
+            if not list_orig:
+                logger.error("Failed to find the field %s", field)
+                return False
+            for item in list_orig:
+                list_new.append(item.replace(src_str, dst_str))
+            main_doc[field] = list_new
+            logger.debug("Successfully updated the value %s of field %s with %s", src_str, field, dst_str)
+
+        try:
+            with open(dst_yaml, 'w') as f:
+                yaml.safe_dump(main_doc, f, default_flow_style=False, sort_keys=False)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to write to %s", dst_yaml)
+            return False
+    logger.info("Successfully updated %s", dst_yaml)
+    return True
+
+
+def update_rt_kernel_in_main_yaml(main_yaml):
+    return replace_in_yaml(main_yaml, 'rootfs-pre-scripts', 'yaml_list', stx_std_kernel, stx_rt_kernel)
+
+
+def update_rt_kernel_in_initramfs_yaml(initramfs_yaml):
+    return replace_in_yaml(initramfs_yaml, 'packages', 'yaml_list', stx_std_kernel, stx_rt_kernel)
+
+
+def include_initramfs(img_yaml, ramfs_yaml_path):
+    if not os.path.exists(img_yaml):
+        logger.error("LAT yaml file %s does not exist", img_yaml)
+        return False
+    try:
+        with open(img_yaml) as f:
+            yaml_doc = yaml.safe_load(f)
+        yaml_doc['system'][0]['contains'][0] = ramfs_yaml_path
+
+        with open(img_yaml, 'w') as f:
+            yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        logger.error(str(e))
+        logger.error("Failed to add %s to %s", ramfs_yaml_path, img_yaml)
+        return False
+
+    logger.debug("Successfully included %s in %s", ramfs_yaml_path, img_yaml)
     return True
 
 
@@ -224,32 +301,17 @@ def verify_pkgs_in_repo(repomgr, repo_name, pkg_list_path):
         return failed_pkgs
 
 
-def usage():
-    print("")
-    print("Usage: build-image [-h:help][-t <std|rt>]")
-    print("")
-    sys.exit(1)
-
-
 if __name__ == "__main__":
 
-    build_type = 'std'
-    if len(sys.argv) > 1:
-        try:
-            opts, args = getopt.getopt(sys.argv[1:], 'ht:')
-            for opt, arg in opts:
-                if '-t' == opt:
-                    if arg not in ('std', 'rt'):
-                        logger.debug("%s is not a supported build type. " +
-                                     "Must be one of 'std' or 'rt'.", arg)
-                        usage()
-                    else:
-                        build_type = arg
-                else:
-                    usage()
-        except getopt.GetoptError as e:
-            logger.error(e.msg)
-            usage()
+    parser = argparse.ArgumentParser(description="build-image helper")
+    kernel_types = parser.add_mutually_exclusive_group()
+    kernel_types.add_argument('--std', help="build standard image",
+                              action='store_true')
+    kernel_types.add_argument('--rt', help="build rt image",
+                              action='store_true')
+    args = parser.parse_args()
+    if args.rt:
+        kernel_type = 'rt'
 
     rmg_logger = logging.getLogger('repo_manager')
     utils.set_logger(rmg_logger)
@@ -264,10 +326,10 @@ if __name__ == "__main__":
     base_bins_ready = check_base_os_binaries(repo_manager)
 
     logger.info("\nchecking STX binary packages ......")
-    stx_bins_ready = check_stx_binaries(repo_manager, build_type)
+    stx_bins_ready = check_stx_binaries(repo_manager, kernel_type)
 
     logger.info("\nchecking STX patched packages ......")
-    stx_patched_ready = check_stx_patched(repo_manager, build_type)
+    stx_patched_ready = check_stx_patched(repo_manager, kernel_type)
 
     if not base_bins_ready or not stx_bins_ready or not stx_patched_ready:
         logger.error("Fail to get prepared to build image")
@@ -275,24 +337,28 @@ if __name__ == "__main__":
 
     base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-bullseye.yaml')
     base_initramfs_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-initramfs-bullseye.yaml')
-    lat_yaml = "/localdisk/deploy/lat.yaml"
-    lat_initramfs_yaml = "/localdisk/deploy/lat-initramfs.yaml"
+    os.environ["WORKSPACE_DIR"] = LAT_ROOT
+    lat_root_type_dir = os.path.join(LAT_ROOT, kernel_type)
+    lat_yaml = os.path.join(lat_root_type_dir, "lat.yaml")
+    lat_initramfs_yaml = os.path.join(lat_root_type_dir, "lat-initramfs.yaml")
 
     for yaml_file in (base_yaml, base_initramfs_yaml):
         if not os.path.exists(yaml_file):
             logger.error(' '.join(['Base yaml file', yaml_file, 'does not exist']))
             sys.exit(1)
 
-    if not os.path.exists("/localdisk/deploy/"):
-        os.makedirs("/localdisk/deploy/")
+    if not os.path.exists(lat_root_type_dir):
+        os.makedirs(lat_root_type_dir)
 
     try:
         shutil.copyfile(base_yaml, lat_yaml)
         shutil.copyfile(base_initramfs_yaml, lat_initramfs_yaml)
     except IOError as e:
         logger.error(str(e))
-        logger.error('Fail to copy image yaml files to /localdisk/deploy')
+        logger.error('Failed to copy yaml files to %s/%s', LAT_ROOT, kernel_type)
         sys.exit(1)
+
+    include_initramfs(lat_yaml, lat_initramfs_yaml)
 
     if merge_local_repos(repo_manager):
         if update_debootstrap_mirror(lat_yaml):
@@ -309,17 +375,21 @@ if __name__ == "__main__":
 
     for yaml_file in (lat_yaml, lat_initramfs_yaml):
         if not feed_lat_src_repos(yaml_file, [binary_repo_url, build_repo_url]):
-            logger.error(' '.join(['Fail to set local repos to', yaml_file]))
+            logger.error(' '.join(['Failed to set local repos to', yaml_file]))
             sys.exit(1)
         else:
-            logger.info(' '.join(['success to set local repos to', yaml_file]))
+            logger.info(' '.join(['Successfully set local repos to', yaml_file]))
 
     update_ostree_osname(lat_yaml)
 
+    if kernel_type == 'rt':
+        update_rt_kernel_in_main_yaml(lat_yaml)
+        update_rt_kernel_in_initramfs_yaml(lat_initramfs_yaml)
+
     if add_lat_packages(lat_yaml, img_pkgs):
-        os.system("latc --file " + lat_yaml + " build")
+        os.system(' '.join(['latc --file=' + lat_yaml, '-t', kernel_type, 'build']))
         time.sleep(5)
-        lat_log = "/localdisk/log/log.appsdk"
+        lat_log = os.path.join(LAT_ROOT, kernel_type, "log/log.appsdk")
         time_to_wait = 5
         time_counter = 0
         while not os.path.exists(lat_log):
@@ -327,7 +397,11 @@ if __name__ == "__main__":
             time_counter += 1
             if time_counter > time_to_wait:
                 break
-        if os.path.exists(lat_log):
+        if not os.path.exists(lat_log):
+            logger.info('The wait for %s has timed out, please wait a moment,' % lat_log)
+            logger.info('then run: tail -f %s to check the process.' % lat_log)
+            sys.exit(1)
+        else:
             log_printer = subprocess.Popen("tail -f " + lat_log,
                                            stdout=subprocess.PIPE, shell=True,
                                            universal_newlines=True)
@@ -337,9 +411,9 @@ if __name__ == "__main__":
                 if line:
                     print(line)
                     if "ERROR: " in line:
-                        msg = 'build-image fail, check in /localdisk/log/'
+                        msg = 'Failed to build image, check the log file %s' % lat_log
                         logger.info(msg)
                         sys.exit(1)
                     if "DEBUG: Deploy ovmf.qcow2" in line:
-                        msg = 'build-image done, check in /localdisk/deploy/'
+                        msg = 'build-image done, check in %s/%s' %(LAT_ROOT, kernel_type)
                         sys.exit(0)
