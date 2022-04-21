@@ -36,6 +36,7 @@ CLEAN=no
 TAG_LATEST=no
 LATEST_TAG=latest
 HOST=${HOSTNAME}
+USE_DOCKER_CACHE=no
 declare -i MAX_ATTEMPTS=1
 
 function usage {
@@ -65,6 +66,9 @@ Options:
     --attempts:   Max attempts, in case of failure (default: 1)
     --config-file:Specify a path to a config file which will specify additional arguments to be passed into the command
 
+    --cache:      Allow docker to use cached filesystem layers when building
+                    CAUTION: this option may ignore locally-generated packages
+                             and is meant for debugging the build scripts.
 EOF
 }
 
@@ -114,7 +118,7 @@ function get_args_from_file {
     done <"$1"
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,hostname:,attempts:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -184,6 +188,10 @@ while true; do
             ;;
         --clean)
             CLEAN=yes
+            shift
+            ;;
+        --cache)
+            USE_DOCKER_CACHE=yes
             shift
             ;;
         --hostname)
@@ -358,7 +366,9 @@ if [ ! -z "$PROXY" ]; then
 fi
 
 # Don't use docker cache
-BUILD_ARGS+=("--no-cache")
+if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
+    BUILD_ARGS+=("--no-cache")
+fi
 
 BUILD_ARGS+=(--tag ${IMAGE_NAME} ${BUILDDIR})
 

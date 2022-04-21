@@ -36,6 +36,7 @@ BASE=
 WHEELS=
 WHEELS_PY2=
 CLEAN=no
+export USE_DOCKER_CACHE=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
@@ -79,6 +80,11 @@ Options:
                      can be specified with a comma-separated list, or with
                      multiple --skip arguments.
     --attempts:      Max attempts, in case of failure (default: 1)
+
+    --cache:         Allow docker to use filesystem cache when building
+                       CAUTION: this option may ignore locally-generated
+                                packages and is meant for debugging the build
+                                scripts.
 
 
 EOF
@@ -540,9 +546,14 @@ function build_image_loci {
     # Use patched docker file
     BUILD_ARGS+=(--file "${WORKDIR}/loci/Dockerfile.stx")
 
+    # Disable build cache
+    if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
+        BUILD_ARGS+=("--no-cache")
+    fi
+
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci --no-cache \
+    with_retries ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci \
         "${BUILD_ARGS[@]}" \
         --tag ${build_image_name}  2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -655,7 +666,7 @@ function build_image_docker {
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
     local -a BASE_BUILD_ARGS
-    BASE_BUILD_ARGS+=(${real_docker_context} --no-cache)
+    BASE_BUILD_ARGS+=(${real_docker_context})
     BASE_BUILD_ARGS+=(--file ${real_docker_file})
     BASE_BUILD_ARGS+=(--build-arg "BASE=${BASE}")
     if [ ! -z "$HTTP_PROXY" ]; then
@@ -668,6 +679,10 @@ function build_image_docker {
 
     if [ ! -z "$NO_PROXY" ]; then
         BASE_BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
+    fi
+
+    if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
+        BASE_BUILD_ARGS+=("--no-cache")
     fi
 
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
@@ -784,7 +799,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o hN -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,attempts:,no-pull-base -- "$@")
+OPTS=$(getopt -o hN -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -862,6 +877,10 @@ while true; do
             ;;
         --clean)
             CLEAN=yes
+            shift
+            ;;
+        --cache)
+            USE_DOCKER_CACHE=yes
             shift
             ;;
         --only)
