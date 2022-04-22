@@ -27,6 +27,7 @@ BUILD_STREAM=stable
 HTTP_PROXY=""
 HTTPS_PROXY=""
 NO_PROXY=""
+USE_DOCKER_CACHE=no
 : ${PYTHON3:=python3}
 declare -i MAX_ATTEMPTS=1
 
@@ -46,10 +47,15 @@ Options:
     --stream:         Build stream, stable or dev (default: stable)
     --attempts:       Max attempts, in case of failure (default: 1)
 
+    --cache:          Allow docker to use filesystem cache when building
+                        CAUTION: this option may ignore locally-generated
+                                 packages and is meant for debugging the build
+                                 scripts.
+
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts:,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -103,6 +109,10 @@ while true; do
         --attempts)
             MAX_ATTEMPTS=$2
             shift 2
+            ;;
+        --cache)
+            USE_DOCKER_CACHE=yes
+            shift
             ;;
         -h | --help )
             usage
@@ -297,13 +307,13 @@ mkdir -p "${DOCKER_BUILD_PATH}"
 # Replace "@...@" vars in apt/*.in files
 if [[ "${OS}" == "debian" ]] ; then
     (
-        # REPOMGR_DEPLOY_URL must be defined in the environment and refer
-        # to the k8s repomgr service. It is normally defined by the helm
-        # chart of STX tools.
-        if [[ -z "$REPOMGR_DEPLOY_URL" ]] ; then
-            echo "REPOMGR_DEPLOY_URL must be defined in the environment!" >&2
-            exit 1
-        fi
+        # These are normally defined by the helm chart of stx tools
+        for var in REPOMGR_DEPLOY_URL DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION ; do
+            if [[ -z "${!var}" ]] ; then
+                echo "$var must be defined in the environment!" >&2
+                exit 1
+            fi
+        done
 
         # Make sure pyhon3 exists
         $PYTHON3 --version >/dev/null || exit 1
@@ -325,8 +335,11 @@ print (urlparse (sys.argv[1]).hostname)
         count=0
         for src in "${DOCKER_BUILD_PATH}/${OS}/apt"/*.in ; do
             dst="${src%.in}"
-            sed -e "s#@REPOMGR_URL@#$REPOMGR_DEPLOY_URL#g" \
+            sed -e "s#@REPOMGR_DEPLOY_URL@#$REPOMGR_DEPLOY_URL#g" \
                 -e "s#@REPOMGR_HOST@#$REPOMGR_HOST#g" \
+                -e "s#@DEBIAN_SNAPSHOT@#$DEBIAN_SNAPSHOT#g" \
+                -e "s#@DEBIAN_SECURITY_SNAPSHOT@#$DEBIAN_SECURITY_SNAPSHOT#g" \
+                -e "s#@DEBIAN_DISTRIBUTION@#$DEBIAN_DISTRIBUTION#g" \
                 "$src" >"$dst" || exit 1
             let ++count
         done
@@ -355,6 +368,10 @@ fi
 
 if [ ! -z "$NO_PROXY" ]; then
     BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
+fi
+
+if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
+    BUILD_ARGS+=("--no-cache")
 fi
 
 BUILD_ARGS+=(-t ${BUILD_IMAGE_NAME})

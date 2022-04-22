@@ -1,16 +1,39 @@
-ARG RELEASE=11.3
+# Start with an the old-ish bullseye release (11.2), then upgrade --
+# to make sure packages that come pre-installed in the debian:XXX image
+# are older than anything in StarlingX.
+ARG RELEASE=11.2
 FROM debian:${RELEASE}
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 ARG BUILD_STREAM=stable
 
-# Install apt repos
-RUN mv /etc/apt/sources.list /etc/apt/sources.list.d/debian.list
-COPY debian/apt/sources.list /etc/apt/sources.list.d/stx.list
-COPY debian/apt/preferences /etc/apt/preferences.d/stx
+# Install latest ca-certificates
+RUN apt-get -y update && \
+    apt-get -y --no-install-recommends --no-install-suggests install ca-certificates
 
-# FIXME: disable upstream bullseye repo. Requires all dependent packages
+# Disable upstream debian repos
+RUN mv /etc/apt/sources.list /etc/apt/sources.list.disabled
+
+# Install apt repos
+COPY debian/apt/debian.sources.list /etc/apt/sources.list.d/debian.list
+COPY debian/apt/stx.sources.list /etc/apt/sources.list.d/stx.list
+COPY debian/apt/stx.preferences /etc/apt/preferences.d/stx
+
+# Clean apt cache
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Upgrade base packages to versions in the managed repos
+RUN mv /etc/apt/sources.list.d/debian.list /etc/apt/sources.list.d/debian.list.disabled && \
+    apt-get -y update && \
+    apt-get -y upgrade && \
+    mv /etc/apt/sources.list.d/debian.list.disabled /etc/apt/sources.list.d/debian.list && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# FIXME: disable vanilla bullseye repo. Requires all dependent packages
 # referenced by apt-get to be added to stx-tools .lst file(s). Otherwise
 # we get a "random" set of packages, some from upstream, some from STX.
+# We may also get package conflicts between vanilla debian & STX repos.
 
 # FIXME: there's no ussuri/bullseye port, best we can do is "victoria" or more recent
 #RUN set -ex ; \
@@ -24,7 +47,6 @@ RUN set -ex ; \
     apt-get -y update ; \
     apt-get -y --no-install-recommends --no-install-suggests install \
         bzip2 \
-        ca-certificates \
         g++ \
         gcc \
         git \

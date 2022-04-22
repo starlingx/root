@@ -31,6 +31,7 @@ KEEP_IMAGE=no
 DOCKER_USER=${USER}
 declare -i MAX_ATTEMPTS=1
 PYTHON2=no
+USE_DOCKER_CACHE=no
 
 # Requirement/constraint URLs -- these will be read from openstack.cfg
 STABLE_OPENSTACK_REQ_URL=
@@ -75,10 +76,14 @@ Options:
     --python2:    Build a python2 tarball
     --keep-image: Don't delete wheel builder image at the end
 
+    --cache:      Allow docker to use filesystem cache when building
+                    CAUTION: this option may ignore locally-generated
+                             packages and is meant for debugging the build
+                             scripts.
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2,keep-image -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2,keep-image,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -149,6 +154,10 @@ while true; do
             KEEP_IMAGE=yes
             shift
             ;;
+        --cache)
+            USE_DOCKER_CACHE=yes
+            shift
+            ;;
         -h | --help )
             usage
             exit 1
@@ -212,6 +221,10 @@ fi
 
 if [ "$KEEP_IMAGE" = "yes" ]; then
     BUILD_BASE_WL_ARGS+=(--keep-image)
+fi
+
+if [[ "$USE_DOCKER_CACHE" == "yes" ]] ; then
+    BUILD_BASE_WL_ARGS+=(--cache)
 fi
 
 ${MY_SCRIPT_DIR}/build-base-wheels.sh ${BUILD_BASE_WL_ARGS[@]} --attempts ${MAX_ATTEMPTS}

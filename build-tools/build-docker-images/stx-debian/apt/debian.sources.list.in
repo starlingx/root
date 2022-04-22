@@ -1,0 +1,2 @@
+deb [check-valid-until=0] @DEBIAN_SNAPSHOT@ @DEBIAN_DISTRIBUTION@ main
+deb [check-valid-until=0] @DEBIAN_SECURITY_SNAPSHOT@ @DEBIAN_DISTRIBUTION@-security main

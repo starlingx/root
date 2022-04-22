@@ -238,7 +238,8 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
-SRC_DOCKERFILE=${MY_SCRIPT_DIR}/stx-${OS}/Dockerfile.${BUILD_STREAM}
+SRC_DOCKER_DIR="${MY_SCRIPT_DIR}/stx-${OS}"
+SRC_DOCKERFILE="${SRC_DOCKER_DIR}"/Dockerfile.${BUILD_STREAM}
 if [[ -z "$OS_VERSION" ]]; then
     OS_VERSION=$(
         sed -n -r 's/^\s*ARG\s+RELEASE\s*=\s*([^ \t#]+).*/\1/ip' $SRC_DOCKERFILE | head -n 1
@@ -275,14 +276,8 @@ if [ ${#REPO_LIST[@]} -eq 0 ]; then
         if [[ "$OS" == "centos" ]] ; then
             REPO_LIST+=("local-std,http://${HOST}:8088${MY_WORKSPACE}/std/rpmbuild/RPMS")
             REPO_LIST+=("stx-distro,http://${HOST}:8089${MY_REPO}/cgcs-${OS}-repo/Binary")
-        else
-            if [[ -z "$REPOMGR_DEPLOY_URL" ]] ; then
-                echo "Required env variable REPOMGR_DEPLOY_URL is not defined!" >&2
-                exit 1
-            fi
-            REPO_LIST+=("deb [trusted=yes] $REPOMGR_DEPLOY_URL/deb-local-binary bullseye main")
-            REPO_LIST+=("deb [trusted=yes] $REPOMGR_DEPLOY_URL/deb-local-build bullseye main")
         fi
+        # debian is handled down below
     elif [ "${BUILD_STREAM}" != "dev" -a "${BUILD_STREAM}" != "master" ]; then
         echo "Either --local or --repo must be specified" >&2
         exit 1
@@ -336,11 +331,53 @@ EOF
         REPO_OPTS="${REPO_OPTS} --enablerepo=${repo_name}"
     done
 else
-    STX_APT_SOURCES_FILE=${BUILDDIR}/stx.apt.sources.list
-    rm -f "$STX_APT_SOURCES_FILE"
-    for repo in "${REPO_LIST[@]}" ; do
-        echo "$repo" >>"$STX_APT_SOURCES_FILE"
+
+    # These env vars must be defined in debian builder pods
+    for var in DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION REPOMGR_DEPLOY_URL ; do
+        if [[ -z "${!var}" ]] ; then
+            echo "$var must be defined in the environment!" >&2
+            exit 1
+        fi
     done
+    unset var
+
+    # Replace "@...@" tokens in apt template files
+    function replace_vars {
+        sed -e "s!@DEBIAN_SNAPSHOT@!${DEBIAN_SNAPSHOT}!g" \
+            -e "s!@DEBIAN_SECURITY_SNAPSHOT@!${DEBIAN_SECURITY_SNAPSHOT}!g" \
+            -e "s!@DEBIAN_DISTRIBUTION@!${DEBIAN_DISTRIBUTION}!g" \
+            -e "s!@REPOMGR_DEPLOY_URL@!${REPOMGR_DEPLOY_URL}!g" \
+            -e "s!@REPOMGR_HOST@!${REPOMGR_HOST}!g" \
+            "$@"
+    }
+
+    # create apt/ files for the docker file
+    mkdir -p "${BUILDDIR}/apt"
+
+    # debian.sources.list
+    replace_vars "${SRC_DOCKER_DIR}/apt/debian.sources.list.in" >"${BUILDDIR}/apt/debian.sources.list"
+
+    # stx.sources: if user provided any --repo's use them instead of the template
+    if [[ "${#REPO_LIST[@]}" -gt 0 ]] ; then
+        rm -f "${BUILDDIR}/apt/stx.sources.list"
+        for repo in "${REPO_LIST[@]}" ; do
+            echo "$repo" >>"${BUILDDIR}/apt/stx.sources.list"
+        done
+        unset repo
+    # otherwise use the template file
+    else
+        replace_vars "${SRC_DOCKER_DIR}/apt/stx.sources.list.in" >"${BUILDDIR}/apt/stx.sources.list"
+    fi
+
+    # preferences: instantiate template once for every host in stx.sources.list
+    unique_hosts=$(\grep -v -E '^\s*(#.*)?$' "${BUILDDIR}/apt/stx.sources.list" | sed -n -r 's#.*(https?|ftp)://([^/:[:space:]]+).*#\2#p' | sort -u)
+    echo -n >"${BUILDDIR}/apt/stx.preferences"
+    for host in $unique_hosts ; do
+        REPOMGR_HOST="$host" replace_vars "${SRC_DOCKER_DIR}/apt/stx.preferences.part.in" >>"${BUILDDIR}/apt/stx.preferences"
+        echo >>"${BUILDDIR}/apt/stx.preferences"
+    done
+    unset host unique_hosts
+    unset -f replace_vars
 fi
 
 # Check to see if the OS image is already pulled
