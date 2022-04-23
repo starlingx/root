@@ -259,38 +259,38 @@ class DebDownloader(BaseDownloader):
                     sys.exit(1)
                 # strip epoch
                 pkg_ver = pkg_name_array[1].split(":")[-1]
-                # current default arch is 'amd64'
-                pname_arch = '_'.join([pkg_name, pkg_ver, self.arch]) + '.deb'
-                pname_all = '_'.join([pkg_name, pkg_ver, 'all']) + '.deb'
+                try:
+                    package = self.apt_cache[pkg_name]
+                except Exception as e:
+                    logger.error(str(e))
+                    sys.exit(1)
+                arch = package.candidate.architecture
+                pname_arch = '_'.join([pkg_name, pkg_ver, arch]) + '.deb'
                 self.dl_need.append(pkg_name + '_' + pkg_ver)
 
                 if self.downloaded and pname_arch in self.downloaded:
                     logger.debug(''.join([pkg_name, '_', pkg_ver,
                                          ' has been downloaded, skip']))
                     self.dl_success.append(pkg_name + '_' + pkg_ver)
-                    self.need_upload.append(pname_arch)
+                    self.need_upload.append([pname_arch, pkg_name_array[1]])
                 else:
-                    if self.downloaded and pname_all in self.downloaded:
-                        logger.debug(''.join([pkg_name, '_', pkg_ver,
-                                     ' has been downloaded, skip']))
-                        self.need_upload.append(pname_all)
-                        self.dl_success.append(pkg_name + '_' + pkg_ver)
-                    else:
-                        # Tests show that the 'epoch' should be taken when
-                        # fetch the package with 'apt' module, there is not 'epoch'
-                        # in the dowloaded package name. This also requires the 'epoch'
-                        # should be defined in the package list file with ':'
-                        self.need_download.append(pkg_name + '_' + pkg_name_array[1])
+                    # Tests show that the 'epoch' should be taken when
+                    # fetch the package with 'apt' module, there is not 'epoch'
+                    # in the dowloaded package name. This also requires the 'epoch'
+                    # should be defined in the package list file with ':'
+                    self.need_download.append(pkg_name + '_' + pkg_name_array[1])
 
         previously_uploaded = self.repomgr.list_pkgs(REPO_BIN)
         logger.info(' '.join(['previously_uploaded', str(previously_uploaded)]))
-        for deb in self.need_upload:
+        for debs in self.need_upload:
+            deb = debs[0]
+            fver = debs[1]
             if previously_uploaded and deb in previously_uploaded:
                 logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
                                       'has already been uploaded to', REPO_BIN, ', skip']))
                 continue
             name, ver, arch = deb.split('_')
-            if not self.repomgr.search_pkg(REPO_BIN, name, ver, True):
+            if not self.repomgr.search_pkg(REPO_BIN, name, fver, True):
                 if name and ver:
                     logger.debug('Package %s-%s not found in %s', name, ver, REPO_BIN)
                 if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb)):
