@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021 Wind River Systems,Inc
+# Copyright (C) 2021-2022 Wind River Systems,Inc
 
 import argparse
 import debrepack
@@ -303,8 +303,11 @@ class BuildController():
 
             if not build_type in self.kits['dsc_maker']:
                 try:
-                    self.kits['dsc_maker'][build_type] = debrepack.Parser(build_dir,
-                                                                          recipes_dir, 'debug')
+                    if build_type == 'rt':
+                        self.kits['dsc_maker'][build_type] = debrepack.Parser(build_dir, recipes_dir,
+                                                                              'debug', None, 'rt')
+                    else:
+                        self.kits['dsc_maker'][build_type] = debrepack.Parser(build_dir, recipes_dir, 'debug')
                 except Exception as e:
                     logger.error(str(e))
                     logger.error("Failed to create dsc maker")
