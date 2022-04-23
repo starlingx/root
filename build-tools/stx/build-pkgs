@@ -584,6 +584,9 @@ class BuildController():
 
         for p in range(len(pkgs_dsc)):
             pkgs_can_build = deps_resolver.get_build_able_pkg(1)
+            if not pkgs_can_build:
+                logger.warning("Depends resolver returns none")
+                return
             for dsc_path in pkgs_can_build:
                 logger.info(' '.join(['Depends resolver tells to build',
                             os.path.basename(dsc_path)]))
@@ -600,6 +603,7 @@ class BuildController():
                 else:
                     logger.info(' '.join(['Failed to build', pkg_name, str(p)]))
                     self.lists['fail'].append(pkg_dir)
+                    deps_resolver.pkg_fail(dsc_path)
                     self.req_stop_task()
                     if self.attrs['exit_on_fail']:
                         return
@@ -809,7 +813,7 @@ class BuildController():
             # particularly refer to those failed packages reported by pkgbuilder
             if len(self.lists['fail']) > 0:
                 logger.info("List of failed packages:")
-                for pkg_dir in sorted(self.lists['fail']):
+                for pkg_dir in sorted(list(set(self.lists['fail']))):
                     pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
                     logger.error(pkg_name)
             logger.info("For the failure reason, you can check with:")
