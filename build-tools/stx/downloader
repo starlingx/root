@@ -266,13 +266,14 @@ class DebDownloader(BaseDownloader):
                     sys.exit(1)
                 arch = package.candidate.architecture
                 pname_arch = '_'.join([pkg_name, pkg_ver, arch]) + '.deb'
+                pname_epoch_arch = '_'.join([pkg_name, pkg_name_array[1], arch]) + '.deb'
                 self.dl_need.append(pkg_name + '_' + pkg_ver)
 
                 if self.downloaded and pname_arch in self.downloaded:
                     logger.debug(''.join([pkg_name, '_', pkg_ver,
                                          ' has been downloaded, skip']))
                     self.dl_success.append(pkg_name + '_' + pkg_ver)
-                    self.need_upload.append([pname_arch, pkg_name_array[1]])
+                    self.need_upload.append([pname_arch, pname_epoch_arch])
                 else:
                     # Tests show that the 'epoch' should be taken when
                     # fetch the package with 'apt' module, there is not 'epoch'
@@ -284,21 +285,19 @@ class DebDownloader(BaseDownloader):
         logger.info(' '.join(['previously_uploaded', str(previously_uploaded)]))
         for debs in self.need_upload:
             deb = debs[0]
-            fver = debs[1]
-            if previously_uploaded and deb in previously_uploaded:
+            deb_fver = debs[1]
+            #  Search the package with the "eopch" in aptly repo
+            if previously_uploaded and deb_fver in previously_uploaded:
                 logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
                                       'has already been uploaded to', REPO_BIN, ', skip']))
                 continue
-            name, ver, arch = deb.split('_')
-            if not self.repomgr.search_pkg(REPO_BIN, name, fver, True):
-                if name and ver:
-                    logger.debug('Package %s-%s not found in %s', name, ver, REPO_BIN)
-                if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb)):
-                    logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
-                                          'is uploaded to', REPO_BIN]))
-                else:
-                    logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
-                                          'fail to uploaded to', REPO_BIN]))
+            if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb)):
+                logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
+                                      'is uploaded to', REPO_BIN]))
+            else:
+                logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
+                                      'fail to uploaded to', REPO_BIN]))
+        self.need_upload.clear()
         for deb in self.need_download:
             logger.debug(' '.join(['package', deb, 'needs to be downloaded']))
             debnames = deb.split('_')
@@ -314,6 +313,7 @@ class DebDownloader(BaseDownloader):
                     logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', REPO_BIN]))
             else:
                 self.dl_failed.append(deb)
+        self.need_download.clear()
 
     def start(self):
         """Here define:
