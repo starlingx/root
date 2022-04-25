@@ -811,11 +811,11 @@ class BuildController():
                 if self.kits['repo_mgr']:
                     self.upload_with_dsc(pkg_name, dsc_file, REPO_SOURCE)
             elif deb_recipes is None:
-                if self.attrs['exit_on_fail']:
-                    if fdsc_file:
-                        fdsc_file.close()
-                    return
-                continue
+                # Exit if fails to create dsc file
+                if fdsc_file:
+                    fdsc_file.close()
+                logger.error("Failed to create needed dsc file, exit")
+                return
             else:
                 # Empty set indicates the package is unchanged
                 continue
