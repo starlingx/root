@@ -96,3 +96,7 @@ images:
     src_build_tag: master-centos-stable-20210827T163225Z.0
     src_ref: https://opendev.org/starlingx/audit-armada-app/commit/b486699ea96974efc08a8b858d70e66a9710029a
     tag: stx.6.0-v1.0.3
+  - name: docker.io/starlingx/stx-centos-tools-dev
+    src_build_tag: master-centos-stable-20220426T024116Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/0f2593ccdfbbdf657a13a2319f3827abac85c4d7
+    tag: stx.7.0-v1.0.0
