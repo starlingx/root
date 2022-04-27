@@ -1,2 +1,0 @@
-deb [trusted=yes] @REPOMGR_URL@/deb-local-binary bullseye main
-deb [trusted=yes] @REPOMGR_URL@/deb-local-build bullseye main

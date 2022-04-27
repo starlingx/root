@@ -1,10 +1,33 @@
-# Expected build arguments:
-#   RELEASE: debian release
-#
-ARG RELEASE=11.3
+# Start with an the old-ish bullseye release (11.2), then upgrade --
+# to make sure packages that come pre-installed in the debian:XXX image
+# are older than anything in StarlingX.
+ARG RELEASE=11.2
 FROM debian:${RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Install latest ca-certificates
+RUN apt-get -y update && \
+    apt-get -y --no-install-recommends --no-install-suggests install ca-certificates
+
+# Disable upstream debian repos
+RUN mv /etc/apt/sources.list /etc/apt/sources.list.disabled
+
+# Install apt repos
+COPY apt/debian.sources.list /etc/apt/sources.list.d/debian.list.disabled
+COPY apt/stx.sources.list /etc/apt/sources.list.d/stx.list.disabled
+COPY apt/stx.preferences /etc/apt/preferences.d/stx
+
+# Enable stx repo
+RUN cp /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list
+
+# Clean apt cache
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Upgrade base packages to versions in the managed repos
+RUN apt-get -y update && \
+    apt-get -y upgrade && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # repo templates:
 #   /etc/apt/sources.list.d/
@@ -25,11 +48,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Enabling the upstream repos ("debian.list") is dangerous because it
 # may conflict with packages in stx.list.
 #
-COPY stx.apt.sources.list /etc/apt/sources.list.d/stx.list.disabled
-RUN mv /etc/apt/sources.list /etc/apt/sources.list.d/debian.list.disabled
 
-RUN cp -f /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list && \
-    apt-get update -y && \
+RUN apt-get update -y && \
     apt-get upgrade -y && \
     apt-get install -y \
 # FIXME: uncomment once qemu is ported to debian (starlingx/integ)
