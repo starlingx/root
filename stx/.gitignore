@@ -9,6 +9,7 @@ installer-prebuilt
 /ansible-playbooks
 /app-kubevirt/
 /app-istio
+/app-oran-o2
 /app-security-profiles-operator
 /app-sriov-fec-operator
 /app-sts-silicom/
