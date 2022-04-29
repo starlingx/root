@@ -449,6 +449,18 @@ function init_output_dir {
    echo ""
 }
 
+function package_content_checksum {
+    local p=$1
+    local md5
+    local r
+    r=$(basename $p)
+    md5=$( ( rpm2cpio $p;
+             rpm -q --info -p $p;
+             rpm -q --dump -p $p;
+             rpm -q --scripts -p $p ) | md5sum | cut -d ' ' -f 1)
+    echo "$r $md5"
+}
+
 function final_touches {
    OLD_PWD=$PWD
 
@@ -480,7 +492,13 @@ function final_touches {
    # create the repo
    \cd $OUTPUT_DIST_DIR/isolinux
    $CREATEREPO -q -g ../comps.xml .
- 
+
+   # Create package_checksums
+   printf "creating package_checksums file\n"
+   for r in $(ls Packages/*rpm); do
+      package_content_checksum $r
+   done > package_checksums
+
    # build the ISO
    printf "Building image $OUTPUT_FILE\n"
    \cd $OUTPUT_DIST_DIR
