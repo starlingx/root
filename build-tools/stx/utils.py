@@ -17,12 +17,19 @@
 import logging
 import os
 
+log_levels = {
+    'debug': logging.DEBUG,
+    'info': logging.INFO,
+    'warning': logging.WARNING,
+    'error': logging.ERROR,
+    'crit': logging.CRITICAL
+}
 
-def set_logger(logger):
-    logger.setLevel(logging.DEBUG)
+def set_logger(logger, log_level='debug'):
+    logger.setLevel(log_levels[log_level])
 
     class ColorFormatter(logging.Formatter):
-        FORMAT = ("$BOLD%(name)-s$RESET - %(levelname)s: %(message)s")
+        FORMAT = ("%(asctime)s - $BOLD%(name)-s$RESET - %(levelname)s: %(message)s")
 
         BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = list(range(8))
 
@@ -58,16 +65,17 @@ def set_logger(logger):
                 record.levelname = lncolor
             return logging.Formatter.format(self, record)
 
-    # create console handler and set level to debug
+    # create log and console handler and set level
+    fh = logging.FileHandler('/localdisk/builder.log')
+    fh.setLevel(log_levels[log_level])
+    fh.setFormatter(ColorFormatter(use_color=False))
+    logger.addHandler(fh)
+
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(log_levels[log_level])
     ch.setFormatter(ColorFormatter())
     logger.addHandler(ch)
 
-    fh = logging.FileHandler('/localdisk/builder.log')
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(ColorFormatter())
-    logger.addHandler(fh)
     logger.propagate = 0
 
 
