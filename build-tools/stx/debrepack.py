@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import sys
+import utils
 import urllib.parse
 import urllib.request
 import yaml
@@ -228,22 +229,11 @@ def is_git_repo(path):
 
 
 class Parser():
-    level_relations = {
-        'debug': logging.DEBUG,
-        'info': logging.INFO,
-        'warning': logging.WARNING,
-        'error': logging.ERROR,
-        'crit': logging.CRITICAL
-    }
 
-    def __init__(self, basedir, output, loglevel='info', srcrepo=None, btype="std"):
+    def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std"):
 
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(self.level_relations.get(loglevel))
-        formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-        console = logging.StreamHandler(sys.stdout)
-        console.setFormatter(formatter)
-        self.logger.addHandler(console)
+        utils.set_logger(self.logger, log_level=log_level)
 
         self.strategy = "cengn_first"
         if CENGN_STRATEGY is not None:

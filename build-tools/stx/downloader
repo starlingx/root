@@ -343,7 +343,7 @@ class SrcDownloader(BaseDownloader):
         if not self.parser:
             try:
                 self.parser = debrepack.Parser(build_dir,
-                                               recipes_dir, 'debug')
+                                               recipes_dir, log_level='debug')
             except Exception as e:
                 logger.error(str(e))
                 logger.error("Failed to create debrepack parser")
