@@ -10,7 +10,8 @@
 #
 
 BUILD_HELM_CHARTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $BUILD_HELM_CHARTS_DIR/srpm-utils
+source $BUILD_HELM_CHARTS_DIR/srpm-utils || exit 1
+source $BUILD_HELM_CHARTS_DIR/utils.sh || exit 1
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -25,17 +26,17 @@ APP_NAME="stx-openstack"
 APP_VERSION_BASE="helm-charts-release-info.inc"
 APP_VERSION_FILE=""
 APP_VERSION=""
-APP_RPM_VERSION=""
 declare -a IMAGE_RECORDS
 declare -a PATCH_DEPENDENCIES
-declare -a APP_HELM_FILES
-declare -a APP_RPMS
+declare -a APP_PACKAGES
+declare -a CHART_PACKAGE_FILES
 
 function usage {
     cat >&2 <<EOF
 Usage:
 $(basename $0) [--os <os>] [-a, --app <app-name>]
                [-A, --app-version-file /path/to/$APP_VERSION_BASE]
+               [-B, --app-version <version>]
                [-r, --rpm <rpm-name>] [-i, --image-record <image-record>] [--label <label>]
                [-p, --patch-dependency <patch-dependency>] [ --verbose ]
 Options:
@@ -50,6 +51,10 @@ Options:
             charts. By default we will search for a file named
             $APP_VERSION_BASE in all git repos.
 
+    -B,--app-version:
+            Specify application (tarball) version, this overrides any other
+            version information.
+
     -r, --rpm:
             Specify the application rpms
 
@@ -63,7 +68,7 @@ Options:
 
     -l, --label:
             Specify the label of the application tarball. The label
-            is used to construct the name of tarball.
+            will be appended to the version string in tarball name.
 
     -p, --patch-dependency:
             Specify the patch dependency of the application tarball.
@@ -157,100 +162,6 @@ function build_image_versions_to_manifest {
         fi
         \mv -f ${manifest_file}.tmp ${manifest_file}
     done
-}
-
-function find_chartfile {
-    local helm_rpm_name=$1
-    local helm_rpm=""
-    local rpm_name=""
-    local rpms_dir=""
-
-    for helm_rpm in $(
-        # Generate a list of rpms that seem like a good match
-        for rpms_dir in ${RPMS_DIRS}; do
-            if [ -d ${rpms_dir} ]; then
-                find ${rpms_dir} -name "${helm_rpm_name}${FIND_GLOB}"
-            fi
-        done ); do
-
-        # Verify the rpm name
-        rpm_name=$(rpm_get_name ${helm_rpm})
-        if [ "${rpm_name}" == "${helm_rpm_name}" ]; then
-            echo ${helm_rpm}
-            return 0
-        fi
-    done
-
-    # no match found
-    return 1
-}
-
-# Extract the helm charts from a rpm
-function extract_chartfile {
-    local helm_rpm=$1
-
-    case $OS in
-        centos)
-            # Bash globbing does not handle [^-] like regex
-            # so grep needed to be used
-            chartfile=$(find_chartfile ${helm_rpm})
-            if [ -z ${chartfile} ] || [ ! -f ${chartfile} ]; then
-                echo "Failed to find helm package: ${helm_rpm}" >&2
-                exit 1
-            else
-                rpm2cpio ${chartfile} | cpio ${CPIO_FLAGS}
-                if [ ${PIPESTATUS[0]} -ne 0 -o ${PIPESTATUS[1]} -ne 0 ]; then
-                    echo "Failed to extract content of helm package: ${chartfile}" >&2
-                    exit 1
-                fi
-            fi
-
-            ;;
-        *)
-            echo "Unsupported OS ${OS}" >&2
-            ;;
-    esac
-}
-
-# Extract the helm charts and information from the application rpm
-function extract_application_rpm {
-    local helm_rpm=$1
-    extract_chartfile ${helm_rpm}
-
-    if [[ -z "$APP_VERSION" ]] ; then
-        APP_RPM_VERSION=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' ${chartfile} | sed 's/\.tis//')
-        if [ -z "${APP_RPM_VERSION}" ]; then
-            echo "Failed to get the application version" >&2
-            exit 1
-        fi
-    fi
-
-    helm_files=$(rpm -qpR ${chartfile})
-    if [ $? -ne 0 ]; then
-        echo "Failed to get the helm rpm dependencies for ${helm_rpm}" >&2
-        exit 1
-    fi
-
-    # Get rid of the rpmlib dependencies
-    APP_HELM_FILES+=($(echo ${helm_files} | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g'))
-}
-
-function extract_application_rpms {
-    if [ ${#APP_RPMS[@]} -gt 0 ]; then
-        for app_rpm in ${APP_RPMS[@]}; do
-            extract_application_rpm ${app_rpm}
-        done
-    else
-        extract_application_rpm "${APP_NAME}-helm"
-    fi
-    if [[ -z "$APP_VERSION" ]] ; then
-        if [[ -z "$APP_RPM_VERSION" ]] ; then
-            echo "Failed to determine application version" >&2
-            exit 1
-        fi
-        APP_VERSION="$APP_RPM_VERSION"
-    fi
-    echo "APP_VERSION=$APP_VERSION" >&2
 }
 
 function build_application_tarball {
@@ -433,8 +344,214 @@ function find_app_version_file {
     return 0
 }
 
+#
+# Usage:
+#    find_package_files
+#
+# Print noarch package files that might contain helm charts
+#
+function find_package_files {
+    if [[ "$OS" == "centos" ]] ; then
+        local centos_repo="${MY_REPO}/centos-repo"
+        if [[ ! -d "${centos_repo}" ]] ; then
+            centos_repo="${MY_REPO}/cgcs-centos-repo"
+            if [[ ! -d "${centos_repo}" ]] ; then
+                echo "ERROR: directory ${MY_REPO}/centos-repo not found." >&2
+                exit 1
+            fi
+        fi
+        find "${MY_WORKSPACE}/std/rpmbuild/RPMS" \
+             "${centos_repo}/Binary/noarch" \
+             -type f -name "*.tis.noarch.rpm"
+    else
+        echo "ERROR: unsupported OS $OS" >&2
+        exit 1
+    fi
+}
+
+# Usage:
+#     find_helm_chart_packages PACKAGE_NAMES...
+#
+# Find helm chart packages and print their "NAME FILENAME" one per line
+#
+function find_helm_chart_package_files {
+
+    # hash: package files => package names
+    local -A package_files
+    # hash: package names => package files
+    local -A package_names
+
+    # load package files and names
+    echo "searching for package files" >&2
+    local package_file package_name
+    for package_file in $(find_package_files) ; do
+        package_name=$(rpm_get_name "$package_file") || exit 1
+        if [[ -n "${package_names[$package_name]}" && "${package_names[$package_name]}" != "$package_file" ]] ; then
+            echo "ERROR: found multiple packages named ${package_name}:" >&2
+            echo "         $package_file" >&2
+            echo "         ${package_names[$package_name]}" >&2
+            exit 1
+        fi
+        package_names["$package_name"]="$package_file"
+        package_files["$package_file"]="$package_name"
+    done
+
+    echo "looking for chart packages" >&2
+
+    # Make sure top-level chart packages requested by user exist
+    local failed=0
+    for package_name in "$@" ; do
+        if [[ -z "${package_names[$package_name]}" ]] ; then
+            echo "ERROR: required package ${package_name} not found" >&2
+            failed=1
+        fi
+    done
+    [[ $failed -eq 0 ]] || exit 1
+
+    # all chart package files
+    local -A chart_package_files
+    local -a ordered_chart_package_files
+
+    # Find immediate dependencies of each package as well
+    failed=0
+    for package_name in "$@" ; do
+        package_file="${package_names[$package_name]}"
+
+        # seen this file before, skip
+        if [[ -n "${chart_package_files[$package_file]}" ]] ; then
+            continue
+        fi
+
+        local -a dep_package_names=($(
+            rpm -qRp "$package_file" | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g' | grep -v '/'
+            check_pipe_status || exit 1
+        )) || exit 1
+
+        # save top-level package
+        chart_package_files["$package_file"]=1
+        ordered_chart_package_files+=("$package_file")
+
+        # make sure all dep_packages exist & save them as well
+        local dep_package_name dep_package_file
+        for dep_package_name in "${dep_package_names[@]}" ; do
+            dep_package_file="${package_names[$dep_package_name]}"
+            if [[ -z "$dep_package_file" ]] ; then
+                echo "ERROR: package ${package_file} requires package ${dep_package_name}, which does not exist" >&2
+                failed=1
+            fi
+            # save dep_package_file, unless we've seen it before
+            if [[ -z "${chart_package_files[$dep_package_file]}" ]] ; then
+                chart_package_files["$dep_package_file"]=1
+                ordered_chart_package_files+=("$dep_package_file")
+            fi
+        done
+    done
+    [[ $failed -eq 0 ]] || exit 1
+
+    # make sure there's at least one
+    if [[ "${#chart_package_files[@]}" -eq 0 ]] ; then
+        echo "ERROR: could not find any chart packages" >&2
+        exit 1
+    fi
+
+    # print them
+    echo "found chart packages:" >&2
+    for package_file in "${ordered_chart_package_files[@]}" ; do
+        echo "    $package_file" >&2
+        echo "$package_file"
+    done
+
+}
+
+#
+# Usage:
+#     extract_chart_from_package PACKAGE_FILE
+#
+function extract_chart_from_package {
+    local package_file=$1
+    echo "extracting charts from package $package_file" >&2
+    case $OS in
+        centos)
+            rpm2cpio "$package_file" | cpio ${CPIO_FLAGS}
+            if ! check_pipe_status ; then
+                echo "Failed to extract content of helm package: ${package_file}" >&2
+                exit 1
+            fi
+
+            ;;
+        *)
+            echo "Unsupported OS ${OS}" >&2
+            ;;
+    esac
+}
+
+# Usage: extract_charts CHART_PACKAGE_FILE...
+function extract_charts {
+    local package_file
+    for package_file in "$@" ; do
+        extract_chart_from_package "$package_file"
+    done
+}
+
+#
+# Usage:
+#   get_app_version CHART_PACKAGE_FILE...
+#
+# Print the app (tarball) version, based on command-line
+# arguments, the version .inc file or the chart package files
+#
+function get_app_version {
+
+    # version provided on command line: use it
+    if [[ -n "$APP_VERSION" ]] ; then
+        echo "APP_VERSION=$APP_VERSION" >&2
+        echo "$APP_VERSION"
+        return 0
+    fi
+
+    # find app version file
+    local app_version_file="$APP_VERSION_FILE"
+    if [[ -z "$app_version_file" ]] ; then
+        app_version_file="$(find_app_version_file)" || exit 1
+    fi
+    if [[ -n "$app_version_file" ]] ; then
+        echo "reading $app_version_file" >&2
+        local app_version
+        app_version="$(
+            VERSION= RELEASE=
+            source "$app_version_file" || exit 1
+            if [[ -z "$VERSION" ]] ; then
+                echo "$app_version_file: missing VERSION" >&2
+                exit 1
+            fi
+            echo "${VERSION}-${RELEASE:-0}"
+        )" || exit 1
+        echo "APP_VERSION=$app_version" >&2
+        echo "$app_version"
+        return 0
+    fi
+
+    # this should never happen because we exit early if there are no chart
+    # packages
+    if [[ "$#" -eq 0 ]] ; then
+        echo "ERROR: unable to determine APP_VERSION" >&2
+        exit 1
+    fi
+
+    # app version file doesn't exist: use the version of
+    # the 1st chart package
+    echo "extracting version from $1" >&2
+    local app_version
+    app_version="$(
+        rpm -q --qf '%{VERSION}-%{RELEASE}' -p "$1" | sed 's![.]tis!!g'
+        check_pipe_status
+    )" || exit 1
+    echo "APP_VERSION=$app_version" >&2
+    echo "$app_version"
+}
+
 # TODO(awang): remove the deprecated image-file option
-OPTS=$(getopt -o h,a:,A:,r:,i:,l:,p: -l help,os:,app:,app-version-file:,rpm:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
+OPTS=$(getopt -o h,a:,A:,B:,r:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,rpm:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -461,8 +578,12 @@ while true; do
             APP_VERSION_FILE="$2"
             shift 2
             ;;
+        -B | --app-version)
+            APP_VERSION="$2"
+            shift 2
+            ;;
         -r | --rpm)
-            APP_RPMS+=(${2//,/ })
+            APP_PACKAGES+=(${2//,/ })
             shift 2
             ;;
         -i | --image-record | --image-file)
@@ -515,23 +636,6 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
-# Read APP_VERSION_FILE
-if [[ -z "$APP_VERSION_FILE" ]] ; then
-    APP_VERSION_FILE=$(find_app_version_file) || exit 1
-fi
-if [[ -n "$APP_VERSION_FILE" ]] ; then
-    echo "reading $APP_VERSION_FILE" >&2
-    APP_VERSION=$(
-        VERSION= RELEASE=
-        source "$APP_VERSION_FILE" || exit 1
-        if [[ -z "$VERSION" ]] ; then
-            echo "$APP_VERSION_FILE: missing VERSION" >&2
-            exit 1
-        fi
-        echo "${VERSION}-${RELEASE:-0}"
-    ) || exit 1
-fi
-
 # Commenting out this code that attempts to validate the APP_NAME.
 # It makes too many assumptions about the location and naming of apps.
 #
@@ -553,6 +657,7 @@ fi
 
 # Cleanup the previous chart build workspace
 BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-helm/stx
+echo "BUILD_OUTPUT_PATH=$BUILD_OUTPUT_PATH" >&2
 if [ -d ${BUILD_OUTPUT_PATH} ]; then
     # Wipe out the existing dir to ensure there are no stale files
     rm -rf ${BUILD_OUTPUT_PATH}
@@ -578,27 +683,17 @@ if [ ${#IMAGE_RECORDS[@]} -ne 0 ]; then
     fi
 fi
 
-# For backward compatibility.  Old repo location or new?
-CENTOS_REPO=${MY_REPO}/centos-repo
-if [ ! -d ${CENTOS_REPO} ]; then
-    CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
-    if [ ! -d ${CENTOS_REPO} ]; then
-        echo "ERROR: directory ${MY_REPO}/centos-repo not found."
-        exit 1
-    fi
-fi
+# Find chart packages
+CHART_PACKAGE_FILES=($(
+    [[ "${#APP_PACKAGES[@]}" -gt 0 ]] || APP_PACKAGES+=("${APP_NAME}-helm")
+    find_helm_chart_package_files "${APP_PACKAGES[@]}"
+)) || exit 1
 
-# Extract helm charts and app version from the application rpm
-RPMS_DIRS="${MY_WORKSPACE}/std/rpmbuild/RPMS ${CENTOS_REPO}/Binary/noarch"
-FIND_GLOB="*.tis.noarch.rpm"
+# Initialize APP_VERSION
+APP_VERSION="$(get_app_version "${CHART_PACKAGE_FILES[@]}")" || exit 1
 
-extract_application_rpms
-# Extract helm charts from the application dependent rpms
-if [ ${#APP_HELM_FILES[@]} -gt 0 ]; then
-    for helm_rpm in ${APP_HELM_FILES[@]}; do
-        extract_chartfile ${helm_rpm}
-    done
-fi
+# Extract chart files from packages
+extract_charts "${CHART_PACKAGE_FILES[@]}" || exit 1
 
 # Create a new tarball containing all the contents we extracted
 # tgz files under helm are relocated to subdir charts.
