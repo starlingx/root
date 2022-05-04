@@ -10,17 +10,10 @@
 #
 
 BUILD_HELM_CHARTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $BUILD_HELM_CHARTS_DIR/srpm-utils || exit 1
 source $BUILD_HELM_CHARTS_DIR/utils.sh || exit 1
 
-# Required env vars
-if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
-    echo "Environment not setup for builds" >&2
-    exit 1
-fi
-
-SUPPORTED_OS_ARGS=('centos')
-OS=centos
+SUPPORTED_OS_ARGS=('centos' 'debian')
+OS=
 LABEL=""
 APP_NAME="stx-openstack"
 APP_VERSION_BASE="helm-charts-release-info.inc"
@@ -30,6 +23,10 @@ declare -a IMAGE_RECORDS
 declare -a PATCH_DEPENDENCIES
 declare -a APP_PACKAGES
 declare -a CHART_PACKAGE_FILES
+
+VERBOSE=false
+CPIO_FLAGS=
+TAR_FLAGS=
 
 function usage {
     cat >&2 <<EOF
@@ -43,22 +40,26 @@ Options:
     --os:
             Specify base OS (eg. centos)
 
-    -a, --app:
+    -a, --app NAME:
             Specify the application name
 
-    -A,--app-version-file:
+    -A, --app-version-file FILENAME:
             Specify the file containing version information for the helm
             charts. By default we will search for a file named
             $APP_VERSION_BASE in all git repos.
 
-    -B,--app-version:
+    -B, --app-version VERSION:
             Specify application (tarball) version, this overrides any other
             version information.
 
-    -r, --rpm:
-            Specify the application rpms
+    -r, --package PACKAGE_NAME,... :
+            Top-level package(s) containing the helm chart(s), comma-separated.
+            Default: ${APP_NAME}-helm
 
-    -i, --image-record:
+    --rpm PACKAGE_NAME,... :
+            (Deprecated) same as --package
+
+    -i, --image-record FILENAME :
             Specify the path to image record file(s) or url(s).
             Multiple files/urls can be specified with a comma-separated
             list, or with multiple --image-record arguments.
@@ -66,12 +67,13 @@ Options:
             in multiple files, the last image reference has higher
             priority.
 
-    -l, --label:
+    -l, --label LABEL:
             Specify the label of the application tarball. The label
             will be appended to the version string in tarball name.
 
-    -p, --patch-dependency:
-            Specify the patch dependency of the application tarball.
+    -p, --patch-dependency DEPENDENCY,... :
+            Specify the patch dependency of the application tarball,
+            comma-separated
             Multiple patches can be specified with a comma-separated
             list, or with multiple --patch-dependency arguments.
 
@@ -306,17 +308,29 @@ def merge_yaml(yaml_merged, yaml_new):
 
 yaml_out = collections.OrderedDict()
 for yaml_file in yaml_files:
-    print 'Merging yaml from file: %s' % yaml_file
+    print('Merging yaml from file: %s' % yaml_file)
     for document in yaml.load_all(open(yaml_file), Loader=yaml.RoundTripLoader, preserve_quotes=True, version=(1, 1)):
         document_name = (document['schema'], document['metadata']['schema'], document['metadata']['name'])
         if document_name in yaml_out:
             merge_yaml(yaml_out[document_name], document)
         else:
             yaml_out[document_name] = document
-print 'Writing merged yaml file: %s' % yaml_output
+print('Writing merged yaml file: %s' % yaml_output)
 yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), Dumper=yaml.RoundTripDumper, default_flow_style=False)
     "
-    python -c "${yaml_script}" ${@}
+    local python python_found
+    for python in ${PYTHON2:-python2} ${PYTHON:-python} ${PYTHON3:-python3} ; do
+        if $python -c 'import ruamel.yaml' >/dev/null 2>&1 ; then
+            python_found=true
+            break
+        fi
+    done
+    if [[ -z "$python_found" ]] ; then
+        echo "ERROR: can't find python!" >&2
+        exit 1
+    fi
+
+    $python -c "${yaml_script}" ${@} || exit 1
 }
 
 # Find a file named $APP_VERSION_BASE at top-level of each git repo
@@ -364,8 +378,20 @@ function find_package_files {
              "${centos_repo}/Binary/noarch" \
              -type f -name "*.tis.noarch.rpm"
     else
-        echo "ERROR: unsupported OS $OS" >&2
-        exit 1
+        # FIXME: can't search 3rd-party binary debs because they are not accessible
+        # on the filesystem, but only as remote files in apt repos
+        find "${MY_WORKSPACE}/std" \
+            -mindepth 2 \
+            -maxdepth 2 \
+            "(" \
+                "(" \
+                       -path "${MY_WORKSPACE}/build-wheels" \
+                    -o -path "${MY_WORKSPACE}/build-images" \
+                    -o -path "${MY_WORKSPACE}/build-helm" \
+                ")" -prune \
+            ")" \
+            -o \
+            "(" -type f -name "*.stx.*_all.deb" ")"
     fi
 }
 
@@ -385,7 +411,14 @@ function find_helm_chart_package_files {
     echo "searching for package files" >&2
     local package_file package_name
     for package_file in $(find_package_files) ; do
-        package_name=$(rpm_get_name "$package_file") || exit 1
+        package_name="$(
+            if [[ "$OS" == "centos" ]] ; then
+                rpm_get_name "$package_file" || exit 1
+            else
+                deb_get_control "$package_file" | deb_get_field "Package"
+                check_pipe_status
+            fi
+        )" || exit 1
         if [[ -n "${package_names[$package_name]}" && "${package_names[$package_name]}" != "$package_file" ]] ; then
             echo "ERROR: found multiple packages named ${package_name}:" >&2
             echo "         $package_file" >&2
@@ -423,8 +456,13 @@ function find_helm_chart_package_files {
         fi
 
         local -a dep_package_names=($(
-            rpm -qRp "$package_file" | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g' | grep -v '/'
-            check_pipe_status || exit 1
+            if [[ "$OS" == "centos" ]] ; then
+                rpm -qRp "$package_file" | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g' | grep -v '/'
+                check_pipe_status || exit 1
+            else
+                deb_get_control "$package_file" | deb_get_simple_depends
+                check_pipe_status || exit 1
+            fi
         )) || exit 1
 
         # save top-level package
@@ -477,8 +515,16 @@ function extract_chart_from_package {
                 echo "Failed to extract content of helm package: ${package_file}" >&2
                 exit 1
             fi
-
             ;;
+
+        debian)
+            deb_extract_content "$package_file" $([[ "$VERBOSE" == "true" ]] && echo --verbose || true)
+            if ! check_pipe_status ; then
+                echo "Failed to extract content of helm package: ${package_file}" >&2
+                exit 1
+            fi
+            ;;
+
         *)
             echo "Unsupported OS ${OS}" >&2
             ;;
@@ -543,8 +589,18 @@ function get_app_version {
     echo "extracting version from $1" >&2
     local app_version
     app_version="$(
-        rpm -q --qf '%{VERSION}-%{RELEASE}' -p "$1" | sed 's![.]tis!!g'
-        check_pipe_status
+        if [[ "$OS" == "centos" ]] ; then
+            rpm -q --qf '%{VERSION}-%{RELEASE}' -p "$1" | sed 's![.]tis!!g'
+            check_pipe_status || exit 1
+        else
+            control="$(deb_get_control "$1")" || exit 1
+            version="$(echo "$control" | deb_get_field "Version" | sed -r -e 's/^[^:]+:+//')"
+            if [[ -z "$version" ]] ; then
+                echo "ERROR: failed to determine the version of package $1" >&2
+                exit 1
+            fi
+            echo "${version}"
+        fi
     )" || exit 1
     echo "APP_VERSION=$app_version" >&2
     echo "$app_version"
@@ -582,7 +638,10 @@ while true; do
             APP_VERSION="$2"
             shift 2
             ;;
-        -r | --rpm)
+        -r | --rpm | --package)
+            if [[ "$1" == "--rpm" ]] ; then
+                echo "WARNING: option $1 is deprecated, use --package instead" >&2
+            fi
             APP_PACKAGES+=(${2//,/ })
             shift 2
             ;;
@@ -623,6 +682,16 @@ else
     TAR_FLAGS=-zcf
 fi
 
+# Validate OS
+if [ -z "$OS" ] ; then
+    OS="$(ID= && source /etc/os-release 2>/dev/null && echo $ID || true)"
+    if [[ -z "$OS" ]] ; then
+        echo "Unable to determine OS, please re-run with \`--os' option" >&2
+        exit 1
+    elif [[ "$OS" != "debian" ]] ; then
+        OS="centos"
+    fi
+fi
 VALID_OS=1
 for supported_os in ${SUPPORTED_OS_ARGS[@]}; do
     if [ "$OS" = "${supported_os}" ]; then
@@ -634,6 +703,19 @@ if [ ${VALID_OS} -ne 0 ]; then
     echo "Unsupported OS specified: ${OS}" >&2
     echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
     exit 1
+fi
+
+# Required env vars
+if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
+    echo "Environment not setup for builds" >&2
+    exit 1
+fi
+
+# include SRPM utils
+if [[ "$OS" == "centos" ]] ; then
+    source $BUILD_HELM_CHARTS_DIR/srpm-utils || exit 1
+else
+    source $BUILD_HELM_CHARTS_DIR/deb-utils.sh || exit 1
 fi
 
 # Commenting out this code that attempts to validate the APP_NAME.
