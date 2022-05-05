@@ -92,6 +92,17 @@ def get_all_layers (distro="debian"):
         if not os.path.isfile(layer_file):
             continue
         layer_lst.extend(bc_safe_fetch(layer_file, None))
+
+    # also add any layers defined in stx-tools
+    tools_layers_root = os.path.join(
+            os.environ.get('MY_REPO_ROOT_DIR'),
+            "stx-tools",
+            "%s%s" % (distro, "-mirror-tools"),
+            "config", distro)
+    for dir_entry in os.scandir (tools_layers_root):
+        if dir_entry.name != "common":
+            layer_lst.append (dir_entry.name)
+
     # remove duplicates
     layer_lst = list(set(layer_lst))
     return sort_layer_list(layer_lst)
