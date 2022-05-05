@@ -233,7 +233,8 @@ class Parser():
     def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std"):
 
         self.logger = logging.getLogger(__name__)
-        utils.set_logger(self.logger, log_level=log_level)
+        if not self.logger.handlers:
+            utils.set_logger(self.logger, log_level=log_level)
 
         self.strategy = "cengn_first"
         if CENGN_STRATEGY is not None:
