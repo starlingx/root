@@ -140,6 +140,22 @@ def replace_in_yaml(dst_yaml, field, field_type, src_str, dst_str):
                 list_new.append(item.replace(src_str, dst_str))
             main_doc[field] = list_new
             logger.debug("Successfully updated the value %s of field %s with %s", src_str, field, dst_str)
+        elif field_type == 'yaml_list_suffix':
+            list_new = []
+            list_orig = main_doc[field]
+            if not list_orig:
+                logger.error("Failed to find the field %s", field)
+                return False
+            for item in list_orig:
+                if src_str in item:
+                    if '=' in item:
+                        logger.error("Package version is defined, can't be appened with suffix %s", dst_str)
+                        return False
+                    list_new.append(item.strip() + dst_str)
+                else:
+                    list_new.append(item)
+            main_doc[field] = list_new
+            logger.debug("Successfully updated %s in field %s with %s suffix", src_str, field, dst_str)
 
         try:
             with open(dst_yaml, 'w') as f:
@@ -167,10 +183,11 @@ def update_rt_kernel_in_initramfs_yaml(initramfs_yaml):
         for pkg_dir in pkg_dirs:
             pkg_name = discovery.package_dir_to_package_name(pkg_dir, STX_DEFAULT_DISTRO)
             if pkg_name and pkg_name != 'linux-rt':
-                if replace_in_yaml(initramfs_yaml, 'packages', 'yaml_list', pkg_name, pkg_name + '-rt'):
-                    logger.debug("Initramfs: Updated %s to %s for type rt", pkg_name, pkg_name + '-rt')
+                if replace_in_yaml(initramfs_yaml, 'packages', 'yaml_list_suffix', pkg_name, '-rt'):
+                    logger.debug("RT Initramfs: Updated %s with rt suffix", pkg_name)
                 else:
-                    logger.debug("Initramfs: Failed to update %s to %s for type rt", pkg_name, pkg_name + '-rt')
+                    logger.debug("RT Initramfs: Failed to update %s with rt suffix", pkg_name)
+                    return ret
     ret = replace_in_yaml(initramfs_yaml, 'packages', 'yaml_list', stx_std_kernel, stx_rt_kernel)
     return ret
 
@@ -331,6 +348,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.rt:
         kernel_type = 'rt'
+    else:
+        kernel_type = 'std'
 
     rmg_logger = logging.getLogger('repo_manager')
     utils.set_logger(rmg_logger)
@@ -402,8 +421,12 @@ if __name__ == "__main__":
     update_ostree_osname(lat_yaml)
 
     if kernel_type == 'rt':
-        update_rt_kernel_in_main_yaml(lat_yaml)
-        update_rt_kernel_in_initramfs_yaml(lat_initramfs_yaml)
+        if not update_rt_kernel_in_main_yaml(lat_yaml):
+            logger.error("Failed to update LAT yaml file for rt type")
+            sys.exit(1)
+        if not update_rt_kernel_in_initramfs_yaml(lat_initramfs_yaml):
+            logger.error("Failed to update LAT initramfs yaml file for rt type")
+            sys.exit(1)
 
     if add_lat_packages(lat_yaml, img_pkgs):
         os.system(' '.join(['latc --file=' + lat_yaml, '-t', kernel_type, 'build']))
