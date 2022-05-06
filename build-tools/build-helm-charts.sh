@@ -254,6 +254,15 @@ function extract_application_rpms {
 }
 
 function build_application_tarball {
+
+    if [ -n "$1" ] ; then
+        build_application_tarball_armada $1
+    else
+        build_application_tarball_fluxcd
+    fi
+}
+
+function build_application_tarball_armada {
     local manifest=$1
     manifest_file=$(basename ${manifest})
     manifest_name=${manifest_file%.yaml}
@@ -313,6 +322,57 @@ function build_application_tarball {
     fi
 }
 
+function build_application_tarball_fluxcd {
+
+    FLUXCD_MANIFEST_DIR='fluxcd-manifests'
+
+    # Stage all the fluxcd manifests
+    cp -R usr/lib/fluxcd staging/${FLUXCD_MANIFEST_DIR}
+    if [ $? -ne 0 ]; then
+        echo "Failed to copy the FluxCD manifests from ${BUILD_OUTPUT_PATH}/usr/lib/fluxcd to ${BUILD_OUTPUT_PATH}/staging/fluxcd_manifests" >&2
+        exit 1
+    fi
+
+    # TODO: implement build image version mapping to fluxcd manifests
+    # build_image_versions_to_manifests
+
+    cd staging
+    # Add metadata file
+    touch metadata.yaml
+    if [ -n "${LABEL}" ]; then
+        APP_VERSION=${APP_VERSION}-${LABEL}
+    fi
+    if ! grep -q "^app_name:" metadata.yaml ; then
+        echo "app_name: ${APP_NAME}" >> metadata.yaml
+    fi
+    echo "app_version: ${APP_VERSION}" >> metadata.yaml
+    if [ -n "${PATCH_DEPENDENCIES}" ]; then
+        echo "patch_dependencies:" >> metadata.yaml
+        for patch in ${PATCH_DEPENDENCIES[@]}; do
+            echo "  - ${patch}" >> metadata.yaml
+        done
+    fi
+
+    # Add the tarball build date: For consistency with tooling that might use
+    # this metadata, match the date format used for BUILD_DATE in
+    # /etc/build.info
+    echo "build_date: $(date '+%Y-%m-%d %H:%M:%S %z')" >> metadata.yaml
+
+    # Add an md5
+    find . -type f ! -name '*.md5' -print0 | xargs -0 md5sum > checksum.md5
+
+    cd ..
+    tarball_name="${APP_NAME}-${APP_VERSION}.tgz"
+    tar ${TAR_FLAGS} ${tarball_name} -C staging/ .
+    if [ $? -ne 0 ]; then
+        echo "Failed to create the tarball" >&2
+        exit 1
+    fi
+
+    rm -fr staging/${FLUXCD_MANIFEST_DIR}
+    rm staging/checksum.md5
+    echo "    ${BUILD_OUTPUT_PATH}/${tarball_name}"
+}
 
 function parse_yaml {
     # Create a new yaml file based on sequentially merging a list of given yaml files
@@ -549,9 +609,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-if [ ! -d "usr/lib/armada" ] || [ ! -d "usr/lib/helm" ]; then
-    echo "Failed to create the tarball. Mandatory files are missing." >&2
-    exit 1
+if [ ! -d "usr/lib/fluxcd" ] || [ ! -d "usr/lib/helm" ]; then
+    # Armada Check: Remove with last supported Armada application
+    if [ ! -d "usr/lib/armada" ] || [ ! -d "usr/lib/helm" ]; then
+        echo "Failed to create the tarball. Mandatory files are missing." >&2
+        exit 1
+    fi
 fi
 
 # Stage all the charts
@@ -575,13 +638,21 @@ if [ -e usr/lib/application/metadata.yaml ]; then
     cp usr/lib/application/metadata.yaml staging/.
 fi
 
-# Merge yaml files:
-APP_YAML=${APP_NAME}.yaml
-parse_yaml $APP_YAML `ls -rt usr/lib/armada/*.yaml`
-
-echo "Results:"
-# Build tarballs for merged yaml
-build_application_tarball $APP_YAML
+if [ ! -d "usr/lib/fluxcd" ] ; then
+    # Merge yaml files:
+    APP_YAML=${APP_NAME}.yaml
+    parse_yaml $APP_YAML `ls -rt usr/lib/armada/*.yaml`
+    echo "Results:"
+    # Build tarballs for merged yaml
+    build_application_tarball $APP_YAML
+else
+    echo
+    echo "WARNING: Merging yaml manifests is currently not supported for FluxCD applications" >&2
+    echo "WARNING: Adding image versions from image record files is currently not supported for FluxCD applications" >&2
+    echo
+    echo "Results:"
+    build_application_tarball
+fi
 
 exit 0
 
