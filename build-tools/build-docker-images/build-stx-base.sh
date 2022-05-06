@@ -154,7 +154,7 @@ while true; do
             shift 2
             ;;
         --repo)
-            REPO_LIST+=($2)
+            REPO_LIST+=("$2")
             shift 2
             ;;
         --local)
