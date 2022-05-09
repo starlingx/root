@@ -395,6 +395,18 @@ class BuildController():
 
         return ret
 
+    def publish_repo(self, repo_name):
+        try:
+            logger.info("Try to publish the repository %s", repo_name)
+            self.kits['repo_mgr'].deploy_repo(repo_name)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to publish the repository %s", repo_name)
+            return False
+        else:
+            logger.info("Successfully published the repository %s", repo_name)
+        return True
+
     def upload_with_deb(self, package, debs_dir, build_type):
         """
         upload the local build debian binaries to repo manager
@@ -418,12 +430,14 @@ class BuildController():
                 logger.info(' '.join(['Searching for binary', msg, 'in repository', REPO_BUILD]))
                 if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0], None, True):
                     logger.info('Found binary %s in repository %s', msg, REPO_BUILD)
-                    if self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0], 'binary', None):
+                    if self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0], 'binary', None, deploy=False):
                         logger.info('Successfully deleted binary %s from repository %s',
                                     msg, REPO_BUILD)
                     else:
                         logger.info('Failed to delete binary %s from repository %s', msg,
                                     REPO_BUILD)
+            self.publish_repo(REPO_BUILD)
+
         sdebs = []
         if not os.path.exists(debs_dir):
             logger.error(' '.join(['Noneexistent directory', debs_dir]))
@@ -434,21 +448,22 @@ class BuildController():
             for r in files:
                 if r.endswith('.deb'):
                     deb_file = os.path.join(root, r)
-                    if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file):
+                    if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file, deploy=False):
                         logger.info(' '.join(['Successfully uploaded',
                                               deb_file, 'to repository', REPO_BUILD]))
                         pkg_item = r.split('_')
                         sdebs.append(''.join([pkg_item[0], '_', pkg_item[1]]))
-                        msg = ''.join([pkg_item[0], '_', pkg_item[1],
-                                       ' is saved to debs_entry for ',
-                                       package])
-                        logger.debug(msg)
                     else:
                         logger.error(' '.join(['Failed to upload', deb_file,
                                                'to repository', REPO_BUILD]))
                         return False
-        debsentry.set_subdebs(debs_clue, package, sdebs, logger)
-        return True
+
+        if self.publish_repo(REPO_BUILD):
+            debsentry.set_subdebs(debs_clue, package, sdebs, logger)
+            logger.debug("%s_%s is saved into debs_entry", pkg_item[0], pkg_item[1])
+            return True
+
+        return False
 
     def upload_with_dsc(self, pkg_name, dsc, repo_name):
         if not os.path.exists(dsc):

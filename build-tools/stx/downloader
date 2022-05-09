@@ -233,6 +233,13 @@ class DebDownloader(BaseDownloader):
         return None
 
     def reports(self):
+        try:
+            if self.repomgr:
+                self.repomgr.deploy_repo(REPO_BIN)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to publish repository %s", REPO_BIN)
+
         if len(self.bin_lists):
             logger.info("All binary lists are:")
             for blist in self.bin_lists:
@@ -291,7 +298,7 @@ class DebDownloader(BaseDownloader):
                 logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
                                       'has already been uploaded to', REPO_BIN, ', skip']))
                 continue
-            if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb)):
+            if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb), deploy=False):
                 logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
                                       'is uploaded to', REPO_BIN]))
             else:
@@ -307,7 +314,7 @@ class DebDownloader(BaseDownloader):
                 # strip epoch
                 deb_ver = debnames[1].split(":")[-1]
                 self.dl_success.append('_'.join([debnames[0], deb_ver]))
-                if self.repomgr.upload_pkg(REPO_BIN, ret):
+                if self.repomgr.upload_pkg(REPO_BIN, ret, deploy=False):
                     logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', REPO_BIN]))
                 else:
                     logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', REPO_BIN]))
