@@ -323,8 +323,6 @@ class Parser():
 
         srcdir = self.pkginfo["debname"] + "-" + self.versions["upstream_version"]
         self.pkginfo["srcdir"] = os.path.join(self.pkginfo["packdir"], srcdir)
-        if os.path.exists(self.pkginfo["srcdir"]):
-            shutil.rmtree(self.pkginfo["srcdir"])
 
     def set_build_type(self):
 
