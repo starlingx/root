@@ -256,7 +256,9 @@ class BuildController():
             'avoid': True,
             'parallel': False,
             'exit_on_fail': False,
-            'run_tests': False
+            'run_tests': False,
+            'build_depend': False,
+            'upload_source': False
         }
         self.kits = {
             'dsc_cache': {},
@@ -293,6 +295,8 @@ class BuildController():
             self.lists['success_' + build_type] = []
             self.lists['fail_' + build_type] = []
             self.lists['build-needed_' + build_type] = []
+            self.lists['success_depends_' + build_type] = []
+            self.lists['fail_depends_' + build_type] = []
 
             if not build_type in self.kits['dsc_cache']:
                 pkl_file = os.path.join(BUILD_ROOT, build_type, 'dsc.pkl')
@@ -449,13 +453,12 @@ class BuildController():
                 if r.endswith('.deb'):
                     deb_file = os.path.join(root, r)
                     if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file, deploy=False):
-                        logger.info(' '.join(['Successfully uploaded',
-                                              deb_file, 'to repository', REPO_BUILD]))
+                        logger.info("Successfully uploaded %s to %s", deb_file, REPO_BUILD)
                         pkg_item = r.split('_')
-                        sdebs.append(''.join([pkg_item[0], '_', pkg_item[1]]))
+                        if pkg_item and len(pkg_item) > 1:
+                            sdebs.append('_'.join([pkg_item[0], pkg_item[1]]))
                     else:
-                        logger.error(' '.join(['Failed to upload', deb_file,
-                                               'to repository', REPO_BUILD]))
+                        logger.error("Failed to upload %s to %s", deb_file, REPO_BUILD)
                         return False
 
         if self.publish_repo(REPO_BUILD):
@@ -566,25 +569,24 @@ class BuildController():
         Return: result list like:
             ['dhcp-2.10.1.tis.dsc' 'dhcp-2.10.tar.xz' 'dhcp-2.10.tar.xz.orig']
         """
-        skip_build = False
+        dsc_file = None
+        skip_create_dsc = False
         # Check whether there are changes on package's debian folder
         new_checksum = self.kits['dsc_maker'][build_type].checksum(pkg_dir)
         self.pkgs_digests[pkg_dir] = new_checksum
         if self.kits['dsc_cache'][build_type]:
-            old_checksum = self.kits['dsc_cache'][build_type].get_package_digest(pkg_dir)
-            if old_checksum and old_checksum == new_checksum:
-                logger.info(' '.join(['No source meta changes of', pkg_name]))
-                skip_build = True
+            dsc_file, old_checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
+            if dsc_file and old_checksum:
+                if old_checksum and old_checksum == new_checksum:
+                    logger.info("No update on package meta of %s", pkg_name)
+                    if os.path.exists(dsc_file):
+                        logger.info("Skip creating dsc for %s again", pkg_name)
+                        skip_create_dsc = True
+                        return skip_create_dsc, dsc_file
+                    else:
+                        logger.info("Found %s in dsc_cache, but does not exist, need to create", pkg_name)
 
-        if self.attrs['avoid'] and skip_build:
-            self.lists['success_' + build_type].append(pkg_dir)
-            logger.info(' '.join(['Skip build', pkg_name, 'again']))
-            logger.info(' '.join(['Force to build, please use -c/--clean']))
-            return []
-
-        logger.debug(' '.join([pkg_dir, 'is ready to create dsc']))
-
-        # TODO, add additional path elements like layer?
+        logger.debug("Be ready to create dsc for %s", pkg_dir)
         pkg_build_dir = os.path.join(BUILD_ROOT, build_type, pkg_name)
         if os.path.exists(pkg_build_dir):
             try:
@@ -592,7 +594,7 @@ class BuildController():
             except Exception as e:
                 logger.error(str(e))
             else:
-                logger.debug(' '.join(['Successfully removed old', pkg_build_dir]))
+                logger.debug("Successfully clean the old %s", pkg_build_dir)
                 os.makedirs(pkg_build_dir)
 
         try:
@@ -600,38 +602,150 @@ class BuildController():
             dsc_recipes = self.kits['dsc_maker'][build_type].package(pkg_dir, src_mirror_dir)
         except Exception as e:
             logger.error(str(e))
-            return None
+            return skip_create_dsc, None
         else:
             if not dsc_recipes:
-                logger.error(' '.join(['Failed to create dsc for', pkg_name]))
-                return None
-            logger.debug(' '.join(['Successfully created dsc for', pkg_name]))
-            return dsc_recipes
+                logger.error("Failed to create dsc for %s", pkg_name)
+                return skip_create_dsc, None
+            logger.debug("Successfully created dsc for %s", pkg_name)
+            pkg_checksum = self.pkgs_digests[pkg_dir]
+            dsc_path = os.path.join(pkg_build_dir, dsc_recipes[0])
+            self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_path + ':' + pkg_checksum)
+            return skip_create_dsc, os.path.join(pkg_build_dir, dsc_recipes[0])
 
+    def get_stamp(self, pkg_dir, dsc_path, build_type, state):
+        dsc_file, checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
+        if not dsc_file or not checksum:
+            return False
 
-    def run_build_loop(self, pkgs_dsc, build_type=STX_DEFAULT_BUILD_TYPE):
+        if dsc_file != dsc_path:
+            logger.error("Mismatched dsc path for %s", pkg_dir)
+            return False
+
+        stamp_dir = os.path.join(os.environ.get('MY_WORKSPACE'), build_type, 'stamp')
+        dsc_stamp = '.'.join([os.path.basename(dsc_file), checksum, state])
+        dsc_stamp_file = os.path.join(stamp_dir, dsc_stamp)
+        if os.path.exists(dsc_stamp_file):
+            return True
+        return False
+
+    def set_stamp(self, pkg_dir, dsc_path, build_type, state):
+        dsc_file, checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
+        if not dsc_file or not checksum:
+            return False
+
+        if dsc_file != dsc_path:
+            logger.error("Mismatched dsc path for %s", pkg_dir)
+            return False
+        try:
+            stamp_dir = os.path.join(os.environ.get('MY_WORKSPACE'), build_type, 'stamp')
+            os.makedirs(stamp_dir, exist_ok=True)
+            dsc_stamp = '.'.join([os.path.basename(dsc_file), checksum, state])
+            os.mknod(os.path.join(stamp_dir, dsc_stamp))
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to create stamp(%s) for %s", state, pkg_dir)
+            return False
+        else:
+            logger.info("Successfully create stamp(%s) for %s", state, pkg_dir)
+            return False
+
+    def del_stamp(self, pkg_dir, dsc_path, build_type, state):
+        dsc_file, checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
+        if not dsc_file or not checksum:
+            return False
+
+        if dsc_file != dsc_path:
+            logger.warning("Mismatched dsc path for %s", pkg_dir)
+            return False
+        try:
+            stamp_dir = os.path.join(os.environ.get('MY_WORKSPACE'), build_type, 'stamp')
+            dsc_stamp = '.'.join([os.path.basename(dsc_file), checksum, state])
+            dsc_stamp_file = os.path.join(stamp_dir, dsc_stamp)
+            if not os.path.exists(dsc_stamp_file):
+                return True
+            os.remove(dsc_stamp_file)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to remove stamp(%s) for %s", state, pkg_dir)
+            return False
+        else:
+            logger.info("Successfully removed stamp(%s) for %s", state, pkg_dir)
+            return True
+
+    def clean_build_output(self, dsc_path):
+        try:
+            build_dir = os.path.abspath(dsc_path)
+            if build_dir:
+                os.system("rm -f %s" % os.path.join(build_dir, '*.deb'))
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to remove the old deb packages")
+        else:
+            logger.debug("Successfully removed the old deb packages")
+
+    def run_build_loop(self, layer_pkgdir_dscs, target_pkgdir_dscs, layer, build_type=STX_DEFAULT_BUILD_TYPE):
+        '''
+        Prerequisite to run this function is that the phase I build(dsc creating) done
+        layer_pkgdir_dscs: Dict of the full layer packages
+        target_pkgdir_dscs: Dict of the target packages
+        layer: The layer currently build
+        build_type: type of build
+        '''
         build_dir = os.path.join(BUILD_ROOT, build_type)
-        dsc_list_file = os.path.join(build_dir, 'dsc.lst')
-        deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, [], logger)
-        build_counter = {}
-        dscs_list = get_dsc_list_from_dict(pkgs_dsc)
-        logger.debug('There are %d packages to be built this round', len(dscs_list))
+        dsc_list_file = os.path.join(build_dir, layer + '_dscs.lst')
+        dscs_list = get_dsc_list_from_dict(target_pkgdir_dscs)
+        logger.debug('There are %d packages to be built in this round', len(dscs_list))
 
+        ds_logger = logging.getLogger('dsc_depend')
+        if not ds_logger.handlers:
+            utils.set_logger(ds_logger)
+        logger.debug("All dscs of layer %s passed to dsc_depends in file %s", layer, dsc_list_file)
+        logger.debug("Target dscs(%d) passed to dsc_depends: %s", len(dscs_list), str(dscs_list))
+        deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, dscs_list, ds_logger)
+        build_counter = {}
+
+        # build all the target packages
         while dscs_list:
             pkgs_can_build = deps_resolver.get_build_able_pkg(1)
             if not pkgs_can_build:
                 logger.warning("Depends resolver returns none")
                 return
+            # build all the buildable packages that dsc_depend returns
             for dsc_path in pkgs_can_build:
-                logger.info(' '.join(['Depends resolver tells to build',
-                            os.path.basename(dsc_path)]))
-                pkg_dir = get_pkg_dir_from_dsc(pkgs_dsc, dsc_path)
+                logger.info("Depends resolver tells to build %s", os.path.basename(dsc_path))
+                pkg_dir = get_pkg_dir_from_dsc(layer_pkgdir_dscs, dsc_path)
+                pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
+
+                # For layer build, the depended packages may was built before in the higher priority layer
                 if pkg_dir in self.lists['success_' + build_type]:
-                    logger.warning("Package %s has been built, wrong layer location? skip", pkg_dir)
+                    logger.warning("Package %s has been built in this round, skip", pkg_name)
+                    deps_resolver.pkg_accomplish(dsc_path)
                     dscs_list.remove(dsc_path)
                     continue
 
-                pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
+                # For the depended packages, skip checking the 'avoid' option
+                if not pkg_dir in target_pkgdir_dscs.keys():
+                    if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
+                        logger.info("Stamp[build_done] found for the depended package %s, skip building", pkg_name)
+                        deps_resolver.pkg_accomplish(dsc_path)
+                        continue
+                    # If the option 'build_depend' disabled, just exit
+                    if not self.attrs['build_depend']:
+                        logger.error("The depended package %s has not been built", pkg_name)
+                        return
+                # For the target packages
+                else:
+                    if self.attrs['avoid']:
+                        if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
+                            logger.info("Stamp build_done found, package %s has been built, skip", pkg_name)
+                            self.lists['success_' + build_type].append(pkg_dir)
+                            deps_resolver.pkg_accomplish(dsc_path)
+                            dscs_list.remove(dsc_path)
+                            continue
+
+                self.del_stamp(pkg_dir, dsc_path, build_type, 'build_done')
+                self.clean_build_output(dsc_path)
                 status = self.req_add_task(pkg_dir, dsc_path, build_type=build_type)
                 if pkg_dir in build_counter.keys():
                     build_counter[pkg_dir] += 1
@@ -640,23 +754,28 @@ class BuildController():
                 logger.debug("Attempting to build package %s for the %d time", pkg_dir, build_counter[pkg_dir])
 
                 if 'success' in status:
-                    logger.info(' '.join(['Successfully built',
-                                          pkg_dir]))
+                    logger.info('Successfully built %s', pkg_name)
+                    self.set_stamp(pkg_dir, dsc_path, build_type, state='build_done')
                     deps_resolver.pkg_accomplish(dsc_path)
-                    dscs_list.remove(dsc_path)
-                    logger.info('Removed dsc %s from list after successfully build', dsc_path)
-                    self.lists['success_' + build_type].append(pkg_dir)
-                    logger.info('Added %s to success list success_%s', pkg_dir, build_type)
-                    pkg_md5 = self.pkgs_digests[pkg_dir]
-                    self.kits['dsc_cache'][build_type].set_package_digest(pkg_dir, pkg_md5)
+                    if pkg_dir in target_pkgdir_dscs.keys():
+                        dscs_list.remove(dsc_path)
+                        logger.info('Removed dsc %s from list after successfully build', dsc_path)
+                        self.lists['success_' + build_type].append(pkg_dir)
+                        logger.info('Added %s to success list success_%s', pkg_dir, build_type)
+                    else:
+                        self.lists['success_depends_' + build_type].append(pkg_dir)
+                        logger.info('Added %s to list success_depends_%s', pkg_dir, build_type)
                 else:
-                    self.lists['fail_' + build_type].append(pkg_dir)
-                    logger.error('Added %s to fail list fail_%s', pkg_dir, build_type)
                     if build_counter[pkg_dir] >= MAX_PKG_BUILD_COUNT:
                         deps_resolver.pkg_accomplish(dsc_path)
                         logger.warning('Notify depends resolver after %d attempts for %s', MAX_PKG_BUILD_COUNT, pkg_dir)
-                        dscs_list.remove(dsc_path)
-                        logger.info('Removed dsc %s from list after failed attempts', dsc_path)
+                        if pkg_dir in target_pkgdir_dscs.keys():
+                            self.lists['fail_' + build_type].append(pkg_dir)
+                            logger.error('Added %s to fail list fail_%s', pkg_dir, build_type)
+                            dscs_list.remove(dsc_path)
+                        else:
+                            self.lists['fail_depends_' + build_type].append(pkg_dir)
+                            logger.info('Added %s to list fail_depends_%s', pkg_dir, build_type)
                         logger.error("Failed to build package %s after %d attempts, giving up", pkg_dir, build_counter[pkg_dir])
                         logger.info("For the detailed reasons, please check the logs:")
                         logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<failed package>/*.build\'")
@@ -665,9 +784,7 @@ class BuildController():
                     self.req_stop_task()
                     if self.attrs['exit_on_fail']:
                         return
-
-        logger.info("Build loop done, please check the stats")
-
+        logger.info("Build done, please check the statistics")
 
     def build_all(self, layers=ALL_LAYERS, build_types=None, packages=None):
         if layers:
@@ -692,8 +809,24 @@ class BuildController():
         else:
             logger.error('No layeres specified for the build.')
 
+    def save_failed_pkgs(self, pkgs_exist, pkgs_target, build_type):
+        if not pkgs_exist:
+            return
+        pkgs_name_fail = list(set(pkgs_target) - set(pkgs_exist))
+        if not pkgs_name_fail:
+            return
+
+        for pkg in pkgs_name_fail:
+            for pkgdir, pkgname in pkgs_exist.items():
+                if pkgname == pkg:
+                    if build_type:
+                        self.lists['fail_' + build_type].append(pkgdir)
+                    else:
+                        self.lists['fail_std'].append(pkgdir)
     
     def build_layer_and_build_type(self, layer=None, build_type=None, packages=None):
+        pkgs_exist = {}
+
         if not layer:
             logger.error('Failed to specify layer')
             return
@@ -703,10 +836,13 @@ class BuildController():
             return
 
         pkg_dirs = discovery.package_dir_list(distro=self.attrs['distro'], layer=layer, build_type=build_type)
+        layer_pkg_dirs = pkg_dirs
         word = "all"
         if packages:
             word = "selected"
-            pkg_dirs = discovery.filter_package_dirs_by_package_names(pkg_dirs, packages, distro=self.attrs['distro'])
+            pkg_dirs, pkgs_exist = discovery.filter_package_dirs_by_package_names(pkg_dirs, packages, distro=self.attrs['distro'])
+            self.save_failed_pkgs(pkgs_exist, packages, build_type)
+            layer_pkg_dirs = pkg_dirs
 
         if not pkg_dirs:
             logger.debug(' '.join(['Found no buildable packages matching selection criteria in',
@@ -721,7 +857,7 @@ class BuildController():
         packages = discovery.package_dirs_to_package_names(pkg_dirs)
         logger.debug(' '.join(['Building packages:',
                                ','.join(packages)]))
-        self.build_packages(pkg_dirs=pkg_dirs, build_type=build_type)
+        self.build_packages(layer_pkg_dirs, pkg_dirs, layer, build_type=build_type)
 
         logger.info(' '.join(['Finished building packages in',
                               'build_type', build_type,
@@ -793,13 +929,13 @@ class BuildController():
 
         return
 
-    def build_packages(self, pkg_dirs, build_type=STX_DEFAULT_BUILD_TYPE):
+    def build_packages(self, layer_pkg_dirs, pkg_dirs, layer, build_type=STX_DEFAULT_BUILD_TYPE):
         # remove duplication
         pkg_dirs = list(set(pkg_dirs))
         logger.debug(' '.join(['build_packages: Building: ', str(pkg_dirs)]))
 
         fdsc_file = None
-        packages_dscs = {}
+        layer_pkgdir_dscs = {}
         logger.debug('Length of build-needed_%s:%d before extending', build_type, len(self.lists['build-needed_' + build_type]))
         self.lists['build-needed_' + build_type].extend(pkg_dirs)
         logger.debug('Length of build-needed_%s:%d after extending', build_type, len(self.lists['build-needed_' + build_type]))
@@ -807,25 +943,24 @@ class BuildController():
         build_dir = os.path.join(BUILD_ROOT, build_type)
         os.makedirs(build_dir, exist_ok=True)
 
-        dscs_list_file = os.path.join(build_dir, 'dsc.lst')
+        dscs_list_file = os.path.join(build_dir, layer + '_dscs.lst')
         logger.debug(' '.join(['Prepare', dscs_list_file, 'to deps_resolver']))
         fdsc_file = open(dscs_list_file, 'w+')
         fdsc_file.seek(0)
         fdsc_file.truncate()
 
         # Now check and create the debian meta one by one
-        for pkg_dir in pkg_dirs:
+        for pkg_dir in layer_pkg_dirs:
             dsc_file = ""
             pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
-            deb_recipes = self.create_dsc(pkg_name, pkg_dir, build_type=build_type)
-            if deb_recipes:
-                dsc_file = os.path.join(build_dir, pkg_name, deb_recipes[0])
+            skip_dsc, dsc_file = self.create_dsc(pkg_name, pkg_dir, build_type=build_type)
+            if dsc_file:
                 logger.debug("dsc_file = %s" % dsc_file)
-                packages_dscs[pkg_dir.strip()] = dsc_file
+                layer_pkgdir_dscs[pkg_dir.strip()] = dsc_file
                 fdsc_file.write(dsc_file + '\n')
-                if self.kits['repo_mgr']:
+                if self.attrs['upload_source'] and not skip_dsc and self.kits['repo_mgr']:
                     self.upload_with_dsc(pkg_name, dsc_file, REPO_SOURCE)
-            elif deb_recipes is None:
+            elif dsc_file is None:
                 # Exit if fails to create dsc file
                 if fdsc_file:
                     fdsc_file.close()
@@ -839,8 +974,13 @@ class BuildController():
             fdsc_file.close()
 
         # Start to build
-        if packages_dscs:
-            self.run_build_loop(packages_dscs, build_type=build_type)
+        target_pkgdir_dscs = {}
+        for pkg in pkg_dirs:
+            if pkg in layer_pkgdir_dscs.keys():
+                target_pkgdir_dscs[pkg] = layer_pkgdir_dscs[pkg]
+
+        if target_pkgdir_dscs:
+            self.run_build_loop(layer_pkgdir_dscs, target_pkgdir_dscs, layer, build_type=build_type)
         else:
             logger.info("No debian dsc files found")
 
@@ -858,6 +998,14 @@ class BuildController():
             if success_number > 0:
                 logger.info("Successfully built: %d", success_number)
                 for pkg_dir in sorted(success_list):
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
+                    logger.info(pkg_name)
+
+            success_depends_list = list(set(self.lists['success_depends_' + build_type]))
+            success_depends_number = len(success_depends_list)
+            if success_depends_number > 0:
+                logger.info("Successfully built depended packages: %d", success_depends_number)
+                for pkg_dir in sorted(success_depends_list):
                     pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
                     logger.info(pkg_name)
 
@@ -966,7 +1114,7 @@ if __name__ == "__main__":
     build_controller = BuildController(distro=distro)
     if args.clean:
         build_controller.build_avoid = False
-        if not packages:
+        if args.all:
             build_controller.clean(build_types=build_types)
     if args.exit_on_fail:
         build_controller.attrs['exit_on_fail'] = True

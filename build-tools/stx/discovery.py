@@ -221,6 +221,7 @@ def package_dirs_to_names_dict (pkg_dirs, distro="debian"):
     return pkg_names
 
 def filter_package_dirs_by_package_names (pkg_dirs, package_names, distro="debian"):
+    pkgs_found = {}
     if not package_names:
         return pkg_dirs
     filtered_pkg_dirs = []
@@ -228,4 +229,5 @@ def filter_package_dirs_by_package_names (pkg_dirs, package_names, distro="debia
         pkg_name = package_dir_to_package_name(pkg_dir, distro=distro)
         if pkg_name in package_names:
             filtered_pkg_dirs.append(pkg_dir)
-    return filtered_pkg_dirs
+            pkgs_found[pkg_dir] = pkg_name
+    return filtered_pkg_dirs, pkgs_found

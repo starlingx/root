@@ -23,18 +23,20 @@ class DscCache():
         self.logger = logger
         self.cache_file = cache_file
 
-    def get_package_digest(self, package):
+    def get_package(self, package):
         if not os.path.exists(self.cache_file):
             self.logger.warn("dscCache:%s does not exist" % self.cache_file)
-            return None
+            return None, None
 
         with open(self.cache_file, 'rb') as fcache:
             dsc_cache = pickle.load(fcache)
             if package in dsc_cache.keys():
-                return dsc_cache[package]
-        return None
+                dsc_file = dsc_cache[package].split(':')[0]
+                checksum = dsc_cache[package].split(':')[1]
+                return dsc_file, checksum
+        return None, None
 
-    def set_package_digest(self, package, checksum):
+    def set_package(self, package, checksum):
         dsc_cache = {}
         if os.path.exists(self.cache_file):
             with open(self.cache_file, 'rb') as fcache:
@@ -43,7 +45,31 @@ class DscCache():
         else:
             self.logger.debug("dscCache:Not exist, need to create")
 
-        dsc_cache[package] = checksum
+        if checksum:
+            dsc_cache[package] = checksum
+        else:
+            del dsc_cache[package]
+
         with open(self.cache_file, 'wb+') as fcache:
             pickle.dump(dsc_cache, fcache, pickle.HIGHEST_PROTOCOL)
         return True
+
+    def load(self, show=False):
+        dsc_cache = None
+
+        if not os.path.exists(self.cache_file):
+            self.logger.warn("dscCache:%s does not exist" % self.cache_file)
+            return None
+
+        try:
+            with open(self.cache_file, 'rb') as fcache:
+                dsc_cache = pickle.load(fcache)
+        except Exception as e:
+            self.logger.error("Failed to load dsc cache: %s", str(e))
+
+        if show and dsc_cache:
+            for pdir, pval in dsc_cache.items():
+                self.logger.debug("dscCache display: %s -> %s", pdir, pval)
+            self.logger.debug("dscCache display: Total dscs count: %d", len(dsc_cache))
+
+        return dsc_cache
