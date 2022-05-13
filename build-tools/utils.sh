@@ -105,3 +105,11 @@ function with_retries {
     done
 }
 
+check_pipe_status() {
+    local -a pipestatus=(${PIPESTATUS[*]})
+    local -i i
+    for ((i=0; i<${#pipestatus[*]}; ++i)) ; do
+        [[ "${pipestatus[$i]}" -eq 0 ]] || return 1
+    done
+    return 0
+}
