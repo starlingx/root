@@ -875,6 +875,13 @@ class BuildController():
 
         # remove duplication
         build_types = list(set(build_types))
+        '''
+        The signed packages like kernel-std-signed and kernel-rt-signed need
+        some interactive operations before building them, so here excluded the
+        build type 'sign' from the default build types
+        '''
+        if not packages and 'sign' in build_types:
+            del build_types['sign']
 
         valid_build_type = discovery.get_layer_build_types(layer, distro=self.attrs['distro'])
 
