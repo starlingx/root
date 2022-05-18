@@ -157,7 +157,7 @@ function build_image_versions_to_manifest {
         #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-dev-latest
         #
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
-        $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
+        ${PYTHON2:-python2} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
         if [ $? -ne 0 ]; then
             echo "Failed to update manifest file" >&2
             exit 1
@@ -229,7 +229,7 @@ function build_application_tarball_armada {
     # TODO: Remove the symboblic link once the community has an
     # opportunity to adapt to the changes in filenames
     if [ "${APP_NAME}" = "stx-openstack" ]; then
-        ln -s ${BUILD_OUTPUT_PATH}/${tarball_name} ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz
+        ln -s ${tarball_name} ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz
         echo "    ${BUILD_OUTPUT_PATH}/${deprecated_tarball_name}.tgz"
         echo "Warning: The tarball ${deprecated_tarball_name}.tgz is a symbolic link for ${tarball_name}. It's deprecated and will be removed shortly."
     fi
@@ -358,6 +358,15 @@ function find_app_version_file {
     return 0
 }
 
+filter_existing_dirs() {
+    local d
+    for d in "$@" ; do
+        if [[ -d "$d" ]] ; then
+            echo "$d"
+        fi
+    done
+}
+
 #
 # Usage:
 #    find_package_files
@@ -365,6 +374,8 @@ function find_app_version_file {
 # Print noarch package files that might contain helm charts
 #
 function find_package_files {
+    local -a dirlist
+    local dir
     if [[ "$OS" == "centos" ]] ; then
         local centos_repo="${MY_REPO}/centos-repo"
         if [[ ! -d "${centos_repo}" ]] ; then
@@ -374,24 +385,32 @@ function find_package_files {
                 exit 1
             fi
         fi
-        find "${MY_WORKSPACE}/std/rpmbuild/RPMS" \
-             "${centos_repo}/Binary/noarch" \
-             -type f -name "*.tis.noarch.rpm"
+        readarray -t dirlist < <(filter_existing_dirs \
+            "${MY_WORKSPACE}/std/rpmbuild/RPMS" \
+            "${centos_repo}/Binary/noarch")
+        if [[ "${#dirlist[@]}" -gt 0 ]] ; then
+            echo "looking for packages in ${dirlist[*]}" >&2
+            find "${dirlist[@]}" -xtype f -name "*.tis.noarch.rpm"
+        fi
     else
         # FIXME: can't search 3rd-party binary debs because they are not accessible
         # on the filesystem, but only as remote files in apt repos
-        find "${MY_WORKSPACE}/std" \
-            -mindepth 2 \
-            -maxdepth 2 \
-            "(" \
+        readarray -t dirlist < <(filter_existing_dirs "${MY_WORKSPACE}/std")
+        if [[ "${#dirlist[@]}" -gt 0 ]] ; then
+            echo "looking for packages in ${dirlist[*]}" >&2
+            find "${dirlist[@]}" \
+                -mindepth 2 \
+                -maxdepth 2 \
                 "(" \
-                       -path "${MY_WORKSPACE}/build-wheels" \
-                    -o -path "${MY_WORKSPACE}/build-images" \
-                    -o -path "${MY_WORKSPACE}/build-helm" \
-                ")" -prune \
-            ")" \
-            -o \
-            "(" -type f -name "*.stx.*_all.deb" ")"
+                    "(" \
+                           -path "${MY_WORKSPACE}/build-wheels" \
+                        -o -path "${MY_WORKSPACE}/build-images" \
+                        -o -path "${MY_WORKSPACE}/build-helm" \
+                    ")" -prune \
+                ")" \
+                -o \
+                "(" -xtype f -name "*.stx.*_all.deb" ")"
+        fi
     fi
 }
 
@@ -410,6 +429,7 @@ function find_helm_chart_package_files {
     # load package files and names
     echo "searching for package files" >&2
     local package_file package_name
+    local failed=0
     for package_file in $(find_package_files) ; do
         package_name="$(
             if [[ "$OS" == "centos" ]] ; then
@@ -423,11 +443,13 @@ function find_helm_chart_package_files {
             echo "ERROR: found multiple packages named ${package_name}:" >&2
             echo "         $package_file" >&2
             echo "         ${package_names[$package_name]}" >&2
-            exit 1
+            failed=1
+            continue
         fi
         package_names["$package_name"]="$package_file"
         package_files["$package_file"]="$package_name"
     done
+    [[ $failed -eq 0 ]] || exit 1
 
     echo "looking for chart packages" >&2
 
@@ -457,7 +479,7 @@ function find_helm_chart_package_files {
 
         local -a dep_package_names=($(
             if [[ "$OS" == "centos" ]] ; then
-                rpm -qRp "$package_file" | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g' | grep -v '/'
+                rpm -qRp "$package_file" | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g' | grep -E -v -e '/' -e '^\s*$'
                 check_pipe_status || exit 1
             else
                 deb_get_control "$package_file" | deb_get_simple_depends
@@ -476,6 +498,7 @@ function find_helm_chart_package_files {
             if [[ -z "$dep_package_file" ]] ; then
                 echo "ERROR: package ${package_file} requires package ${dep_package_name}, which does not exist" >&2
                 failed=1
+                continue
             fi
             # save dep_package_file, unless we've seen it before
             if [[ -z "${chart_package_files[$dep_package_file]}" ]] ; then
