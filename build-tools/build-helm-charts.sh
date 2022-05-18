@@ -23,6 +23,7 @@ declare -a IMAGE_RECORDS
 declare -a PATCH_DEPENDENCIES
 declare -a APP_PACKAGES
 declare -a CHART_PACKAGE_FILES
+# PYTHON_2_OR_3: initialized below
 
 VERBOSE=false
 CPIO_FLAGS=
@@ -157,7 +158,7 @@ function build_image_versions_to_manifest {
         #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-dev-latest
         #
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
-        ${PYTHON2:-python2} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
+        ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
         if [ $? -ne 0 ]; then
             echo "Failed to update manifest file" >&2
             exit 1
@@ -318,19 +319,7 @@ for yaml_file in yaml_files:
 print('Writing merged yaml file: %s' % yaml_output)
 yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), Dumper=yaml.RoundTripDumper, default_flow_style=False)
     "
-    local python python_found
-    for python in ${PYTHON2:-python2} ${PYTHON:-python} ${PYTHON3:-python3} ; do
-        if $python -c 'import ruamel.yaml' >/dev/null 2>&1 ; then
-            python_found=true
-            break
-        fi
-    done
-    if [[ -z "$python_found" ]] ; then
-        echo "ERROR: can't find python!" >&2
-        exit 1
-    fi
-
-    $python -c "${yaml_script}" ${@} || exit 1
+    $PYTHON_2_OR_3 -c "${yaml_script}" ${@} || exit 1
 }
 
 # Find a file named $APP_VERSION_BASE at top-level of each git repo
@@ -733,6 +722,23 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     echo "Environment not setup for builds" >&2
     exit 1
 fi
+
+# find a python interpreter
+function find_python_2_or_3 {
+    local python python_found
+    for python in ${PYTHON2:-python2} ${PYTHON:-python} ${PYTHON3:-python3} ; do
+        if $python -c 'import ruamel.yaml' >/dev/null 2>&1 ; then
+            python_found=true
+            break
+        fi
+    done
+    if [[ -z "$python_found" ]] ; then
+        echo "ERROR: can't find python!" >&2
+        exit 1
+    fi
+    echo "$python"
+}
+PYTHON_2_OR_3="$(find_python_2_or_3)" || exit 1
 
 # include SRPM utils
 if [[ "$OS" == "centos" ]] ; then
