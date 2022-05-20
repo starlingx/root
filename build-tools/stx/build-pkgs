@@ -1129,7 +1129,7 @@ if __name__ == "__main__":
 
     # mirror can be set to add_chroot as the main package repo
     # e.g http://ftp.de.debian.org/debian
-    if build_controller.add_chroot(None) != 'success':
+    if build_controller.add_chroot(os.environ.get('DEBIAN_SNAPSHOT')) != 'success':
         pkgbuilder_log = '/localdisk/pkgbuilder/pkgbuilder.log'
         logger.error(' '.join(['Chroot is not ready, please check',
                               pkgbuilder_log]))
