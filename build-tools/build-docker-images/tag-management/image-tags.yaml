@@ -101,6 +101,6 @@ images:
     src_ref: https://opendev.org/starlingx/utilities/commit/55873d66ff3b80f0853e83b7aa080833350d8d7e
     tag: stx.7.0-v1.0.0
   - name: docker.io/starlingx/stx-centos-tools-dev
-    src_build_tag: master-centos-stable-20220426T024116Z.0
-    src_ref: https://opendev.org/starlingx/utilities/commit/0f2593ccdfbbdf657a13a2319f3827abac85c4d7
-    tag: stx.7.0-v1.0.0
+    src_build_tag: master-centos-stable-20220518T095404Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/bd363f85df9f5683f6b4eaca83b6a54b84ac37e8
+    tag: stx.7.0-v1.0.1
