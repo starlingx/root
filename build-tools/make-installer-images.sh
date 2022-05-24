@@ -68,6 +68,14 @@ if [ ! -d $kernel_rpms_dir ];then
     exit -1
 fi
 
+firmware_rpms_dir=${work_dir}/firmware-rpms
+if [ ! -d ${firmware_rpms_dir} ];then
+    echo "ERROR: ${firmware_rpms_dir} does NOT exist!"
+    exit -1
+fi
+firmware_list_file=${work_dir}/firmware-list
+
+
 initrd_root=$work_dir/initrd.work
 if [ -d $initrd_root ];then
     rm -rf $initrd_root
@@ -84,6 +92,13 @@ clean_rootfs $initrd_root
 
 echo "--> extract files from new kernel and its modular rpms to initrd root"
 for kf in ${kernel_rpms_dir}/std/*.rpm ; do rpm2cpio $kf | cpio -idu; done
+
+echo "--> extract files from new firmware rpms to initrd root"
+if [ -f ${firmware_list_file} ]; then
+    echo "--> extract files from new firmware rpm to initrd root"
+    firmware_list=`cat ${firmware_list_file}`
+    for fw in ${firmware_rpms_dir}/std/*.rpm ; do rpm2cpio ${fw} | cpio -iduv ${firmware_list}; done
+fi
 
 # by now new kernel and its modules exist!
 # find new kernel in /boot/vmlinuz-* or /lib/modules/*/vmlinuz
