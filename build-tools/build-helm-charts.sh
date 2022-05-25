@@ -97,31 +97,37 @@ function is_in {
     return 1
 }
 
+
+function get_image_record_file {
+  local image_record=$1
+
+  if [[ ${image_record} =~ ^https?://.*(.lst|.txt)$ ]]; then
+      wget --quiet --no-clobber ${image_record} \
+           --directory-prefix ${IMAGE_RECORD_PATH}
+
+      if [ $? -ne 0 ]; then
+          echo "Failed to download image record file from ${image_record}" >&2
+          exit 1
+      fi
+  elif [[ -f ${image_record} && ${image_record} =~ .lst|.txt ]]; then
+      cp ${image_record} ${IMAGE_RECORD_PATH}
+      if [ $? -ne 0 ]; then
+          echo "Failed to copy ${image_record} to ${IMAGE_RECORD_PATH}" >&2
+          exit 1
+      fi
+  else
+      echo "Cannot recognize the provided image record file:${image_record}" >&2
+      exit 1
+  fi
+}
+
 # Read the image versions from the passed image
 # record files and build them into armada manifest
-function build_image_versions_to_manifest {
+function build_image_versions_to_armada_manifest {
     local manifest_file=$1
 
     for image_record in ${IMAGE_RECORDS[@]}; do
-
-        if [[ ${image_record} =~ ^https?://.*(.lst|.txt)$ ]]; then
-            wget --quiet --no-clobber ${image_record} \
-                 --directory-prefix ${IMAGE_RECORD_PATH}
-
-            if [ $? -ne 0 ]; then
-                echo "Failed to download image record file from ${image_record}" >&2
-                exit 1
-            fi
-        elif [[ -f ${image_record} && ${image_record} =~ .lst|.txt ]]; then
-            cp ${image_record} ${IMAGE_RECORD_PATH}
-            if [ $? -ne 0 ]; then
-                echo "Failed to copy ${image_record} to ${IMAGE_RECORD_PATH}" >&2
-                exit 1
-            fi
-        else
-            echo "Cannot recognize the provided image record file:${image_record}" >&2
-            exit 1
-        fi
+        get_image_record_file ${image_record}
 
         # An image record file contains a list of images with the following format:
         # <docker-registry>/<repository>/<repository>/.../<image-name>:<tag>
@@ -166,6 +172,61 @@ function build_image_versions_to_manifest {
     done
 }
 
+
+# Read the image versions from the passed image
+# record files and build them into fluxcd manifests
+function build_image_versions_to_fluxcd_manifests {
+    local manifest_folder=$1
+
+    for image_record in ${IMAGE_RECORDS[@]}; do
+        get_image_record_file ${image_record}
+
+        # An image record file contains a list of images with the following format:
+        # <docker-registry>/<repository>/<repository>/.../<image-name>:<tag>
+        #
+        # An example of the content of an image record file:
+        # e.g. images-centos-dev-latest.lst
+        # docker.io/starlingx/stx-aodh:master-centos-dev-latest
+        # docker.io/starlingx/stx-ceilometer:master-centos-dev-latest
+        # docker.io/starlingx/stx-cinder:master-centos-dev-latest
+        # ...
+        #
+        # An example of the usage of an image reference in manifest file:
+        # e.g. manifest.yaml
+        # images:
+        #   tags:
+        #     aodh_api: docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #     aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #     ...
+        #
+        # To replace the images in the manifest file with the images in image record file:
+        # For each image reference in the image record file,
+        # 1. extract image name
+        #    e.g. image_name = stx-aodh
+        #
+        # 2. search the image reference in manifest yaml via image_name
+        #    e.g. old_image_reference = docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #
+        # 3. update the manifest file to replace the old image references with the new one
+        #    e.g. manifest.yaml
+        #    images:
+        #      tags:
+        #        aodh_api: docker.io/starlingx/stx-aodh:master-centos-dev-latest
+        #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-dev-latest
+        #
+        image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
+        find ${manifest_folder} -name "*.yaml" | while read manifest_file; do
+          ${PYTHON2:-python2} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
+          if [ $? -ne 0 ]; then
+              echo "Failed to update manifest file" >&2
+              exit 1
+          fi
+          \mv -f ${manifest_file}.tmp ${manifest_file}
+        done
+    done
+}
+
+
 function build_application_tarball {
 
     if [ -n "$1" ] ; then
@@ -180,7 +241,7 @@ function build_application_tarball_armada {
     manifest_file=$(basename ${manifest})
     manifest_name=${manifest_file%.yaml}
     deprecated_tarball_name="helm-charts-${manifest_name}"
-    build_image_versions_to_manifest ${manifest}
+    build_image_versions_to_armada_manifest ${manifest}
 
     cp ${manifest} staging/.
     if [ $? -ne 0 ]; then
@@ -246,10 +307,9 @@ function build_application_tarball_fluxcd {
         exit 1
     fi
 
-    # TODO: implement build image version mapping to fluxcd manifests
-    # build_image_versions_to_manifests
-
     cd staging
+    build_image_versions_to_fluxcd_manifests ${FLUXCD_MANIFEST_DIR}
+
     # Add metadata file
     touch metadata.yaml
     if [ -n "${LABEL}" ]; then
@@ -848,7 +908,6 @@ if [ ! -d "usr/lib/fluxcd" ] ; then
 else
     echo
     echo "WARNING: Merging yaml manifests is currently not supported for FluxCD applications" >&2
-    echo "WARNING: Adding image versions from image record files is currently not supported for FluxCD applications" >&2
     echo
     echo "Results:"
     build_application_tarball

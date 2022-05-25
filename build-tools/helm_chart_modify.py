@@ -164,9 +164,19 @@ def main(argv):
         Loader=yaml.RoundTripLoader,
         preserve_quotes=True,
         version=(1, 1)):
-        document_name = (document['schema'],
-                         document['metadata']['schema'],
-                         document['metadata']['name'])
+        if 'schema' in document and 'armada' in document.get('schema'):
+            # Armada manifest, need to drop them all in the same file so
+            # storing in the OrderedDict using tuple as key to differentiate
+            # between entities
+            document_name = (
+                document['schema'],
+                document['metadata']['schema'],
+                document['metadata']['name']
+            )
+        else:
+            # FluxCD manifest, plain yaml file, should be simply dumped
+            document_name = ""
+
         modify_yaml(document, '', '', new_image_dict)
         document_out[document_name] = document
 
