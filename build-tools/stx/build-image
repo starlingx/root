@@ -19,6 +19,7 @@ import discovery
 import getopt
 import logging
 import os
+import re
 import repo_manage
 import shutil
 import subprocess
@@ -106,6 +107,53 @@ def update_ostree_osname(img_yaml):
         return False
 
     logger.debug(' '.join(['Update', img_yaml, 'to update the ostree_osname']))
+    return True
+
+
+def change_default_kernel(img_yaml, ktype):
+
+    rt_kernel = std_kernel = None
+    try:
+        with open(img_yaml) as f:
+            yaml_doc = yaml.safe_load(f)
+            multi_kernels = yaml_doc["multiple-kernels"].split(" ")
+            default_kernel = yaml_doc["default-kernel"]
+        if len(multi_kernels) == 1:
+            return False
+        for kernel in multi_kernels:
+            if re.search("-rt-", kernel):
+                rt_kernel = kernel
+            else:
+                std_kernel = kernel
+        if ktype == "rt":
+            if re.search("-rt-", default_kernel):
+                return True
+            elif rt_kernel != None:
+                yaml_doc["default-kernel"] = rt_kernel
+            else:
+                logger.error(f"No rt kernel is found in {multiple-kernels}")
+                return False
+        elif ktype == "std":
+            if not re.search("-rt-", default_kernel):
+                return True
+            elif std_kernel != None:
+                yaml_doc["default-kernel"] = std_kernel
+            else:
+                logger.error(f"No std kernel is found in {multiple-kernels}")
+                return False
+
+        logger.debug(f'Set default kernel as {yaml_doc["default-kernel"]}')
+        try:
+            with open(img_yaml, 'w') as f:
+                yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+        except IOError as e:
+            logger.error(str(e))
+            return False
+
+    except IOError as e:
+        logger.error(str(e))
+        return False
+
     return True
 
 
@@ -364,10 +412,10 @@ if __name__ == "__main__":
     base_bins_ready = check_base_os_binaries(repo_manager)
 
     logger.info("\nchecking STX binary packages ......")
-    stx_bins_ready = check_stx_binaries(repo_manager, kernel_type)
+    stx_bins_ready = check_stx_binaries(repo_manager, "std")
 
     logger.info("\nchecking STX patched packages ......")
-    stx_patched_ready = check_stx_patched(repo_manager, kernel_type)
+    stx_patched_ready = check_stx_patched(repo_manager, "std")
 
     if not base_bins_ready or not stx_bins_ready or not stx_patched_ready:
         logger.error("Fail to get prepared to build image")
@@ -420,13 +468,9 @@ if __name__ == "__main__":
 
     update_ostree_osname(lat_yaml)
 
-    if kernel_type == 'rt':
-        if not update_rt_kernel_in_main_yaml(lat_yaml):
-            logger.error("Failed to update LAT yaml file for rt type")
-            sys.exit(1)
-        if not update_rt_kernel_in_initramfs_yaml(lat_initramfs_yaml):
-            logger.error("Failed to update LAT initramfs yaml file for rt type")
-            sys.exit(1)
+    if not change_default_kernel(lat_yaml, kernel_type):
+        logger.error("Failed to change the default boot kernel")
+        sys.exit(1)
 
     if add_lat_packages(lat_yaml, img_pkgs):
         os.system(' '.join(['latc --file=' + lat_yaml, '-t', kernel_type, 'build']))
