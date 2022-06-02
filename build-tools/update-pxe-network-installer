@@ -38,6 +38,17 @@ find_and_copy_rpm () {
     fi
 }
 
+find_firmware() {
+    (
+        set -e
+        pattern="centos_firmware.inc"
+        cd $MY_REPO_ROOT_DIR
+        repo forall -c 'echo $REPO_PATH' \
+            | xargs -r -i find '{}' -mindepth 1 -maxdepth 1 -xtype f -name "$pattern" \
+            | xargs -r grep -E -v '^\s*(#.*)?$' \
+            | sort -u
+    )
+}
 
 echo "Start to update pxe-network-installer images .... "
 timestamp=$(date +%F_%H%M)
@@ -54,6 +65,15 @@ if [ -f ${firmware_list_file} ]; then
 fi
 if [ -n "${UPDATE_FW_LIST}" ] && [ -f "${UPDATE_FW_LIST}" ]; then
     cp -f ${UPDATE_FW_LIST} ${firmware_list_file}
+fi
+find_firmware >"${firmware_list_file}.tmp"
+if [[ -s "${firmware_list_file}.tmp" ]] ; then
+    cat "${firmware_list_file}.tmp" >>"${firmware_list_file}"
+fi
+\rm -f "${firmware_list_file}.tmp"
+if [[ -f "${firmware_list_file}" ]] ; then
+    echo "Including firmware files in installer:" >&2
+    cat "${firmware_list_file}" | sed -r 's/^/\t/' >&2
 fi
 
 cd $pxe_network_installer_dir
