@@ -72,7 +72,6 @@ def update_debootstrap_mirror(img_yaml):
         logger.error('REPOMGR_URL is not in current sys ENV')
         return False
 
-    repo_all_url = '/'.join([repomgr_url, REPO_ALL])
     try:
         with open(img_yaml) as f:
             yaml_doc = yaml.safe_load(f)
@@ -81,14 +80,16 @@ def update_debootstrap_mirror(img_yaml):
             else:
                 mirror = yaml_doc['debootstrap-mirror']
                 if mirror == REPO_ALL:
-                    yaml_doc['debootstrap-mirror'] = repo_all_url
-                    with open(img_yaml, 'w') as f:
-                        yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
-                    logger.debug('Updating %s, setting debootstrap_mirror to %s', img_yaml, repo_all_url)
-                    return True
+                    yaml_doc['debootstrap-mirror'] = os.path.join(repomgr_url, REPO_ALL)
+                else:
+                    yaml_doc['debootstrap-mirror'] = os.environ.get('DEBIAN_SNAPSHOT')
+                with open(img_yaml, 'w') as f:
+                    yaml.safe_dump(yaml_doc, f, default_flow_style=False, sort_keys=False)
+                    logger.debug('Updating %s, setting debootstrap_mirror to %s', img_yaml, yaml_doc['debootstrap-mirror'])
+                return True
     except IOError as e:
         logger.error(str(e))
-        logger.debug('Failed to update %s, could not set debootstrap_mirror to %s', img_yaml, repo_all_url)
+        logger.debug('Failed to update %s, could not set debootstrap_mirror to %s', img_yaml, yaml_doc['debootstrap-mirror'])
     return False
 
 
