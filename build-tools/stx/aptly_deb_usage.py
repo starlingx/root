@@ -30,6 +30,7 @@ PREFIX_REMOTE = 'deb-remote-'
 PREFIX_MERGE = 'deb-merge-'
 SIGN_KEY = 'E82373F817C276756FA64756FAAD0555200D6582'
 SIGN_PASSWD = 'starlingx'
+DEFAULT_TIMEOUT_COUNT = 10
 
 # Class used to manage aptly data base, it can:
 #     create_remote: Create a repository link to a remote mirror
@@ -265,6 +266,52 @@ class Deb_aptly():
                 self.logger.warning('Remove snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
         return True
 
+    # Wait a task for several minutes...
+    def __wait_slow_task(self, task, count=DEFAULT_TIMEOUT_COUNT):
+        '''Wait for a task for several minutes'''
+        if count not in range(1, 16):
+            self.logger.error('Requested wait of % minutes is greater than 15 minute max wait.' % count)
+            return 'Parameter error'
+        while count > 0:
+            count -= 1;
+            try:
+                # Function wait_for_task_by_id will return in 60 seconds, or timeout.
+                self.aptly.tasks.wait_for_task_by_id(task.id)
+            except Exception as e:
+                self.logger.debug('%s' % e)
+                continue
+            else:
+               return self.aptly.tasks.show(task.id).state
+        return 'Failed'
+
+    # Publish a local repository directly, without snapshot or signature
+    # If an old publish exists, drop it firstly and then create a new one.
+    # Do not use publish.update just for safety.
+    # (repo)repo_name ==> (publish)repo_name-suffix
+    def __quick_publish_repo(self, repo_name, suffix):
+        '''Create a publish based on a local repository directly, without snapshot.'''
+        # Caller already checked the repo_name, no need to check again
+        if not suffix:
+            self.logger.error('Quick publish needs suffix, none provided')
+            return
+        publish_name = '-'.join([repo_name, suffix])
+        publish_list = self.aptly.publish.list()
+        for publish in publish_list:
+            if publish.prefix == publish_name:
+                task = self.aptly.publish.drop(prefix=publish_name, distribution=publish.distribution, force_delete=True)
+                self.aptly.tasks.wait_for_task_by_id(task.id)
+                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                    self.logger.warning('Drop failed publication %s : %s', publish_name, self.aptly.tasks.show(task.id).state)
+                    return None
+        task = self.aptly.publish.publish(source_kind='local', sources=[{'Name': repo_name}],
+                                          architectures=['amd64', 'source'], prefix=publish_name,
+                                          distribution=None, sign_skip=True)
+        task_result = self.__wait_slow_task(task)
+        if task_result != 'SUCCEEDED':
+            self.logger.warning('Quick publish for %s create failed: %s' % (name, task_result))
+            return None
+        return publish_name + ' ' + 'bullseye'
+
     # Publish a snap called "name" with prefix as name, "bullseye" as the distribution
     # Return None or prefix/distribution
     def __publish_snap(self, name):
@@ -306,34 +353,15 @@ class Deb_aptly():
         extra_param['sources'] = [{'Name': name}]
         extra_param['sign_skip'] = True
         extra_param['prefix'] = name
-        # task = self.aptly.publish.publish(**extra_param)
         task = self.aptly.publish.publish(source_kind='snapshot', sources=extra_param['sources'],
                                           architectures=extra_param['architectures'], prefix=extra_param['prefix'],
                                           distribution=extra_param['distribution'],
                                           sign_gpgkey=SIGN_KEY, sign_passphrase=SIGN_PASSWD,
                                           origin=extra_param['origin'])
-        # In corner cases, "publish" may spend more than 60 seconds, cause
-        # "wait_for_task_by_id" timeout. To cover such cases, we "wait_for_task_by_id"
-        # up to 3 times, to enlarge the whole timeout to 180 seconds.
-        try:
-            # 1st 60 seconds
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-        except Exception as e:
-            self.logger.error('Error: %s' % e)
-            self.logger.error('Publish local repo %s timeout first time, wait one more minute...' % name)
-            try:
-                # 2nd 60 seconds
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-            except Exception as e:
-                self.logger.error('Error: %s' % e)
-                self.logger.error('Publish local repo %s timeout second time, wait one more minute...' % name)
-                # 3th 60 seconds
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-        if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-            self.logger.warning('Publish for %s create failed: %s', name, self.aptly.tasks.show(task.id).state)
+        task_result = self.__wait_slow_task(task)
+        if task_result != 'SUCCEEDED':
+            self.logger.warning('Publication %s failed: %s' % (name, task_result))
             return None
-
-        task = None
         publish_list = self.aptly.publish.list()
         for publish in publish_list:
             if publish.prefix == name:
@@ -616,9 +644,11 @@ class Deb_aptly():
             return ret
 
     # deploy a local repository
-    # Input: the name of the local repository
+    # Input
+    #   name: the name of the local repository
+    #   suffix: suffix of the publish name
     # Output: None or DebAptDistributionResponse
-    def deploy_local(self, name):
+    def deploy_local(self, name, suffix=''):
         '''Deploy a local repository.'''
         if not name.startswith(PREFIX_LOCAL):
             self.logger.warning('%s is NOT a well formed name.', name)
@@ -634,6 +664,9 @@ class Deb_aptly():
         if not repo_find:
             self.logger.warning('local repo %s not found.', name)
             return None
+
+        if suffix:
+            return self.__quick_publish_repo(name, suffix)
 
         if self.__create_snapshot(name, True):
             ret = self.__publish_snap(name)
