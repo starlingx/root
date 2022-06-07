@@ -995,10 +995,10 @@ function find_image_build_files {
                 all_labels["$LABEL"]="$image_build_file"
 
                 # skip images we don't want to build
-                if is_in ${PROJECT} ${SKIP[@]} || is_in ${LABEL} ${SKIP[@]}; then
+                if is_in "${PROJECT}" ${SKIP[@]} || is_in "${LABEL}" ${SKIP[@]}; then
                     continue
                 fi
-                if ! is_empty ${ONLY[@]} && ! is_in ${PROJECT} ${ONLY[@]} && ! is_in ${LABEL} ${ONLY[@]}; then
+                if ! is_empty ${ONLY[@]} && ! is_in "${PROJECT}" ${ONLY[@]} && ! is_in "${LABEL}" ${ONLY[@]}; then
                     continue
                 fi
 
