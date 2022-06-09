@@ -7,14 +7,14 @@
 # This utility retags images, as configured by yaml files, formatted as:
 #
 # images:
-#  - name: docker.io/starlingx/k8s-cni-sriov
-#    src_build_tag: master-centos-stable-20191203T153530Z.0
-#    src_ref: https://opendev.org/starlingx/integ/commit/dac417bd31ed36d455e94db4aabe5916367654d4
-#    tag: stx.3.0-v2.2
-#  - name: docker.io/starlingx/k8s-plugins-sriov-network-device
-#    src_build_tag: master-centos-stable-20191203T153530Z.0
-#    src_ref: https://opendev.org/starlingx/integ/commit/dac417bd31ed36d455e94db4aabe5916367654d4
-#    tag: stx.3.0-v3.1
+#  - name: docker.io/starlingx/rvmc
+#    src_build_tag: master-centos-stable-20201027T184226Z.0
+#    src_ref: https://opendev.org/starlingx/metal/commit/d46c9c55a9a9b7ea09e8d0fe66c8cfbeeb9ac75f
+#    tag: stx.5.0-v1.0.0
+#  - name: docker.io/starlingx/stx-platformclients
+#    src_build_tag: master-centos-stable-20220308T014755Z.0
+#    src_ref: https://opendev.org/starlingx/config/commit/451a3dd57c8be1156bc388642c8026dc79c62b3b
+#    tag: stx.7.0-v1.5.6
 #
 
 declare RUNCMD=

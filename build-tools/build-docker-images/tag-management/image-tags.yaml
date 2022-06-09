@@ -1,11 +1,6 @@
 # yamllint disable rule:line-length
 ---
 images:
-  - name: docker.io/starlingx/k8s-cni-sriov
-    src_build_tag: master-centos-stable-20210218T003113Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/eccff3b0e661592084d9114a9a41816761e1f9b5
-    # Version determined by running 'git describe --tags' in clone of upstream repo
-    tag: stx.5.0-v2.6-7-gb18123d8
   - name: docker.io/starlingx/k8s-plugins-sriov-network-device
     src_build_tag: master-centos-stable-20200512T184214Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/e2dc5c2dd0042788697ade268ac5c24fe9dc2f8c
