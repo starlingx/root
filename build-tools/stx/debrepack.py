@@ -136,6 +136,7 @@ def tar_cmd(tarball_name, logger):
         logger.error('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
         raise ValueError(f'{tarball_name} type is not supported')
 
+    targz = targz.group(1)
     # Refer to untar.py of debmake python module
     if targz == 'tar.bz2':
         cmd = 'tar --bzip2 -xf %s '
