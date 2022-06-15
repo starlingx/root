@@ -103,3 +103,7 @@ images:
     src_build_tag: master-centos-stable-20220531T030625Z.0
     src_ref: https://opendev.org/starlingx/metrics-server-armada-app/commit/512747aec471066dd4a2dbe9e260b887be6319c8
     tag: stx.7.0-v1.0.0
+  - name: docker.io/starlingx/armada-image
+    src_build_tag: master-distroless-stable-20220616T173558Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/0783ec950b424c980658765515a649c846dc5121
+    tag: stx.7.0-v1.0.0
