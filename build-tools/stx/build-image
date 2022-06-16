@@ -22,6 +22,7 @@ import os
 import re
 import repo_manage
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -41,7 +42,8 @@ img_pkgs = []
 kernel_type = 'std'
 stx_std_kernel = 'linux-image-5.10.0-6-amd64-unsigned'
 stx_rt_kernel =  'linux-rt-image-5.10.0-6-rt-amd64-unsigned'
-
+WAIT_TIME_BEFORE_CHECKING_LOG = 2
+DEFAULT_TIME_WAIT_LOG = 15
 
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
@@ -385,6 +387,35 @@ def verify_pkgs_in_repo(repomgr, repo_name, pkg_list_path):
         return failed_pkgs
 
 
+def stop_latd():
+    os.system("latc stop")
+    time.sleep(2)
+
+    cmd = 'latc status'
+    try:
+        status = subprocess.check_output(cmd, shell=True).decode()
+    except Exception as e:
+        logger.error(str(e))
+    else:
+        if status:
+            if 'idle' in status:
+                logger.info("Successfully stopped latd")
+                return
+    logger.info("Failed to stop latd, you may have to login pkgbuilder to kill")
+
+
+def user_signal_handler(signum, frame):
+    stop_latd()
+    sys.exit(1)
+
+
+def user_register_signals():
+    signal.signal(signal.SIGINT,  user_signal_handler)
+    signal.signal(signal.SIGHUP,  user_signal_handler)
+    signal.signal(signal.SIGTERM, user_signal_handler)
+    signal.signal(signal.SIGPIPE, user_signal_handler)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="build-image helper")
@@ -398,6 +429,8 @@ if __name__ == "__main__":
         kernel_type = 'rt'
     else:
         kernel_type = 'std'
+
+    user_register_signals()
 
     rmg_logger = logging.getLogger('repo_manager')
     utils.set_logger(rmg_logger)
@@ -472,34 +505,43 @@ if __name__ == "__main__":
         logger.error("Failed to change the default boot kernel")
         sys.exit(1)
 
-    if add_lat_packages(lat_yaml, img_pkgs):
-        os.system(' '.join(['latc --file=' + lat_yaml, '-t', kernel_type, 'build']))
-        time.sleep(5)
-        lat_log = os.path.join(LAT_ROOT, kernel_type, "log/log.appsdk")
-        time_to_wait = 5
-        time_counter = 0
-        while not os.path.exists(lat_log):
-            time.sleep(1)
-            time_counter += 1
-            if time_counter > time_to_wait:
-                break
-        if not os.path.exists(lat_log):
-            logger.info('The wait for %s has timed out, please wait a moment,' % lat_log)
-            logger.info('then run: tail -f %s to check the process.' % lat_log)
-            sys.exit(1)
-        else:
-            log_printer = subprocess.Popen("tail -f " + lat_log,
-                                           stdout=subprocess.PIPE, shell=True,
-                                           universal_newlines=True)
-            while log_printer.poll() is None:
-                line = log_printer.stdout.readline()
-                line = line.strip()
-                if line:
-                    print(line)
-                    if "ERROR: " in line:
-                        msg = 'Failed to build image, check the log file %s' % lat_log
-                        logger.info(msg)
-                        sys.exit(1)
-                    if "DEBUG: Deploy ovmf.qcow2" in line:
-                        msg = 'build-image done, check in %s/%s' %(LAT_ROOT, kernel_type)
-                        sys.exit(0)
+    ret = 1
+    if not add_lat_packages(lat_yaml, img_pkgs):
+        logger.error("Failed to add packages into image YAML config")
+        sys.exit(ret)
+
+    os.system(' '.join(['latc --file=' + lat_yaml, '-t', kernel_type, 'build']))
+    # Sleep here to wait for the log file created and feeded by latd
+    # It should be noted that latd does not output to log from its start
+    time.sleep(WAIT_TIME_BEFORE_CHECKING_LOG)
+    lat_log = os.path.join(LAT_ROOT, kernel_type, "log/log.appsdk")
+    time_to_wait = DEFAULT_TIME_WAIT_LOG
+    time_counter = 0
+    while not os.path.exists(lat_log):
+        time.sleep(1)
+        time_counter += 1
+        if time_counter > time_to_wait:
+            break
+    if not os.path.exists(lat_log):
+        logger.info('The wait for %s has timed out, please wait a moment,' % lat_log)
+        logger.info('then run: tail -f %s to check the process.' % lat_log)
+        sys.exit(ret)
+    else:
+        log_printer = subprocess.Popen("tail -f " + lat_log,
+                                       stdout=subprocess.PIPE, shell=True,
+                                       universal_newlines=True)
+        while log_printer.poll() is None:
+            line = log_printer.stdout.readline()
+            line = line.strip()
+            if line:
+                print(line)
+                if "ERROR: " in line:
+                    logger.info("Failed to build image, check the log %s", lat_log)
+                    break
+                if "DEBUG: Deploy ovmf.qcow2" in line:
+                    logger.info("build-image successfully done, check the output in %s/%s", LAT_ROOT, kernel_type)
+                    ret = 0
+                    break
+    # stop latd
+    stop_latd()
+    sys.exit(ret)
