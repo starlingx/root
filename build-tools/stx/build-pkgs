@@ -881,7 +881,7 @@ class BuildController():
         build type 'sign' from the default build types
         '''
         if not packages and 'sign' in build_types:
-            del build_types['sign']
+            build_types.remove('sign')
 
         valid_build_type = discovery.get_layer_build_types(layer, distro=self.attrs['distro'])
 
