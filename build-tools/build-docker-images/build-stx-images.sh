@@ -975,6 +975,13 @@ function find_image_build_files {
         for image_build_dir in $(sed -e 's/#.*//' ${image_build_inc_file} | sort -u); do
             for image_build_file in ${basedir}/${image_build_dir}/${OS}/*.${BUILD_STREAM}_docker_image; do
 
+                # Make sure image exists
+                if [[ ! -f "$image_build_file" ]] ; then
+                    echo "ERROR: $image_build_file: file not found" >&2
+                    echo "ERROR: $image_build_inc_file: referenced here" >&2
+                    exit 1
+                fi
+
                 # reset & read image build directive vars
                 local BUILDER=
                 local PROJECT=
