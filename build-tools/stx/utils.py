@@ -122,11 +122,19 @@ def limited_walk(dir, max_depth=1):
 
 
 def run_shell_cmd(cmd, logger):
+    if type(cmd) is str:
+        shell = True
+        cmd_str = cmd
+    elif type(cmd) in (tuple, list):
+        shell = False
+        cmd_str = " ".join(cmd)
+    else:
+        raise Exception("Unrecognized 'cmd' type '%s'. Must be one of [str, list, tuple]." % (type(cmd)))
 
-    logger.info(f'[ Run - "{cmd}" ]')
+    logger.info(f'[ Run - "{cmd_str}" ]')
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   universal_newlines=True, shell=True)
+                                   universal_newlines=True, shell=shell)
         # process.wait()
         outs, errs = process.communicate()
     except Exception:

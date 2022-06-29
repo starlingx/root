@@ -227,9 +227,9 @@ class DebDownloader(BaseDownloader):
             dl_file = '_'.join([_name, _version, self.arch]) + '.deb'
             ret = os.path.join(self.dl_dir, dl_file)
             tmp_file = ".".join([ret, "tmp"])
-            dl_cmd = "rm -rf %s; curl -k -f %s -o %s" % (tmp_file, url, tmp_file)
-            utils.run_shell_cmd(dl_cmd, logger)
-            utils.run_shell_cmd("mv %s %s" % (tmp_file, ret), logger)
+            utils.run_shell_cmd(["rm", "-rf", tmp_file], logger)
+            utils.run_shell_cmd(["curl", "-k", "-f", url, "-o", tmp_file], logger)
+            utils.run_shell_cmd(["mv", tmp_file, ret], logger)
             return ret
 
         try:
