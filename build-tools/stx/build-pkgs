@@ -35,6 +35,7 @@ import yaml
 
 BUILDER_URL = os.environ.get('BUILDER_URL')
 REPOMGR_URL = os.environ.get('REPOMGR_URL')
+REPOMGR_ORIGIN = os.environ.get('REPOMGR_ORIGIN')
 BUILD_ROOT = os.environ.get('MY_BUILD_PKG_DIR')
 STX_ROOT = os.environ.get('MY_REPO_ROOT_DIR')
 PKGBUILDER_ROOT = "/localdisk/pkgbuilder"
@@ -274,7 +275,8 @@ class BuildController():
             rlogger = logging.getLogger('repo_manager')
             utils.set_logger(rlogger)
             self.kits['repo_mgr'] = repo_manage.RepoMgr('aptly', REPOMGR_URL,
-                                                        '/tmp', rlogger)
+                                                        '/tmp', REPOMGR_ORIGIN,
+                                                        rlogger)
             logger.debug("Successful created repo manager")
 
     @property

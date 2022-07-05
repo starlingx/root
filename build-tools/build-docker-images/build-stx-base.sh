@@ -333,7 +333,7 @@ EOF
 else
 
     # These env vars must be defined in debian builder pods
-    for var in DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION REPOMGR_DEPLOY_URL ; do
+    for var in DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION REPOMGR_DEPLOY_URL REPOMGR_ORIGIN ; do
         if [[ -z "${!var}" ]] ; then
             echo "$var must be defined in the environment!" >&2
             exit 1
@@ -347,7 +347,7 @@ else
             -e "s!@DEBIAN_SECURITY_SNAPSHOT@!${DEBIAN_SECURITY_SNAPSHOT}!g" \
             -e "s!@DEBIAN_DISTRIBUTION@!${DEBIAN_DISTRIBUTION}!g" \
             -e "s!@REPOMGR_DEPLOY_URL@!${REPOMGR_DEPLOY_URL}!g" \
-            -e "s!@REPOMGR_HOST@!${REPOMGR_HOST}!g" \
+            -e "s!@REPOMGR_ORIGIN@!${REPOMGR_ORIGIN}!g" \
             "$@"
     }
 
@@ -369,14 +369,8 @@ else
         replace_vars "${SRC_DOCKER_DIR}/apt/stx.sources.list.in" >"${BUILDDIR}/apt/stx.sources.list"
     fi
 
-    # preferences: instantiate template once for every host in stx.sources.list
-    unique_hosts=$(\grep -v -E '^\s*(#.*)?$' "${BUILDDIR}/apt/stx.sources.list" | sed -n -r 's#.*(https?|ftp)://([^/:[:space:]]+).*#\2#p' | sort -u)
-    echo -n >"${BUILDDIR}/apt/stx.preferences"
-    for host in $unique_hosts ; do
-        REPOMGR_HOST="$host" replace_vars "${SRC_DOCKER_DIR}/apt/stx.preferences.part.in" >>"${BUILDDIR}/apt/stx.preferences"
-        echo >>"${BUILDDIR}/apt/stx.preferences"
-    done
-    unset host unique_hosts
+    # preferences: instantiate template with REPOMGR_ORIGIN from environment
+    replace_vars "${SRC_DOCKER_DIR}/apt/stx.preferences.part.in" >>"${BUILDDIR}/apt/stx.preferences"
     unset -f replace_vars
 fi
 

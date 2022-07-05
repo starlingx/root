@@ -87,7 +87,8 @@ if __name__ == "__main__":
 
     # Create local binary repo with repo manager
     repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
-                                  '/tmp/', logger)
+                                  '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
+                                  logger)
     repomgr.upload_pkg(REPO_BIN, None)
 
     with open(sys.argv[1], 'r') as flist:

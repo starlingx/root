@@ -435,7 +435,8 @@ if __name__ == "__main__":
     rmg_logger = logging.getLogger('repo_manager')
     utils.set_logger(rmg_logger)
     repo_manager = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
-                                       '/tmp/', rmg_logger)
+                                       '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
+                                       rmg_logger)
     repo_manager.upload_pkg(REPO_BUILD, None)
     repo_manager.upload_pkg(REPO_BINARY, None)
 

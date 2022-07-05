@@ -165,7 +165,8 @@ class BaseDownloader():
         rlogger = logging.getLogger('repo_manager')
         utils.set_logger(rlogger)
         self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
-                                           '/tmp/', rlogger)
+                                           '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
+                                           rlogger)
 
     def clean(self):
         if os.path.exists(self.dl_dir):

@@ -1,4 +1,4 @@
-Explanation: Prefer StarlingX repos over vanilla Debian
+Explanation: Prefer StarlingX repos over anything else
 Package: *
-Pin: origin "@REPOMGR_HOST@"
+Pin: release o=@REPOMGR_ORIGIN@
 Pin-Priority: 999

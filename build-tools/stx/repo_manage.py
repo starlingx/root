@@ -33,6 +33,7 @@ import utils
 
 
 REPOMGR_URL = os.environ.get('REPOMGR_URL')
+REPOMGR_ORIGIN = os.environ.get('REPOMGR_ORIGIN')
 REPOMGR_DEPLOY_URL = os.environ.get('REPOMGR_DEPLOY_URL')
 
 APTFETCH_JOBS = 10
@@ -218,9 +219,9 @@ class RepoMgr():
     remote repo: mirror of another repository. shouldn't insert or remove packages from it..
     local repo: a local repository, we can insert/remove packages into/from them.
     '''
-    def __init__(self, repoType, repoURL, workdir, logger):
+    def __init__(self, repoType, repoURL, workdir, origin, logger):
         if repoType == 'aptly':
-            self.repo = aptly_deb_usage.Deb_aptly(repoURL, logger)
+            self.repo = aptly_deb_usage.Deb_aptly(repoURL, origin, logger)
         else:
             raise Exception('Currently, only aptly repository supported')
 
@@ -662,44 +663,44 @@ utils.set_logger(applogger)
 
 
 def _handleDownload(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, REPOMGR_ORIGIN, applogger)
     kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list,
               'dsc_list': args.dsc_list}
     repomgr.download(args.name, **kwargs, no_clear=args.no_clear)
 
 
 def _handleSync(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, REPOMGR_ORIGIN, applogger)
     kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list,
               'dsc_list': args.dsc_list}
     repomgr.sync(args.name, args.repo_list, **kwargs, no_clear=args.no_clear)
 
 
 def _handleMirror(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     kwargs = {'url': args.url, 'distribution': args.distribution, 'component': args.component,
               'architectures': args.architectures, 'with_sources': args.with_sources}
     repomgr.mirror(args.name, **kwargs)
 
 
 def _handleMerge(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.merge(args.name, args.repo_list)
 
 
 def _handleUploadPkg(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.upload_pkg(args.repository, args.package)
 
 
 def _handleDeletePkg(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.delete_pkg(args.repository, args.package_name, args.package_type,
                        pkg_version=args.package_version)
 
 
 def _handleSearchPkg(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     if args.package_type == 'binary':
         repomgr.search_pkg(args.repository, args.package_name, pkg_version=args.package_version,
                            binary=True)
@@ -709,22 +710,22 @@ def _handleSearchPkg(args):
 
 
 def _handleRemoveRope(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.remove_repo(args.repository)
 
 
 def _handleList(_args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.list()
 
 
 def _handleListPkgs(args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.list_pkgs(args.repository)
 
 
 def _handleClean(_args):
-    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', applogger)
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.clean()
 
 

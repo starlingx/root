@@ -47,12 +47,16 @@ SIGN_PASSWD = 'starlingx'
 
 
 class Deb_aptly():
-    def __init__(self, url, logger):
+    def __init__(self, url, origin, logger):
         '''The basic interface to manage aptly database. '''
         self.logger = logger
         self.url = url
         self.aptly = Client(self.url)
         self.logger.info('Aptly connected, version: %s', self.aptly.misc.version)
+        if origin:
+            self.origin = origin.strip() or None
+        else:
+            self.origin = None
 
     # Create a remote mirror(make sure the name has specified prefix)
     # Input
@@ -291,10 +295,12 @@ class Deb_aptly():
             # Add 'source' to publish source packages, if no source packages, that is also harmless.
             extra_param['architectures'] = mirror.architectures.append('source')
             extra_param['distribution'] = mirror.distribution
+            extra_param['origin'] = None
         else:
             # Only support binary_amd64 and source packages
             extra_param['architectures'] = ['amd64', 'source']
             extra_param['distribution'] = None
+            extra_param['origin'] = self.origin
 
         extra_param['source_kind'] = 'snapshot'
         extra_param['sources'] = [{'Name': name}]
@@ -304,7 +310,8 @@ class Deb_aptly():
         task = self.aptly.publish.publish(source_kind='snapshot', sources=extra_param['sources'],
                                           architectures=extra_param['architectures'], prefix=extra_param['prefix'],
                                           distribution=extra_param['distribution'],
-                                          sign_gpgkey=SIGN_KEY, sign_passphrase=SIGN_PASSWD)
+                                          sign_gpgkey=SIGN_KEY, sign_passphrase=SIGN_PASSWD,
+                                          origin=extra_param['origin'])
         # In corner cases, "publish" may spend more than 60 seconds, cause
         # "wait_for_task_by_id" timeout. To cover such cases, we "wait_for_task_by_id"
         # up to 3 times, to enlarge the whole timeout to 180 seconds.

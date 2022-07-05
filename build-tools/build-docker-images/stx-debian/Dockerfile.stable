@@ -18,17 +18,6 @@ COPY apt/debian.sources.list /etc/apt/sources.list.d/debian.list.disabled
 COPY apt/stx.sources.list /etc/apt/sources.list.d/stx.list.disabled
 COPY apt/stx.preferences /etc/apt/preferences.d/stx
 
-# Enable stx repo
-RUN cp /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list
-
-# Clean apt cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Upgrade base packages to versions in the managed repos
-RUN apt-get -y update && \
-    apt-get -y upgrade && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # repo templates:
 #   /etc/apt/sources.list.d/
 #     debian.list.disabled         - vanilla debian repos
@@ -48,18 +37,64 @@ RUN apt-get -y update && \
 # Enabling the upstream repos ("debian.list") is dangerous because it
 # may conflict with packages in stx.list.
 #
+#
+# FIXME: apt evaluates these files in alphabetical order, so stx.list
+#        comes after debian.list. When the local binary repo contains
+#        the same package/version as the debian repo, apt will download
+#        it from debian, regardless of the priority in /etc/apt/preferences.
+#        We should rename these files to make stx.list sort before
+#        debian.list. This would affect Loci scripts in
+#        loci/docker/stx-scripts/
+#
 
+#
+# Upgrade base packages to versions in managed repos
+#
+RUN cp -f /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list && \
+    apt-get -y update && \
+    apt-get -y upgrade && \
+    rm -f /etc/apt/sources.list.d/stx.list && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+#
+# Install packages provided only by debian.
+# FIXME: move these packages + their dependencies to debian download lists in
+# starlingx/tools to avoid referencing the debian repo at all.
+#
+RUN cp -f /etc/apt/sources.list.d/debian.list.disabled /etc/apt/sources.list.d/debian.list && \
+    cp -f /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list && \
+    apt-get update -y && \
+    apt-get install -y \
+        libapache2-mod-wsgi-py3 \
+        python3-setuptools \
+        build-essential \
+        && \
+    rm -f /etc/apt/sources.list.d/debian.list && \
+    rm -f /etc/apt/sources.list.d/stx.list && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/files/*
+
+#
+# Enable stx repo only. Packages installs below this point will use
+# only the managed locally-built & 3rd-party repos.
+#
+RUN cp /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list
+
+#
+# Install required packages
+#
 RUN apt-get update -y && \
     apt-get upgrade -y && \
     apt-get install -y \
-# FIXME: uncomment once qemu is ported to debian (starlingx/integ)
-#        qemu-utils \
         openssh-client \
         python3 \
         python3-pip \
         python3-wheel \
-        libapache2-mod-wsgi-py3 \
-        ;
+# FIXME: uncomment once qemu is ported to debian (starlingx/integ)
+#        qemu-utils \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/files/*
 
 # FIXME: these packages are not required by most docker images inheriting
 # from this image. However these Python modules are not buildable from
@@ -69,11 +104,12 @@ RUN apt-get update -y && \
 #
 # A better solution would be to omit them here, but install them in each
 # project that requires them; or add wheel subpackages to these DEBs.
-RUN apt-get install -y \
-    python3-thriftpy \
-    python3-nss \
-    python-nss
-
-# Delete apt cache
-RUN apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && \
+    apt-get upgrade -y && \
+    apt-get install -y \
+        python3-thriftpy \
+        python3-nss \
+        python-nss \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/files/*
