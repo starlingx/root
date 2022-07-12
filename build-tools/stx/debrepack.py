@@ -25,9 +25,9 @@ import pathlib
 import progressbar
 import re
 import shutil
-import subprocess
 import sys
 import utils
+from utils import run_shell_cmd
 import urllib.parse
 import urllib.request
 import yaml
@@ -184,33 +184,6 @@ def checksum(dl_file, checksum, cmd, logger):
         logger.debug(f"{cmd} checksum mismatch of {dl_file}")
         return False
     return True
-
-
-def run_shell_cmd(cmd, logger):
-
-    logger.info(f'[ Run - "{cmd}" ]')
-    try:
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   universal_newlines=True, shell=True)
-        # process.wait()
-        outs, errs = process.communicate()
-    except Exception:
-        process.kill()
-        outs, errs = process.communicate()
-        logger.error(f'[ Failed - "{cmd}" ]')
-        raise Exception(f'[ Failed - "{cmd}" ]')
-
-    for log in outs.strip().split("\n"):
-        if log != "":
-            logger.debug(log.strip())
-
-    if process.returncode != 0:
-        for log in errs.strip().split("\n"):
-            logger.error(log)
-        logger.error(f'[ Failed - "{cmd}" ]')
-        raise Exception(f'[ Failed - "{cmd}" ]')
-
-    return outs.strip()
 
 
 def download(url, savepath, logger):
