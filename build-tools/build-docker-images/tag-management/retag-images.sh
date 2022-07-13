@@ -51,7 +51,7 @@ import yaml
 
 for fname in sys.argv[1:]:
     with open(fname) as f:
-        imgs = yaml.load_all(f, Loader=yaml.FullLoader)
+        imgs = yaml.safe_load_all(f)
         for entry in imgs:
             for img in entry.get("images"):
                 print ("%s|%s|%s|%s" % (
@@ -108,8 +108,8 @@ function retag_and_push_image {
         else
             curl -k -sSL -X GET https://${docker_registry}/v2/${image}/tags/list \
                 | python -c '
-import sys, yaml, json, re
-y=yaml.load(sys.stdin.read(), Loader=yaml.FullLoader)
+import sys, json, re
+y=json.loads(sys.stdin.read())
 RC=1
 if y and sys.argv[1] in [img for img in y.get("tags")]:
     RC=0
