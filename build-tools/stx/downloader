@@ -214,7 +214,16 @@ class DebDownloader(BaseDownloader):
         if self.repomgr:
             self.repomgr.upload_pkg(REPO_BIN, None)
 
-    def download(self, _name, _version):
+    def download(self, _name, _version, url=None):
+        if url != None:
+            dl_file = '_'.join([_name, _version, self.arch]) + '.deb'
+            ret = os.path.join(self.dl_dir, dl_file)
+            tmp_file = ".".join([ret, "tmp"])
+            dl_cmd = "rm -rf %s; curl -k -f %s -o %s" % (tmp_file, url, tmp_file)
+            utils.run_shell_cmd(dl_cmd, logger)
+            utils.run_shell_cmd("mv %s %s" % (tmp_file, ret), logger)
+            return ret
+
         try:
             package = self.apt_cache[_name]
             candidate = package.versions.get(_version)
@@ -267,6 +276,10 @@ class DebDownloader(BaseDownloader):
                     sys.exit(1)
                 # strip epoch
                 pkg_ver = pkg_name_array[1].split(":")[-1]
+                if len(pkg_name_array) == 3:
+                    url = pkg_name_array[2]
+                else:
+                    url = None
                 try:
                     package = self.apt_cache[pkg_name]
                 except Exception as e:
@@ -287,7 +300,7 @@ class DebDownloader(BaseDownloader):
                     # fetch the package with 'apt' module, there is not 'epoch'
                     # in the dowloaded package name. This also requires the 'epoch'
                     # should be defined in the package list file with ':'
-                    self.need_download.append(pkg_name + '_' + pkg_name_array[1])
+                    self.need_download.append([pkg_name + '_' + pkg_name_array[1], url])
 
         previously_uploaded = self.repomgr.list_pkgs(REPO_BIN)
         logger.info(' '.join(['previously_uploaded', str(previously_uploaded)]))
@@ -306,10 +319,12 @@ class DebDownloader(BaseDownloader):
                 logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
                                       'fail to uploaded to', REPO_BIN]))
         self.need_upload.clear()
-        for deb in self.need_download:
+        for debs in self.need_download:
+            deb = debs[0]
+            url = debs[1]
             logger.debug(' '.join(['package', deb, 'needs to be downloaded']))
             debnames = deb.split('_')
-            ret = self.download(debnames[0], debnames[1])
+            ret = self.download(debnames[0], debnames[1], url)
             if ret:
                 logger.info(''.join([debnames[0], '_', debnames[1], ' download ok']))
                 # strip epoch
