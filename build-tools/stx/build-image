@@ -32,7 +32,7 @@ import yaml
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 
-LAT_ROOT = '/localdisk/lat/'
+LAT_ROOT = '/localdisk'
 REPO_ALL = 'deb-merge-all'
 REPO_BINARY = 'deb-local-binary'
 REPO_BUILD = 'deb-local-build'
@@ -459,24 +459,23 @@ if __name__ == "__main__":
     base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-bullseye.yaml')
     base_initramfs_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-initramfs-bullseye.yaml')
     os.environ["WORKSPACE_DIR"] = LAT_ROOT
-    lat_root_type_dir = os.path.join(LAT_ROOT, kernel_type)
-    lat_yaml = os.path.join(lat_root_type_dir, "lat.yaml")
-    lat_initramfs_yaml = os.path.join(lat_root_type_dir, "lat-initramfs.yaml")
+    lat_yaml = os.path.join(LAT_ROOT, "lat.yaml")
+    lat_initramfs_yaml = os.path.join(LAT_ROOT, "lat-initramfs.yaml")
 
     for yaml_file in (base_yaml, base_initramfs_yaml):
         if not os.path.exists(yaml_file):
             logger.error(' '.join(['Base yaml file', yaml_file, 'does not exist']))
             sys.exit(1)
 
-    if not os.path.exists(lat_root_type_dir):
-        os.makedirs(lat_root_type_dir)
+    if not os.path.exists(LAT_ROOT):
+        os.makedirs(LAT_ROOT)
 
     try:
         shutil.copyfile(base_yaml, lat_yaml)
         shutil.copyfile(base_initramfs_yaml, lat_initramfs_yaml)
     except IOError as e:
         logger.error(str(e))
-        logger.error('Failed to copy yaml files to %s/%s', LAT_ROOT, kernel_type)
+        logger.error('Failed to copy yaml files to %s', LAT_ROOT)
         sys.exit(1)
 
     include_initramfs(lat_yaml, lat_initramfs_yaml)
@@ -512,11 +511,11 @@ if __name__ == "__main__":
         logger.error("Failed to add packages into image YAML config")
         sys.exit(ret)
 
-    os.system(' '.join(['latc --file=' + lat_yaml, '-t', kernel_type, 'build']))
+    os.system(' '.join(['latc --file=' + lat_yaml, 'build']))
     # Sleep here to wait for the log file created and feeded by latd
     # It should be noted that latd does not output to log from its start
     time.sleep(WAIT_TIME_BEFORE_CHECKING_LOG)
-    lat_log = os.path.join(LAT_ROOT, kernel_type, "log/log.appsdk")
+    lat_log = os.path.join(LAT_ROOT, "log/log.appsdk")
     time_to_wait = DEFAULT_TIME_WAIT_LOG
     time_counter = 0
     while not os.path.exists(lat_log):
@@ -541,7 +540,7 @@ if __name__ == "__main__":
                     logger.info("Failed to build image, check the log %s", lat_log)
                     break
                 if "DEBUG: Deploy ovmf.qcow2" in line:
-                    logger.info("build-image successfully done, check the output in %s/%s", LAT_ROOT, kernel_type)
+                    logger.info("build-image successfully done, check the output in %s", LAT_ROOT)
                     ret = 0
                     break
     # stop latd
