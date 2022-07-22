@@ -202,6 +202,14 @@ class BaseDownloader():
                 logger.error(' '.join([dlobj.strip()]))
         return ret
 
+    def list_failed_pkgs(self):
+        failed_list = list(set(self.dl_need) - set(self.dl_success))
+        if len(failed_list):
+            logger.error("Packages failed to download:")
+            for dlobj in sorted(failed_list):
+                logger.error(' '.join([dlobj.strip()]))
+
+
 
 class DebDownloader(BaseDownloader):
     def __init__(self, arch, _dl_dir, force, _bin_lists):
@@ -410,7 +418,7 @@ class SrcDownloader(BaseDownloader):
                 if build_type not in all_build_types:
                     logger.warning(' '.join([build_type, 'is not a valid build_type for distro', distro, 'of layer', layer]))
                     continue
-                
+
                 pkg_dirs.extend(discovery.package_dir_list(distro=distro, layer=layer, build_type=build_type))
 
         if not len(pkg_dirs):
@@ -479,10 +487,10 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--distro', type=str, nargs=1,
                         help="name of the distro to build\n   %s" % ALL_DISTROS,
                         default=STX_DEFAULT_DISTRO, required=False)
-    parser.add_argument('-B', '--build-types', type=str, 
+    parser.add_argument('-B', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
                         default=None, required=False)
-    parser.add_argument('-l', '--layers', type=str, 
+    parser.add_argument('-l', '--layers', type=str,
                         help="comma separated list of all layers to build\n   %s" % ALL_LAYERS,
                         default=None, required=False)
 
@@ -534,6 +542,19 @@ if __name__ == "__main__":
     if source_dl:
         logger.info('Show the download result for source packages:')
         source_ret = source_dl.reports()
+
+    logger.info("Verifying downloader return status")
+    if binary_ret != 0:
+        logger.error("Binary downloader failed")
+        binary_dl.list_failed_pkgs()
+    else:
+        logger.info("All binaries were downloaded")
+
+    if source_ret != 0:
+        logger.error("Source downloader failed")
+        source_dl.list_failed_pkgs()
+    else:
+        logger.info("All sources were downloaded")
 
     logger.info("Downloader done")
     sys.exit(binary_ret + source_ret)
