@@ -84,9 +84,9 @@ def sort_layer_list (layer_list, distro="debian"):
     return result
 
 
-def get_all_layers (distro="debian"):
+def get_all_layers (distro="debian", skip_non_buildable=True):
     layer_lst = []
-    project_dir_list_all = project_dir_list(distro=distro, layer="all")
+    project_dir_list_all = project_dir_list(distro=distro, layer="all", skip_non_buildable=skip_non_buildable)
     for proj_dir in project_dir_list_all:
         layer_file = os.path.join(proj_dir, "%s%s" % (distro, "_build_layer.cfg"))
         if not os.path.isfile(layer_file):
@@ -120,9 +120,9 @@ def sort_build_type_list (build_type_list, layer, distro="debian"):
     return result
 
 
-def get_layer_build_types (layer, distro="debian"):
+def get_layer_build_types (layer, distro="debian", skip_non_buildable=True):
     bt_lst = [ "std" ]
-    project_dir_list_all = project_dir_list(distro=distro, layer=layer)
+    project_dir_list_all = project_dir_list(distro=distro, layer=layer, skip_non_buildable=skip_non_buildable)
     for proj_dir in project_dir_list_all:
         for pkg_dir_file in glob.glob("%s/%s%s" % (proj_dir, distro, "_pkg_dirs_*")):
             bt = os.path.basename(pkg_dir_file).split("_pkg_dirs_")[1]
@@ -131,9 +131,9 @@ def get_layer_build_types (layer, distro="debian"):
     return sort_build_type_list(bt_lst, layer)
 
 
-def get_all_build_types (distro="debian"):
+def get_all_build_types (distro="debian", skip_non_buildable=True):
     bt_lst = [ "std" ]
-    project_dir_list_all = project_dir_list(distro=distro, layer="all")
+    project_dir_list_all = project_dir_list(distro=distro, layer="all", skip_non_buildable=skip_non_buildable)
     for proj_dir in project_dir_list_all:
         for pkg_dir_file in glob.glob("%s/%s%s" % (proj_dir, distro, "_pkg_dirs_*")):
             bt = os.path.basename(pkg_dir_file).split("_pkg_dirs_")[1]
@@ -152,7 +152,7 @@ def project_dir_list_handler (element, data):
 # project_dir_list
 #      Return a list of git root directories for the current project.
 #      Optionally, the list can be filtered by distro and layer.
-def project_dir_list (distro="debian", layer="all"):
+def project_dir_list (distro="debian", layer="all", skip_non_buildable=True):
     if layer is None:
         layer = "all"
     dir = os.environ.get('MY_REPO_ROOT_DIR')
@@ -161,6 +161,9 @@ def project_dir_list (distro="debian", layer="all"):
     if not os.path.isdir(dir):
         return []
     project_dir_list_all = git_list(repo_root(dir))
+    if skip_non_buildable:
+        # keep only dirs that do not contain "/do-not-build"
+        project_dir_list_all = filter (lambda dir: dir.find ("/do-not-build") == -1, project_dir_list_all)
     # print("project_dir_list_all=%s" % project_dir_list_all)
     if layer == "all":
         return project_dir_list_all
@@ -182,11 +185,11 @@ def package_dir_list_handler(entry, proj_dir):
         return []
     return [ path ]
 
-def package_dir_list (distro="debian", layer="all", build_type="std"):
+def package_dir_list (distro="debian", layer="all", build_type="std", skip_non_buildable=True):
     pkg_dir_list = []
     if layer is None:
         layer = "all"
-    for proj_dir in project_dir_list(distro=distro, layer=layer):
+    for proj_dir in project_dir_list(distro=distro, layer=layer, skip_non_buildable=skip_non_buildable):
         pkg_file = os.path.join(proj_dir, "%s%s%s" % (distro, "_pkg_dirs_", build_type))
         if not os.path.isfile(pkg_file):
             if build_type == "std":
