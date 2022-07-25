@@ -72,7 +72,7 @@ RUN cp -f /etc/apt/sources.list.d/debian.list.disabled /etc/apt/sources.list.d/d
     rm -f /etc/apt/sources.list.d/debian.list && \
     rm -f /etc/apt/sources.list.d/stx.list && \
     apt-get clean && \
-    rm -rf /var/lib/apt/files/*
+    rm -rf /var/lib/apt/lists/*
 
 #
 # Enable stx repo only. Packages installs below this point will use
@@ -94,7 +94,7 @@ RUN apt-get update -y && \
 #        qemu-utils \
         && \
     apt-get clean && \
-    rm -rf /var/lib/apt/files/*
+    rm -rf /var/lib/apt/lists/*
 
 # FIXME: these packages are not required by most docker images inheriting
 # from this image. However these Python modules are not buildable from
@@ -112,4 +112,4 @@ RUN apt-get update -y && \
         python-nss \
         && \
     apt-get clean && \
-    rm -rf /var/lib/apt/files/*
+    rm -rf /var/lib/apt/lists/*
