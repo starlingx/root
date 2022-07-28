@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -34,6 +34,11 @@ usage () {
     echo "    Create a branch and a tag in all listed projects, and all"
     echo "    projects hosted by all listed remotes.  Lists are comma separated."
     echo ""
+    echo "    [ --exclude-projects=<projects> ]"
+    echo ""
+    echo "    Do not branch the list of projects.  Used in conjunction with"
+    echo "    --remotes to branch everything from a remote minus a few projects."
+    echo ""
     echo "manifest options:"
     echo "    [ --manifest ]"
     echo "                        Modify the current repo manifest to specify the"
@@ -62,8 +67,9 @@ usage () {
     echo ""
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,tag:,manifest,manifest-file:,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,safe-gerrit-host:,lock-down-exclude-remotes:,lock-down-exclude-projects:,help -n 'create_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,exclude-projects:,tag:,manifest,manifest-file:,manifest-prefix:,lock-down,hard-lock-down,soft-lock-down,default-revision,safe-gerrit-host:,lock-down-exclude-remotes:,lock-down-exclude-projects:,help -n 'create_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
+    echo_stderr "ERROR: getopt failure"
     usage
     exit 1
 fi
@@ -75,6 +81,7 @@ LOCK_DOWN=0
 SET_DEFAULT_REVISION=0
 remotes=""
 projects=""
+exclude_projects=""
 ld_exclude_remotes=""
 ld_exclude_projects=""
 tag=""
@@ -89,6 +96,7 @@ while true ; do
         -h|--help)           HELP=1 ; shift ;;
         --remotes)           remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)          projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --exclude-projects)  exclude_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --lock-down-exclude-remotes)  ld_exclude_remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --lock-down-exclude-projects) ld_exclude_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --tag)               tag=$2; shift 2;;
@@ -101,9 +109,10 @@ while true ; do
         --default-revision)  SET_DEFAULT_REVISION=1 ; shift ;;
         --safe-gerrit-host)  safe_gerrit_hosts+=("$2") ; shift 2 ;;
         --)                  shift ; break ;;
-        *)                   usage; exit 1 ;;
+        *)                   echo "unknown option $1"; usage; exit 1 ;;
     esac
 done
+
 git_set_safe_gerrit_hosts "${safe_gerrit_hosts[@]}"
 
 if [ $HELP -eq 1 ]; then
@@ -142,7 +151,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 fi
 
-for project in $projects $ld_exclude_projects; do
+for project in $projects $exclude_projects $ld_exclude_projects; do
     if ! repo_is_project $project; then
         echo_stderr "Invalid project: $project"
         echo_stderr "Valid projects are: $(repo_project_list | tr '\n' ' ')"
@@ -172,11 +181,24 @@ if [ "$projects" == "" ] && [ "$remotes" == "" ]; then
     projects="$(repo_project_list)"
 fi
 
+if [ "$projects" != "" ] && [ "$exclude_projects" != "" ]; then
+    for project in $exclude_projects; do
+        projects=$(echo $projects | sed -e "s# $project # #" -e "s#^$project ##" -e "s# $project\$##" -e "s#^$project\$##")
+    done
+fi
+
 if [ "$projects" == "" ]; then
     echo_stderr "No projects found"
     exit 1
 fi
 
+echo "List of projects to be tagged"
+echo "============================="
+for project in $projects; do
+        echo $project
+done
+echo "============================="
+echo
 
 echo "Finding subgits"
 SUBGITS=$(repo forall $projects -c 'echo '"$repo_root_dir"'/$REPO_PATH')

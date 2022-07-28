@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -38,6 +38,11 @@ usage () {
     echo ""
     echo "    Create a branch and a tag in all listed projects, and all"
     echo "    projects hosted by all listed remotes.  Lists are comma separated."
+    echo ""
+    echo "    [ --exclude-projects=<projects> ]"
+    echo ""
+    echo "    Do not branch the list of projects.  Used in conjunction with"
+    echo "    --remotes to branch everything from a remote minus a few projects."
     echo ""
     echo "gitreview options:"
     echo "    Update any .gitreview files in branched projects."
@@ -77,8 +82,9 @@ usage () {
     echo ""
 }
 
-TEMP=$(getopt -o h --long remotes:,projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,gitreview-project,gitreview-host:,gitreview-port:,safe-gerrit-host:,lock-down-exclude-remotes:,lock-down-exclude-projects:,help -n 'create_branches_and_tags.sh' -- "$@")
+TEMP=$(getopt -o h --long remotes:,projects:,exclude-projects:,branch:,tag:,manifest,manifest-file:,lock-down,hard-lock-down,soft-lock-down,default-revision,gitreview-default,gitreview-project,gitreview-host:,gitreview-port:,safe-gerrit-host:,lock-down-exclude-remotes:,lock-down-exclude-projects:,help -n 'create_branches_and_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
+    echo_stderr "ERROR: getopt failure"
     usage
     exit 1
 fi
@@ -95,6 +101,7 @@ GITREVIEW_CHANGE=0
 SET_DEFAULT_REVISION=0
 remotes=""
 projects=""
+exclude_projects=""
 ld_exclude_remotes=""
 ld_exclude_projects=""
 branch=""
@@ -109,6 +116,7 @@ while true ; do
         -h|--help)           HELP=1 ; shift ;;
         --remotes)           remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)          projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --exclude-projects)  exclude_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --lock-down-exclude-remotes)  ld_exclude_remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --lock-down-exclude-projects) ld_exclude_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --branch)            branch=$2; shift 2;;
@@ -287,7 +295,7 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 fi
 
-for project in $projects $ld_exclude_projects; do
+for project in $projects $exclude_projects $ld_exclude_projects; do
     if ! repo_is_project $project; then
         echo_stderr "Invalid project: $project"
         echo_stderr "Valid projects are: $(repo_project_list | tr '\n' ' ')"
@@ -318,10 +326,24 @@ if [ "$projects" == "" ] && [ "$remotes" == "" ]; then
     projects="$(repo_project_list)"
 fi
 
+if [ "$projects" != "" ] && [ "$exclude_projects" != "" ]; then
+    for project in $exclude_projects; do
+        projects=$(echo $projects | sed -e "s# $project # #" -e "s#^$project ##" -e "s# $project\$##" -e "s#^$project\$##")
+    done
+fi
+
 if [ "$projects" == "" ]; then
     echo_stderr "No projects found"
     exit 1
 fi
+
+echo "List of projects to be branched"
+echo "==============================="
+for project in $projects; do
+        echo $project
+done
+echo "==============================="
+echo
 
 # Provide a default tag name if not otherwise provided
 if [ "$tag" == "" ]; then

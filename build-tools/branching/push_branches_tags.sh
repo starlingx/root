@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) 2020-2021 Wind River Systems, Inc.
+# Copyright (c) 2020-2022 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -22,12 +22,14 @@ source "${PUSH_BRANCHES_TAGS_SH_DIR}/../url_utils.sh"
 usage () {
     echo "push_branches_tags.sh --branch=<branch> [--tag=<tag>]"
     echo "                      [ --remotes=<remotes> ] [ --projects=<projects> ]"
+    echo "                      [ --exclude-projects=<projects> ]"
     echo "                      [ --manifest [ --manifest-file=<file.xml> ] ]"
     echo "                      [ --bypass-gerrit] [--safe-gerrit-host=<host>]"
     echo "                      [ --dry-run ]"
     echo ""
     echo "Push a pre-existing branch and tag into all listed projects, and all"
-    echo "projects hosted by all listed remotes.  Lists are comma separated."
+    echo "projects hosted by all listed remotes, minus excluded projects."
+    echo "Lists are comma separated."
     echo ""
     echo "The branch name must be provided.  The tag name can also be provided."
     echo "If the tag is omitted, one is automativally generate by adding the"
@@ -43,8 +45,9 @@ usage () {
     echo "--dry-run will print out git push commands without executing them"
 }
 
-TEMP=$(getopt -o h,n --long remotes:,projects:,branch:,tag:,bypass-gerrit,manifest,manifest-file:,safe-gerrit-host:,help,dry-run -n 'push_branches_tags.sh' -- "$@")
+TEMP=$(getopt -o h,n --long remotes:,projects:,exclude-projects:,branch:,tag:,bypass-gerrit,manifest,manifest-file:,safe-gerrit-host:,help,dry-run -n 'push_branches_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
+    echo_stderr "ERROR: getopt failure"
     usage
     exit 1
 fi
@@ -56,6 +59,7 @@ BYPASS_GERRIT=0
 DRY_RUN=
 remotes=""
 projects=""
+excluded_projects=""
 branch=""
 tag=""
 manifest=""
@@ -69,6 +73,7 @@ while true ; do
         --bypass-gerrit)  BYPASS_GERRIT=1 ; shift ;;
         --remotes)        remotes+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --projects)       projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
+        --exclude-projects)       excluded_projects+=$(echo "$2 " | tr ',' ' '); shift 2;;
         --branch)         branch=$2; shift 2;;
         --tag)            tag=$2; shift 2;;
         --manifest)       MANIFEST=1 ; shift ;;
@@ -123,7 +128,7 @@ if [ $MANIFEST -eq 1 ]; then
     \cp -f "${manifest}.save" "${manifest}"
 fi
 
-for project in $projects; do
+for project in $projects $excluded_projects; do
     if ! repo_is_project $project; then
         echo_stderr "Invalid project: $project"
         echo_stderr "Valid projects are: $(repo_project_list | tr '\n' ' ')"
@@ -149,10 +154,24 @@ if [ "$projects" == "" ] && [ "$remotes" == "" ]; then
     projects="$(repo_project_list)"
 fi
 
+if [ "$projects" != "" ] && [ "$exclude_projects" != "" ]; then
+    for project in $exclude_projects; do
+        projects=$(echo $projects | sed -e "s# $project # #" -e "s#^$project ##" -e "s# $project\$##" -e "s#^$project\$##")
+    done
+fi
+
 if [ "$projects" == "" ]; then
     echo_stderr "No projects found"
     exit 1
 fi
+
+echo "List of projects to be pushed"
+echo "============================="
+for project in $projects; do
+        echo $project
+done
+echo "============================="
+echo
 
 # Provide a default tag name if not otherwise provided
 if [ "$tag" == "" ]; then
