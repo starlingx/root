@@ -610,14 +610,13 @@ class RepoMgr():
         return True
 
     # Deploy a local repository
-    def deploy_repo(self, repo_name):
+    def deploy_repo(self, repo_name, suffix=''):
         '''Deploy a local repository manually.'''
         local_list = self.repo.list_local(quiet=True)
         if repo_name not in local_list:
             self.logger.error('Local repository deploy failed, %s does not exist.' % repo_name)
-            return False
-        self.repo.deploy_local(repo_name)
-        return True
+            return
+        return self.repo.deploy_local(repo_name, suffix)
 
 
     # Delete a Debian package from a local repository
