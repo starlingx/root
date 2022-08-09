@@ -41,9 +41,19 @@ STX_ROOT = os.environ.get('MY_REPO_ROOT_DIR')
 PKGBUILDER_ROOT = "/localdisk/pkgbuilder"
 USER = os.environ.get('MYUNAME')
 PROJECT = os.environ.get('PROJECT')
+STX_ARCH = 'amd64'
 # Different reasons can lead to package build failure
 # Set maximum retry count for failed packages
 MAX_PKG_BUILD_COUNT = 3
+# The maximum parallel instances run at the same time
+MAX_PARALLEL_JOBS = 30
+# The default number of parallel tasks
+DEFAULT_PARALLEL_TASKS = 10
+# The default interval of polling build status (seconds)
+DEFAULT_POLL_INTERVAL = 10
+# Maximum number of package make jobs
+MAX_PKG_MAKE_JOBS = 6
+
 
 # TODO - Do we want a seperate repo for each layer? each build type?
 REPO_BUILD = 'deb-local-build'
@@ -106,6 +116,11 @@ def get_pkg_dir_from_dsc(dscs, dsc_path):
             return pkg_dir
     return None
 
+def get_dsc_path_with_pkgdir(dscs, dst_pkg_dir):
+    for pkg_dir, dsc in dscs.items():
+        if pkg_dir.strip() == dst_pkg_dir:
+            return dsc
+    return None
 
 def get_dsc_list_from_dict(dscs_dict):
     dsc_list = []
@@ -237,7 +252,32 @@ def get_package_jobs(pkg_dir, distro=STX_DEFAULT_DISTRO):
             if yaml_doc.get('serial'):
                 jobs = 1
     logger.debug('Requires the number of jobs %s for %s', jobs, package)
-    return jobs
+    return int(jobs)
+
+
+class repoSnapshots():
+    """
+    The repository snapshots pool to manage the apply/release
+    of snapshots
+    """
+    def __init__(self, count):
+        self.snapshots = {}
+        for s in range(count):
+            self.snapshots[str(s)] = 'idle'
+
+    def apply(self, dsc):
+        for idx, owner in self.snapshots.items():
+            if owner == 'idle':
+                self.snapshots[idx] = dsc
+                logger.debug("Repository snapshot %s is applied for %s", idx, dsc)
+                return idx
+
+    def release(self, dsc):
+        for idx, owner in self.snapshots.items():
+            if owner == dsc:
+                self.snapshots[idx] = 'idle'
+                logger.debug("Repository snapshot %s is released for %s", idx, dsc)
+                break
 
 
 class BuildController():
@@ -255,11 +295,12 @@ class BuildController():
             'mode': 'private',
             'distro': distro,
             'avoid': True,
-            'parallel': False,
+            'parallel': 1,
             'exit_on_fail': False,
             'run_tests': False,
             'build_depend': False,
-            'upload_source': False
+            'upload_source': False,
+            'poll_build_status': True
         }
         self.kits = {
             'dsc_cache': {},
@@ -271,6 +312,8 @@ class BuildController():
         }
         self.build_types = []
         self.pkgs_digests = {}
+        self.dscs_building = []
+        self.dscs_chroots = {}
         if not self.kits['repo_mgr']:
             rlogger = logging.getLogger('repo_manager')
             utils.set_logger(rlogger)
@@ -341,6 +384,8 @@ class BuildController():
         return True
 
     def stop(self):
+        self.attrs['poll_build_status'] = False
+        self.req_stop_task()
         return self.show_build_stats()
 
     def clean(self, build_types=ALL_BUILD_TYPES):
@@ -382,14 +427,9 @@ class BuildController():
             extra_req['mirror'] = mirror
 
         ret = req_chroots_action('addchroot', extra_req)
-        if 'success' in ret:
-            logger.debug('Chroot exists, ready to build')
-            return 'success'
-
         if 'creating' in ret:
             key_string = "Successfully set up bullseye chroot"
-            state = show_task_log(os.path.join(PKGBUILDER_ROOT, USER, PROJECT,
-                                               'chroot.log'),
+            state = show_task_log(os.path.join(PKGBUILDER_ROOT, USER, PROJECT, 'chroot.log'),
                                   10, key_string, None)
             if 'success' in state:
                 req_chroots_action('savechroot', None)
@@ -399,18 +439,45 @@ class BuildController():
                 ret = 'fail'
             self.req_kill_task('chroot')
 
+        if 'success' in ret:
+            logger.debug('Parent chroot is ready to create children chroots')
+            ret_status = req_chroots_action('clonechroot', {'instances': self.attrs['parallel']})
+            if not 'success' == ret_status:
+                logger.error("Failed to clone children chroots")
+            else:
+                logger.info("Successfully cloned children chroots")
+
         return ret
 
-    def publish_repo(self, repo_name):
+    def clone_chroots(self):
+        ret = req_chroots_action('clonechroot', None)
+        if 'success' in ret:
+            logger.debug('Successfully cloned chroots')
+        if 'fail' in ret:
+            logger.debug('Failed to clone chroots')
+
+    def refresh_chroots(self):
+        ret = req_chroots_action('refreshchroots', None)
+        return ret
+
+    def publish_repo(self, repo_name, suffix=None):
+        if suffix:
+            dst_repo = '-'.join([repo_name, suffix])
+        else:
+            dst_repo = repo_name
+
         try:
-            logger.info("Try to publish the repository %s", repo_name)
-            self.kits['repo_mgr'].deploy_repo(repo_name)
+            logger.debug("Try to deploy the repository %s", dst_repo)
+            if suffix:
+                self.kits['repo_mgr'].deploy_repo(repo_name, suffix)
+            else:
+                self.kits['repo_mgr'].deploy_repo(repo_name)
         except Exception as e:
             logger.error(str(e))
-            logger.error("Failed to publish the repository %s", repo_name)
+            logger.error("Failed to deploy the repository %s", dst_repo)
             return False
         else:
-            logger.info("Successfully published the repository %s", repo_name)
+            logger.info("Successfully deployed the repository %s", dst_repo)
         return True
 
     def upload_with_deb(self, package, debs_dir, build_type):
@@ -442,7 +509,7 @@ class BuildController():
                     else:
                         logger.info('Failed to delete binary %s from repository %s', msg,
                                     REPO_BUILD)
-            self.publish_repo(REPO_BUILD)
+            #self.publish_repo(REPO_BUILD)
 
         sdebs = []
         if not os.path.exists(debs_dir):
@@ -463,12 +530,11 @@ class BuildController():
                         logger.error("Failed to upload %s to %s", deb_file, REPO_BUILD)
                         return False
 
-        if self.publish_repo(REPO_BUILD):
+        if sdebs:
             debsentry.set_subdebs(debs_clue, package, sdebs, logger)
             logger.debug("%s_%s is saved into debs_entry", pkg_item[0], pkg_item[1])
-            return True
 
-        return False
+        return True
 
     def upload_with_dsc(self, pkg_name, dsc, repo_name):
         if not os.path.exists(dsc):
@@ -498,57 +564,58 @@ class BuildController():
         logger.info("Successfully uploaded source %s to repository %s", dsc, repo_name)
         return True
 
-    def req_add_task(self, pkg_dir, dsc_path, build_type=STX_DEFAULT_BUILD_TYPE):
+    def req_add_task(self, pkg_dir, dsc, build_type, snapshot_index):
         status = 'fail'
-        dsc = os.path.basename(dsc_path)
-
-        pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
+        chroot = None
+        # For serial build and parallel build, the pkg_jobs should have different value
+        pkg_jobs = get_package_jobs(pkg_dir, self.attrs['distro'])
+        if pkg_jobs > self.attrs['max_make_jobs']:
+            pkg_jobs = self.attrs['max_make_jobs']
 
         req_params = {}
         req_params['mode'] = self.attrs['mode']
         req_params['type'] = build_type
         req_params['project'] = PROJECT
         req_params['user'] = USER
-        req_params['name'] = pkg_name
         req_params['dsc'] = dsc
-        req_params['jobs'] = get_package_jobs(pkg_dir, self.attrs['distro'])
         req_params['run_tests'] = self.attrs['run_tests']
-
+        req_params['jobs'] = str(pkg_jobs)
+        req_params['snapshot_idx'] = snapshot_index
 
         try:
-            resp = requests.get(BUILDER_URL + 'addtask', data=req_params)
+            resp = requests.post(BUILDER_URL + 'addtask', json=req_params)
             resp.raise_for_status()
         except requests.RequestException as e:
             print(e)
+            chroot = 'ServerError'
         else:
-            logger.debug(resp.text)
-            if 'success' in resp.text:
-                log = os.path.join(BUILD_ROOT, build_type, pkg_name,
-                                   dsc.replace('.dsc', '_amd64.build'))
-                ret = show_task_log(log, 3, 'Status: successful',
-                                    'Finished at')
-                if 'success' in ret:
-                    self.upload_with_deb(pkg_name, os.path.join(BUILD_ROOT,
-                                         build_type, pkg_name), build_type)
-                    self.req_kill_task('sbuild')
-                    status = 'success'
-        return status
+            resp_json = resp.json()
+            if 'success' in resp_json['status']:
+                status = 'success'
+                chroot = resp_json['msg']
+            else:
+                status = 'fail'
+        return status, chroot
 
-    def req_kill_task(self, owner):
+    def req_kill_task(self, owner, dsc=None):
         req_params = {}
         req_params['owner'] = owner
         req_params['user'] = USER
         req_params['mode'] = self.attrs['mode']
+        if dsc:
+            req_params['dsc'] = dsc
 
         try:
             resp = requests.get(BUILDER_URL + 'killtask', data=req_params)
             resp.raise_for_status()
         except requests.RequestException as e:
             print(e)
+            logger.error("Failed to request killtask to server")
         else:
             logger.debug(resp.text)
 
     def req_stop_task(self):
+        ret = False
         req_params = {}
         req_params['user'] = USER
         req_params['mode'] = self.attrs['mode']
@@ -560,6 +627,8 @@ class BuildController():
             print(e)
         else:
             logger.debug(resp.text)
+            ret = True
+        return ret
 
     def create_dsc(self, pkg_name, pkg_dir, build_type=STX_DEFAULT_BUILD_TYPE):
         """
@@ -666,6 +735,7 @@ class BuildController():
             dsc_stamp_file = os.path.join(stamp_dir, dsc_stamp)
             if not os.path.exists(dsc_stamp_file):
                 return True
+            logger.info("Stamp for %s found, now remove it", pkg_dir)
             os.remove(dsc_stamp_file)
         except Exception as e:
             logger.error(str(e))
@@ -676,15 +746,65 @@ class BuildController():
             return True
 
     def clean_build_output(self, dsc_path):
+        '''
+        Clean the old generated binary packages .deb and the log link to be ready
+        for the new build task
+        Since the log link will be polled and read to know the build result, here
+        remove the old one, but this may has the side effect of missing the build
+        history logs
+        '''
         try:
             build_dir = os.path.abspath(dsc_path)
+            log_file = dsc_path.replace('.dsc', '_' + STX_ARCH + '.build')
             if build_dir:
                 os.system("rm -f %s" % os.path.join(build_dir, '*.deb'))
+                os.system("unlink %s > /dev/null 2>&1" % log_file)
         except Exception as e:
             logger.error(str(e))
-            logger.error("Failed to remove the old deb packages")
+            logger.error("Failed to remove the old deb packages or log link")
         else:
-            logger.debug("Successfully removed the old deb packages")
+            logger.debug("Successfully removed the old deb packages and log link")
+
+    def poll_building_status(self):
+        '''
+        Poll all these log links which in self.dscs_building, any package done
+        ('successful' or 'failed') will be returned, the return means a new build
+        instance can be added now
+        '''
+        if not len(self.dscs_building):
+            logger.info("There are no build tasks running, polling status quit")
+            return None, 'fail'
+
+        while self.attrs['poll_build_status']:
+            for dsc in self.dscs_building:
+                log = dsc.replace('.dsc', '_' + STX_ARCH + '.build')
+                if not os.path.exists(log):
+                    continue
+                cmd_status = 'sed -n \'/| Summary /,$P\' %s | grep \'^Status: \'' %(log)
+                try:
+                    status_line = subprocess.check_output(cmd_status, shell=True).decode()
+                    if not status_line:
+                        continue
+                except Exception as e:
+                    continue
+                else:
+                    logger.debug("Captured result of cmd_status is %s from log %s", status_line, log)
+                    if 'successful' in status_line:
+                        logger.info("Got success status for %s", dsc)
+                        return dsc, 'success'
+                    else:
+                        logger.info("Got failed status for %s", dsc)
+                        cmd_stage = 'sed -n \'/| Summary /,$P\' %s | grep \'^Fail-Stage: \'' %(log)
+                        try:
+                            stage_line = subprocess.check_output(cmd_stage, shell=True).decode()
+                        except Exception as e:
+                            logger.error(str(e))
+                        else:
+                            logger.info("Fail-State is %s for %s", stage_line, dsc)
+                        return dsc, 'fail'
+            time.sleep(self.attrs['poll_interval'])
+        logger.debug("Polling build status done")
+        return None, 'fail'
 
     def run_build_loop(self, layer_pkgdir_dscs, target_pkgdir_dscs, layer, build_type=STX_DEFAULT_BUILD_TYPE):
         '''
@@ -705,87 +825,194 @@ class BuildController():
         logger.debug("All dscs of layer %s passed to dsc_depends in file %s", layer, dsc_list_file)
         logger.debug("Target dscs(%d) passed to dsc_depends: %s", len(dscs_list), str(dscs_list))
         deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, dscs_list, ds_logger)
-        build_counter = {}
+        repo_snapshots = repoSnapshots(self.attrs['parallel'] + 2)
 
+        # To track these repeatly built packages
+        build_counter = {}
+        # To set the right count of parallel jobs
+        target_pkgs_count = len(target_pkgdir_dscs)
+        parallel_jobs = self.attrs['parallel']
+        if parallel_jobs > target_pkgs_count:
+            parallel_jobs = target_pkgs_count
+
+        continue_build = True
         # build all the target packages
-        while dscs_list:
-            pkgs_can_build = deps_resolver.get_build_able_pkg(1)
-            if not pkgs_can_build:
-                logger.warning("Depends resolver returns none")
-                return
-            # build all the buildable packages that dsc_depend returns
-            for dsc_path in pkgs_can_build:
-                logger.info("Depends resolver tells to build %s", os.path.basename(dsc_path))
+        while (dscs_list or self.lists['fail_' + build_type]) and continue_build:
+            if len(dscs_list) == 0:
+                # reliable_build is serail build mode
+                self.attrs['parallel'] = 1
+                for pdir in self.lists['fail_' + build_type]:
+                    fail_dsc = get_dsc_path_with_pkgdir(layer_pkgdir_dscs, pdir)
+                    if fail_dsc:
+                        dscs_list.append(fail_dsc)
+                if len(dscs_list) == 0:
+                    break
+                logger.info("Reliable build: dsc_list_file is %s", dsc_list_file)
+                logger.info("Reliable build: all target dscs are: %s(%d)", ','.join(dscs_list), len(dscs_list))
+                deps_resolver = dsc_depend.Dsc_build_order(dsc_list_file, dscs_list, ds_logger)
+                build_counter = {}
+                # Enable this to end the build if still has failed packages
+                continue_build = False
+                logger.info("\nReliable build starts for the failed packages: %s(%d)", ','.join(dscs_list), len(dscs_list))
+
+            wait_task_done = False
+            # The serial build is just special case with self.attrs['parallel'] = 1
+            if len(self.dscs_building) < self.attrs['parallel']:
+                pkgs_can_build = deps_resolver.get_build_able_pkg(1)
+            else:
+                pkgs_can_build = None
+
+            if pkgs_can_build:
+                dsc_path = pkgs_can_build[0]
                 pkg_dir = get_pkg_dir_from_dsc(layer_pkgdir_dscs, dsc_path)
                 pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
-
-                # For layer build, the depended packages may was built before in the higher priority layer
+                logger.info("Depends resolver told to build %s", pkg_name)
+                # For layer builds, the package may has been built before in the layer with higher priority
                 if pkg_dir in self.lists['success_' + build_type]:
                     logger.warning("Package %s has been built in this round, skip", pkg_name)
                     deps_resolver.pkg_accomplish(dsc_path)
-                    dscs_list.remove(dsc_path)
+                    logger.debug("dsc_path will be removed %s, current dscs list:%s", dsc_path, ','.join(dscs_list))
+                    if dsc_path in dscs_list:
+                        dscs_list.remove(dsc_path)
                     continue
-
                 # For the depended packages, skip checking the 'avoid' option
                 if not pkg_dir in target_pkgdir_dscs.keys():
                     if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
-                        logger.info("Stamp[build_done] found for the depended package %s, skip building", pkg_name)
+                        logger.info("Stamp[build_done] found for the depended package %s, skipped", pkg_name)
                         deps_resolver.pkg_accomplish(dsc_path)
                         continue
                     # If the option 'build_depend' disabled, just exit
                     if not self.attrs['build_depend']:
-                        logger.error("The depended package %s has not been built", pkg_name)
+                        logger.error("The depended package %s is not in %s and has not been built", layer, pkg_name)
                         return
                 # For the target packages
                 else:
                     if self.attrs['avoid']:
                         if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
-                            logger.info("Stamp build_done found, package %s has been built, skip", pkg_name)
+                            logger.info("Stamp build_done found, package %s has been built, skipped", pkg_name)
                             self.lists['success_' + build_type].append(pkg_dir)
                             deps_resolver.pkg_accomplish(dsc_path)
-                            dscs_list.remove(dsc_path)
+                            logger.debug("Avoid is enabled, dsc_path will be removed %s, current dscs list:%s", dsc_path, ','.join(dscs_list))
+                            if dsc_path in dscs_list:
+                                dscs_list.remove(dsc_path)
                             continue
 
+                logger.info("Clean data(stamp and build output) to prepare to build %s", pkg_name)
+                # This package is decided to be built now
                 self.del_stamp(pkg_dir, dsc_path, build_type, 'build_done')
                 self.clean_build_output(dsc_path)
-                status = self.req_add_task(pkg_dir, dsc_path, build_type=build_type)
-                if pkg_dir in build_counter.keys():
-                    build_counter[pkg_dir] += 1
-                else:
-                    build_counter[pkg_dir] = 1
-                logger.debug("Attempting to build package %s for the %d time", pkg_dir, build_counter[pkg_dir])
-
-                if 'success' in status:
-                    logger.info('Successfully built %s', pkg_name)
-                    self.set_stamp(pkg_dir, dsc_path, build_type, state='build_done')
-                    deps_resolver.pkg_accomplish(dsc_path)
-                    if pkg_dir in target_pkgdir_dscs.keys():
-                        dscs_list.remove(dsc_path)
-                        logger.info('Removed dsc %s from list after successfully build', dsc_path)
-                        self.lists['success_' + build_type].append(pkg_dir)
-                        logger.info('Added %s to success list success_%s', pkg_dir, build_type)
-                    else:
-                        self.lists['success_depends_' + build_type].append(pkg_dir)
-                        logger.info('Added %s to list success_depends_%s', pkg_dir, build_type)
-                else:
-                    if build_counter[pkg_dir] >= MAX_PKG_BUILD_COUNT:
-                        deps_resolver.pkg_accomplish(dsc_path)
-                        logger.warning('Notify depends resolver after %d attempts for %s', MAX_PKG_BUILD_COUNT, pkg_dir)
-                        if pkg_dir in target_pkgdir_dscs.keys():
-                            self.lists['fail_' + build_type].append(pkg_dir)
-                            logger.error('Added %s to fail list fail_%s', pkg_dir, build_type)
-                            dscs_list.remove(dsc_path)
-                        else:
-                            self.lists['fail_depends_' + build_type].append(pkg_dir)
-                            logger.info('Added %s to list fail_depends_%s', pkg_dir, build_type)
-                        logger.error("Failed to build package %s after %d attempts, giving up", pkg_dir, build_counter[pkg_dir])
-                        logger.info("For the detailed reasons, please check the logs:")
-                        logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<failed package>/*.build\'")
-                    else:
-                        deps_resolver.pkg_fail(dsc_path)
-                    self.req_stop_task()
-                    if self.attrs['exit_on_fail']:
+                snapshot_idx = repo_snapshots.apply(dsc_path)
+                self.publish_repo(REPO_BUILD, snapshot_idx)
+                # Requires the remote pkgbuilder to add build task
+                logger.info("To Require to add build task for %s with snapshot %s", pkg_name, snapshot_idx)
+                (status, chroot) = self.req_add_task(pkg_dir, dsc_path, build_type, snapshot_idx)
+                if 'fail' in status:
+                    if 'ServerError' in chroot:
+                        self.req_stop_task()
+                        logger.error("Fatal error from pkgbuilder, exit from %s build with %s", layer, build_type)
                         return
+                    # The most likely cause here is that there are no idle chroots to take this task
+                    # Enable wait_task_done to wait for chroots releasing
+                    logger.error("Failed to add build task for %s, wait for running task done", pkg_name)
+                    deps_resolver.pkg_fail(dsc_path)
+                    logger.debug("Notified dsc_depends to retrieve %s, exit exit", pkg_name)
+                    repo_snapshots.release(dsc_path)
+                    wait_task_done = True
+                else:
+                    logger.info("Successfully sent request to add build task for %s", pkg_name)
+                    # The build task is accepted and the package will be built
+                    if not pkg_dir in build_counter.keys():
+                        build_counter[pkg_dir] = 1
+                    else:
+                        build_counter[pkg_dir] += 1
+                    logger.debug("Attempting to build package %s for the %d time", pkg_dir, build_counter[pkg_dir])
+                    # Refresh the two important tables: dscs_chroots and dscs_building
+                    self.dscs_chroots[dsc_path] = chroot
+                    self.dscs_building.append(dsc_path)
+                    logger.info("Appended %s to current building list", dsc_path)
+                    # The original design is insert a console thread to display the build progress
+                    # self.refresh_log_console()
+            # dsc_depend return None
+            else:
+                logger.warning("dsc_depend returns no package, wait for packages building done")
+                if len(self.dscs_building) == 0:
+                    return
+                wait_task_done = True
+
+            # The main thead will stop to query whether there is job done
+            # if the task queue is reach to self.attrs['parallel']
+            dscs_count = len(dscs_list)
+            dscs_building_count = len(self.dscs_building)
+
+            if wait_task_done or dscs_building_count == self.attrs['parallel'] or (dscs_count < self.attrs['parallel'] and dscs_count == dscs_building_count):
+                if wait_task_done:
+                    logger.debug("wait_task_done is enabled")
+
+                logger.info("############################################################")
+                logger.info("Remain packages %d, building packages %d", dscs_count, dscs_building_count)
+                logger.info("------------------------------------------------------------")
+                if self.dscs_building:
+                    for bdsc in self.dscs_building:
+                        pkglog = bdsc.replace('.dsc', '_' + STX_ARCH + '.build')
+                        logger.info("Running: %s --> %s (Log:%s)", os.path.basename(bdsc), self.dscs_chroots[bdsc], pkglog)
+                logger.info("------------------------------------------------------------")
+                logger.debug("Waiting for the build task to complete......")
+                logger.info("############################################################")
+
+                # Only return one finished dsc
+                (done_dsc, status) = self.poll_building_status()
+                # The build task is done, possible results: success/fail/given-back
+                if done_dsc:
+                    repo_snapshots.release(done_dsc)
+                    done_pkg_dir = get_pkg_dir_from_dsc(layer_pkgdir_dscs, done_dsc)
+                    done_pkg_name = discovery.package_dir_to_package_name(done_pkg_dir, distro=self.attrs['distro'])
+                    # Removed from current building list
+                    self.dscs_building.remove(done_dsc)
+                    logger.info("Removed %s from the current building list after build done", done_pkg_name)
+
+                    if 'success' in status:
+                        logger.info("Successfully built %s, uploading to repository", done_pkg_name)
+                        if self.upload_with_deb(done_pkg_name, os.path.join(BUILD_ROOT, build_type, done_pkg_name), build_type):
+                            self.set_stamp(done_pkg_dir, done_dsc, build_type, state='build_done')
+                            logger.info("Successfully uploaded all the debs of %s to repository and created stamp", done_pkg_name)
+                        deps_resolver.pkg_accomplish(done_dsc)
+                        logger.debug('Notified dsc_depend that %s accomplished', done_pkg_name)
+                        if done_pkg_dir in target_pkgdir_dscs.keys():
+                            dscs_list.remove(done_dsc)
+                            logger.info('Removed %s from remain packages after successfully build', done_pkg_name)
+                            self.lists['success_' + build_type].append(done_pkg_dir)
+                            if done_pkg_dir in self.lists['fail_' + build_type]:
+                                self.lists['fail_' + build_type].remove(done_pkg_dir)
+                            logger.info('Added %s to success list success_%s', done_pkg_name, build_type)
+                        else:
+                            self.lists['success_depends_' + build_type].append(done_pkg_dir)
+                            if done_pkg_dir in self.lists['fail_depends_' + build_type]:
+                                self.lists['fail_depends_' + build_type].remove(done_pkg_dir)
+                            logger.info('Added %s to list success_depends_%s', done_pkg_name, build_type)
+                    else:
+                        # To check whether reach the maxmum attempting count
+                        if build_counter[done_pkg_dir] >= MAX_PKG_BUILD_COUNT:
+                            deps_resolver.pkg_accomplish(done_dsc)
+                            logger.warning('Notified dsc_depend to accomplish %s after %d attempts', done_pkg_name, MAX_PKG_BUILD_COUNT)
+                            if done_pkg_dir in target_pkgdir_dscs.keys():
+                                self.lists['fail_' + build_type].append(done_pkg_dir)
+                                logger.error('Added %s to fail list fail_%s', done_pkg_name, build_type)
+                                dscs_list.remove(done_dsc)
+                                logger.info('Removed %s from remain packages after failed build', done_pkg_name)
+                            else:
+                                self.lists['fail_depends_' + build_type].append(done_pkg_dir)
+                                logger.info('Added %s to list fail_depends_%s', done_pkg_name, build_type)
+                        else:
+                            deps_resolver.pkg_fail(done_dsc)
+                            logger.warning('Notified dsc_depend to retrieve %s', done_pkg_name)
+                            self.req_kill_task('sbuild', done_dsc)
+                            logger.debug('Require pkgbuilder to clean the task for %s', done_pkg_name)
+                            continue
+                    self.req_kill_task('sbuild', done_dsc)
+                    logger.debug('Require pkgbuilder to clean the task for %s', done_pkg_name)
+
+        logger.info("Build done, publish repository %s if there are not deployed deb binaries in it", REPO_BUILD)
+        self.publish_repo(REPO_BUILD)
         logger.info("Build done, please check the statistics")
 
     def build_all(self, layers=ALL_LAYERS, build_types=None, packages=None):
@@ -1046,10 +1273,8 @@ def bc_signal_handler(signum, frame):
 
     if frame:
         logger.debug(' '.join(['Signal', str(signum), 'got']))
-    logger.debug('Request to stop building tasks')
-    build_controller.req_stop_task()
-    ret_val = build_controller.show_build_stats()
-    logger.debug('Exit for user interruption')
+    ret_val = build_controller.stop()
+    logger.debug('Exit for user interrupt')
     sys.exit(ret_val)
 
 
@@ -1065,19 +1290,24 @@ if __name__ == "__main__":
     build_types = None
     packages = None
 
-    parser = argparse.ArgumentParser(description="build-pkgs helper")
+    parser = argparse.ArgumentParser(description="build-pkgs helper",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-c', '--clean', help="Start a fresh build",
                         action='store_true')
     parser.add_argument('-e', '--exit_on_fail', help="Exit for any fail",
                         action='store_true')
     parser.add_argument('-t', '--test', help="Run package tests during build",
                         action='store_true')
+    parser.add_argument('--refresh_chroots', help="Force to fresh chroots before build", action='store_true')
+    parser.add_argument('--parallel', help="The number of parallel build tasks", type=int, default=DEFAULT_PARALLEL_TASKS)
+    parser.add_argument('--poll_interval', help="The interval to poll the build status", type=int, default=DEFAULT_POLL_INTERVAL)
+    parser.add_argument('--max_make_jobs', help="The maximum number of jobs for package make", type=int, default=MAX_PKG_MAKE_JOBS)
     parser.add_argument('-d', '--distro', type=str, nargs=1,
                         help="name of the distro to build\n   %s" % ALL_DISTROS,
                         default=STX_DEFAULT_DISTRO, required=False)
     parser.add_argument('-b', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
-                        default=None, required=False)
+                        default='std,rt', required=False)
     parser.add_argument('-l', '--layers', type=str, 
                         help="comma separated list of all layers to build\n   %s" % ALL_LAYERS,
                         default=None, required=False)
@@ -1129,6 +1359,15 @@ if __name__ == "__main__":
         build_controller.attrs['exit_on_fail'] = True
     if args.test:
         build_controller.attrs['run_tests'] = True
+    if args.parallel:
+        if args.parallel < 1 or args.parallel > MAX_PARALLEL_JOBS:
+            logger.critical("Invalid parallel build tasks[1-%s]", MAX_PARALLEL_JOBS)
+            sys.exit(1)
+        build_controller.attrs['parallel'] = args.parallel
+    if args.poll_interval:
+        build_controller.attrs['poll_interval'] = args.poll_interval
+    if args.max_make_jobs:
+        build_controller.attrs['max_make_jobs'] = args.max_make_jobs
 
     if not build_controller.start(build_types=build_types):
         logger.critical("Fail to initialize build controller, exit ......")
@@ -1139,10 +1378,17 @@ if __name__ == "__main__":
     # mirror can be set to add_chroot as the main package repo
     # e.g http://ftp.de.debian.org/debian
     if build_controller.add_chroot(os.environ.get('DEBIAN_SNAPSHOT')) != 'success':
-        pkgbuilder_log = '/localdisk/pkgbuilder/pkgbuilder.log'
+        pkgbuilder_log = '/localdisk/pkgbuilder.log'
         logger.error(' '.join(['Chroot is not ready, please check',
                               pkgbuilder_log]))
         sys.exit(1)
+
+    if args.refresh_chroots:
+        if build_controller.refresh_chroots() != 'success':
+            logger.error("Failed to fresh all the idle chroots")
+            sys.exit(1)
+        else:
+            logger.info("Successfully refreshed all the idle chroots")
 
     build_controller.build_all(layers=layers, build_types=build_types, packages=packages)
     ret_value = build_controller.stop()
