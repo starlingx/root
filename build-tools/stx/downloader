@@ -489,7 +489,7 @@ if __name__ == "__main__":
                         default=STX_DEFAULT_DISTRO, required=False)
     parser.add_argument('-B', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
-                        default=None, required=False)
+                        default='std,rt', required=False)
     parser.add_argument('-l', '--layers', type=str,
                         help="comma separated list of all layers to build\n   %s" % ALL_LAYERS,
                         default=None, required=False)
@@ -501,7 +501,7 @@ if __name__ == "__main__":
     if args.distro:
         if args.distro not in ALL_DISTROS:
             logger.error(' '.join(['Distro', args.distro, 'not in', ','.join(ALL_DISTROS)]))
-            logger.error("Please consult: build-pkgs --help")
+            logger.error("Please consult: downloader --help")
             sys.exit(1)
         distro = args.distro
         ALL_LAYERS = discovery.get_all_layers(distro=distro)
@@ -509,10 +509,11 @@ if __name__ == "__main__":
 
     if args.build_types:
         build_types = args.build_types.strip().split(',')
+        logger.debug("The required types to download:%s", ','.join(build_types))
         for build_type in build_types:
             if build_type not in ALL_BUILD_TYPES:
                 logger.error(' '.join(['Build_type', build_type, 'not in', ','.join(ALL_BUILD_TYPES)]))
-                logger.error("Please consult: build-pkgs --help")
+                logger.error("Please consult: downloader --help")
                 sys.exit(1)
 
     if args.layers:
@@ -521,7 +522,7 @@ if __name__ == "__main__":
             logger.info("layer=%s" % layer)
             if layer not in ALL_LAYERS:
                 logger.error(' '.join(['Layer', layer, 'not in', ','.join(ALL_LAYERS)]))
-                logger.error("Please consult: build-pkgs --help")
+                logger.error("Please consult: downloader --help")
                 sys.exit(1)
 
     if args.download_binary:
