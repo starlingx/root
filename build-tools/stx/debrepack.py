@@ -370,40 +370,29 @@ class Parser():
             self.logger.error("%s: no such directory", debfolder)
             raise Exception(f"{debfolder}: no such directory")
 
+        files_list = list()
         content = ""
         for root, _, files in os.walk(debfolder):
             for name in files:
-                f = open(os.path.join(root, name), 'r', encoding="ISO-8859-1")
-                content += f.read()
+                files_list.append(os.path.abspath(os.path.join(root, name)))
 
         if "src_path" in self.meta_data and self.meta_data["src_path"] is not None:
             for root, _, files in os.walk(self.meta_data["src_path"]):
                 for name in files:
-                    try:
-                        f = open(os.path.join(root, name), 'r', encoding="ISO-8859-1")
-                        content += f.read()
-                    except IOError:
-                        self.logger.error("Can't open %s" % name)
-                        raise IOError
+                    files_list.append(os.path.join(root, name))
 
         if "src_files" in self.meta_data:
             for src_file in self.meta_data['src_files']:
                 if os.path.isdir(src_file):
                     for root, _, files in os.walk(src_file):
                         for name in files:
-                            try:
-                                f = open(os.path.join(root, name), 'r', encoding="ISO-8859-1")
-                                content += f.read()
-                            except IOError:
-                                self.logger.error("Can't open %s" % name)
-                                raise IOError
+                            files_list.append(os.path.join(root, name))
                 else:
-                    try:
-                        f = open(src_file, 'r', encoding="ISO-8859-1")
-                        content += f.read()
-                    except IOError:
-                        self.logger.error("Can't open %s" % src_file)
-                        raise IOError
+                    files_list.append(src_file)
+
+        for f in sorted(files_list):
+            with open(f, 'r', encoding="ISO-8859-1") as fd:
+                content += fd.read()
 
         return get_str_md5(content)
 
