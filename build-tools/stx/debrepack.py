@@ -830,3 +830,42 @@ class Parser():
         self.logger.removeHandler(logfile_handler)
 
         return files
+
+    def dummy_package(self, pkgfiles, pkgname, pkgver="1.0-1"):
+
+        for pfile in pkgfiles:
+            if not os.path.exists(pfile):
+                self.logger.error("No such %s file", pfile)
+                raise IOError(f"No such {pfile} file")
+
+        packdir = os.path.join(self.basedir, pkgname)
+        if os.path.exists(packdir):
+            shutil.rmtree(packdir)
+        os.mkdir(packdir)
+
+        upstream_version = BaseVersion(pkgver).upstream_version
+        srcdir = "-".join([pkgname, upstream_version])
+        tarfile = srcdir + ".tar.gz"
+
+        pwd = os.getcwd()
+        os.chdir(packdir)
+        for pfile in pkgfiles:
+            run_shell_cmd('mkdir -p %s; cp %s %s' % (srcdir, pfile, srcdir), self.logger)
+        run_shell_cmd('tar czvf %s %s; rm -rf %s' % (tarfile, srcdir, srcdir), self.logger)
+        run_shell_cmd('debmake -a %s' % tarfile, self.logger)
+        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (srcdir, pkgver, RELEASENOTES), self.logger)
+        run_shell_cmd('cd %s; dpkg-buildpackage -nc -us -uc -S -d' % srcdir, self.logger)
+        # strip epoch
+        ver = pkgver.split(":")[-1]
+
+        dsc_file = pkgname + "_" + ver + ".dsc"
+        with open(os.path.join(dsc_file)) as f:
+            c = debian.deb822.Dsc(f)
+        os.chdir(pwd)
+
+        files = list()
+        files.append(os.path.join(packdir, dsc_file))
+        for f in c['Files']:
+            files.append(os.path.join(packdir, f['name']))
+
+        return files
