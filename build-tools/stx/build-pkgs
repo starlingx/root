@@ -48,7 +48,7 @@ MAX_PKG_BUILD_COUNT = 3
 # The maximum parallel instances run at the same time
 MAX_PARALLEL_JOBS = 30
 # The default number of parallel tasks
-DEFAULT_PARALLEL_TASKS = 10
+DEFAULT_PARALLEL_TASKS = 1
 # The default interval of polling build status (seconds)
 DEFAULT_POLL_INTERVAL = 10
 # Maximum number of package make jobs
