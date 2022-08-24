@@ -196,7 +196,7 @@ def show_task_log(log_file, wait_time, success_str, exit_str):
                 if success_str and success_str in line:
                     status = 'success'
                     break
-                if exit_str and exit_str in line:
+                if exit_str and line.startswith(exit_str):
                     logger.error(' '.join(['Task failed. For details please',
                                            'consult log', log_file]))
                     status = 'fail'
@@ -430,7 +430,7 @@ class BuildController():
         if 'creating' in ret:
             key_string = "Successfully set up bullseye chroot"
             state = show_task_log(os.path.join(PKGBUILDER_ROOT, USER, PROJECT, 'chroot.log'),
-                                  10, key_string, None)
+                                  10, key_string, "E: ")
             if 'success' in state:
                 req_chroots_action('savechroot', None)
                 ret = 'success'
