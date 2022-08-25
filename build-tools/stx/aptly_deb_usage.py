@@ -21,6 +21,7 @@
 # Realization of its real RESTAPI(go)
 # https://github.com/molior-dbs/aptly
 from aptly_api import Client
+from debian import debian_support
 import os
 import time
 from typing import Optional
@@ -31,6 +32,7 @@ PREFIX_MERGE = 'deb-merge-'
 SIGN_KEY = 'E82373F817C276756FA64756FAAD0555200D6582'
 SIGN_PASSWD = 'starlingx'
 DEFAULT_TIMEOUT_COUNT = 10
+STX_DIST = os.environ.get('STX_DIST')
 
 # Class used to manage aptly data base, it can:
 #     create_remote: Create a repository link to a remote mirror
@@ -133,7 +135,7 @@ class Deb_aptly():
     # name : string, the name of new build snapshot
     # source_snapshots: list of snapshots to be merge, order matters, snapshot at front of
     #                   list has higher priority than snapshot later in the list.
-    # For each package, only the one in higher priority snapshot will be selected.
+    # For each package, only the one with higher version can be selected:
     # Return False on failure
     def __merge_snapshot(self, name, source_snapshots):
         '''Merge several snapshots into one, prepare for later deploy.'''
@@ -141,7 +143,8 @@ class Deb_aptly():
             self.logger.error('%s did not start with %s, Failed.' % (name, PREFIX_MERGE))
             return False
         package_refs = []
-        package_uniq_list = []
+        # package_uniq_dict[pkgname_arch] = [package.key, snapshot]
+        package_uniq_dict = dict()
         source_snapshots = [x.strip() for x in source_snapshots if x.strip() != '']
         # remove duplicates (keep order)
         source_snapshots = list(dict.fromkeys(source_snapshots))
@@ -158,15 +161,27 @@ class Deb_aptly():
                     for package in package_list:
                         key_list = package.key.split()
                         # 0: pkg_arch  1: pkg_name  2: pkg_version 3: pkg_key of aptly
-                        uniq_pkg = [key_list[0], key_list[1]]
+                        pkgname_arch = '_'.join([key_list[1], key_list[0]])
                         # Source packages are useless for LAT, ignore them.
                         if "Psource" == key_list[0]:
                             continue
-                        # Ignore duplicate packages
-                        if uniq_pkg in package_uniq_list:
-                            self.logger.warn('Drop duplicate package: %s of %s.' % (package.key, snapshot))
+                        # Check and drop duplicate packages
+                        if pkgname_arch in package_uniq_dict.keys():
+                            need_replace = False
+                            orig_version = package_uniq_dict[pkgname_arch][0].split()[2]
+                            if STX_DIST in orig_version and STX_DIST not in key_list[2]:
+                                self.logger.warn('STX package %s %s has been eclipsed by upstream version %s' %
+                                                 (pkgname_arch, orig_version, key_list[2]))
+                            if debian_support.version_compare(key_list[2], orig_version) > 0:
+                                self.logger.warn('Drop duplicate package: %s.' %
+                                                 ' of '.join(package_uniq_dict[pkgname_arch]))
+                                package_refs.remove(package_uniq_dict[pkgname_arch][0])
+                                package_refs.append(package.key)
+                                package_uniq_dict[pkgname_arch] = [package.key, snapshot]
+                            else:
+                                self.logger.warn('Drop duplicate package: %s of %s.' % (package.key, snapshot))
                             continue
-                        package_uniq_list.append(uniq_pkg)
+                        package_uniq_dict[pkgname_arch] = [package.key, snapshot]
                         package_refs.append(package.key)
                     break
             if not snap_exist:
