@@ -687,6 +687,8 @@ class Parser():
 
                     else:
                         download(dl_url, dl_file, self.logger)
+                    if not checksum(dl_file, check_sum, check_cmd, self.logger):
+                        raise Exception(f'Fail to download {dl_file}')
 
         if "dl_path" in self.meta_data:
             dl_file = self.meta_data["dl_path"]["name"]
@@ -707,6 +709,8 @@ class Parser():
                         download(alt_dl_url, dl_file, self.logger)
                 else:
                     download(dl_url, dl_file, self.logger)
+                if not checksum(dl_file, check_sum, check_cmd, self.logger):
+                    raise Exception(f'Failed to download {dl_file}')
 
         elif "archive" in self.meta_data:
             ver = self.versions["full_version"].split(":")[-1]
