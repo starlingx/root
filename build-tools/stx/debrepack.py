@@ -21,15 +21,12 @@ import git
 import hashlib
 import logging
 import os
-import pathlib
 import progressbar
 import re
 import shutil
 import sys
 import utils
-from utils import run_shell_cmd
-import urllib.parse
-import urllib.request
+from utils import run_shell_cmd, get_download_url
 import yaml
 
 
@@ -58,49 +55,6 @@ class DownloadProgress():
             self.pbar.update(downloaded)
         else:
             self.pbar.finish()
-
-
-def url_to_cengn(url):
-
-    url_change = urllib.parse.urlparse(url)
-    url_path = pathlib.Path(url_change.path)
-    if url_change.netloc != '':
-        path = pathlib.Path(url_change.netloc, url_path.relative_to("/"))
-    else:
-        path = url_path
-
-    # FIXME: the ":" in a path is converted to "%25", after
-    # uploading to CENGN, the "%25" in the path is converted
-    # to "%2525".
-    return os.path.join(CENGN_BASE, path).replace("%25", "%2525")
-
-
-def get_download_url(url, strategy):
-
-    alt_rt_url = None
-    cengn_url = url_to_cengn(url)
-    if strategy == "cengn":
-        rt_url = cengn_url
-    elif strategy == "upstream":
-        rt_url = url
-    elif strategy == "cengn_first":
-        try:
-            urllib.request.urlopen(cengn_url)
-            rt_url = cengn_url
-            alt_rt_url = url
-        except:
-            rt_url = url
-    elif strategy == "upstream_first":
-        try:
-            urllib.request.urlopen(url)
-            rt_url = url
-            alt_rt_url = cengn_url
-        except:
-            rt_url = cengn_url
-    else:
-        raise Exception(f'Invalid value "{strategy}" of CENGN_STRATEGY')
-
-    return (rt_url, alt_rt_url)
 
 
 def checksum_dsc(dsc_file, logger):
