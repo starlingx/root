@@ -21,6 +21,7 @@ source ${MY_REPO}/build-tools/git-utils.sh
 
 SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
 OS=
+OS_LABEL=
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PREFIX=dev
@@ -52,6 +53,10 @@ $(basename $0)
 
 Options:
     --os:            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-label:      Use this string as part of image tags, log file names and
+                       image record file names, in place of OS, eg:
+                       "--os distroless --os-label debian" would look for
+                       "distroless" build recipes, but tag them as "debian"
     --version:       Specify version for output image
     --stream:        Build stream, stable or dev (default: stable)
     --base:          Specify base docker image (required option)
@@ -353,9 +358,9 @@ function post_build {
     if [ "${OS}" = "centos" ]; then
         # Record python modules and packages
         docker run --entrypoint /bin/bash --rm ${build_image_name} -c 'rpm -qa | sort' \
-            > ${WORKDIR}/${LABEL}-${OS}-${BUILD_STREAM}.rpmlst
+            > ${WORKDIR}/${LABEL}-${OS_LABEL}-${BUILD_STREAM}.rpmlst
         docker run --entrypoint /bin/bash --rm ${build_image_name} -c 'pip freeze 2>/dev/null | sort' \
-            > ${WORKDIR}/${LABEL}-${OS}-${BUILD_STREAM}.piplst
+            > ${WORKDIR}/${LABEL}-${OS_LABEL}-${BUILD_STREAM}.piplst
     fi
 
     RESULTS_BUILT+=(${build_image_name})
@@ -555,7 +560,7 @@ function build_image_loci {
 
     with_retries ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci \
         "${BUILD_ARGS[@]}" \
-        --tag ${build_image_name}  2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
+        --tag ${build_image_name}  2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
         RESULTS_FAILED+=(${LABEL})
@@ -686,7 +691,7 @@ function build_image_docker {
     fi
 
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
-    with_retries ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
+    with_retries ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -757,7 +762,7 @@ function build_image_script {
     cp $(dirname ${image_build_file})/${SCRIPT} ${SCRIPT}
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $HTTP_PROXY $HTTPS_PROXY $NO_PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS}-${BUILD_STREAM}.log
+    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $HTTP_PROXY $HTTPS_PROXY $NO_PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -799,7 +804,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o hN -l help,os:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,no-pull-base -- "$@")
+OPTS=$(getopt -o hN -l help,os:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -820,6 +825,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-label)
+            OS_LABEL=$2
             shift 2
             ;;
         --wheels)
@@ -937,6 +946,10 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+if [[ -z "$OS_LABEL" ]] ; then
+    OS_LABEL="$OS"
+fi
+
 if [ -z "${BASE}" ]; then
     echo "Base image must be specified with --base option." >&2
     exit 1
@@ -1030,7 +1043,7 @@ function find_image_build_files {
 }
 find_image_build_files
 
-IMAGE_TAG="${OS}-${BUILD_STREAM}"
+IMAGE_TAG="${OS_LABEL}-${BUILD_STREAM}"
 IMAGE_TAG_LATEST="${IMAGE_TAG}-latest"
 
 if [ -n "${LATEST_PREFIX}" ]; then
@@ -1056,8 +1069,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-TAG_LIST_FILE=${WORKDIR}/images-${OS}-${BUILD_STREAM}-versioned.lst
-TAG_LIST_LATEST_FILE=${WORKDIR}/images-${OS}-${BUILD_STREAM}-latest.lst
+TAG_LIST_FILE=${WORKDIR}/images-${OS_LABEL}-${BUILD_STREAM}-versioned.lst
+TAG_LIST_LATEST_FILE=${WORKDIR}/images-${OS_LABEL}-${BUILD_STREAM}-latest.lst
 if [ "${PUSH}" = "yes" ]; then
     if is_empty ${ONLY[@]} && is_empty ${SKIP[@]}; then
         # Reset image record files, since we're building everything
