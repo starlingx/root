@@ -185,6 +185,23 @@ def package_dir_list_handler(entry, proj_dir):
         return []
     return [ path ]
 
+
+def package_iso_list (distro="debian", layer="all", build_type="std", skip_non_buildable=True):
+    pkg_iso_list = []
+    if layer is None:
+        layer = "all"
+    for proj_dir in project_dir_list(distro=distro, layer=layer, skip_non_buildable=skip_non_buildable):
+        iso_file = os.path.join(proj_dir, "%s%s%s%s" % (distro, "_iso_image_", build_type, ".inc"))
+        if not os.path.isfile(iso_file):
+            if build_type == "std":
+                # It's permitted to omit the "_std" suffix from the file name
+                iso_file = os.path.join(proj_dir, "%s%s" % (distro, "_iso_image.inc"))
+        if not os.path.isfile(iso_file):
+            continue
+        pkg_iso_list.extend(bc_safe_fetch(iso_file))
+    return pkg_iso_list
+
+
 def package_dir_list (distro="debian", layer="all", build_type="std", skip_non_buildable=True):
     pkg_dir_list = []
     if layer is None:
