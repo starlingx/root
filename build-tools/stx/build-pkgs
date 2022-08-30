@@ -595,6 +595,7 @@ class BuildController():
                 chroot = resp_json['msg']
             else:
                 status = 'fail'
+                chroot = 'PkgbuilderFail'
         return status, chroot
 
     def req_kill_task(self, owner, dsc=None):
@@ -907,7 +908,7 @@ class BuildController():
                 logger.info("To Require to add build task for %s with snapshot %s", pkg_name, snapshot_idx)
                 (status, chroot) = self.req_add_task(pkg_dir, dsc_path, build_type, snapshot_idx)
                 if 'fail' in status:
-                    if 'ServerError' in chroot:
+                    if chroot and 'ServerError' in chroot:
                         self.req_stop_task()
                         logger.error("Fatal error from pkgbuilder, exit from %s build with %s", layer, build_type)
                         return
