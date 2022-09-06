@@ -64,17 +64,17 @@ images:
     # Tag based on upstream package version
     tag: stx.5.0-v0.7.0
   - name: docker.io/starlingx/stx-snmp
-    src_build_tag: master-centos-stable-20211109T015900Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/1904f3ad6d5d1b24d173bf78bb84c0128a33022d
-    tag: stx.6.0-v1.0.1
+    src_build_tag: master-debian-stable-20220906T060002Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/50919b751a4da8b8dd6377900f4de1ba65eaabc9
+    tag: stx.8.0-v1.0.0
   - name: docker.io/starlingx/stx-fm-subagent
-    src_build_tag: master-centos-stable-20211103T051143Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/5642841ebc729ce54dcaf8d62dbcf1eb68ce1c88
-    tag: stx.6.0-v1.0.3
+    src_build_tag: master-debian-stable-20220906T060002Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/90a317189ab13f832fa396f7bda0c8c643718ec7
+    tag: stx.8.0-v1.0.0
   - name: docker.io/starlingx/stx-fm-trap-subagent
-    src_build_tag: master-centos-stable-20220510T004347Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/a52305a17f6a09b45a0b4b14886790a1fb0c188a
-    tag: stx.7.0-v1.0.3
+    src_build_tag: master-debian-stable-20220906T060002Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/20148e20031a558fb83eeb01f3d2fc393a6f170c
+    tag: stx.8.0-v1.0.0
   - name: docker.io/starlingx/notificationservice-base
     src_build_tag: master-centos-stable-20220309T060239Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/f626e3a6b890b4e9990f39d8fe98b39057ee5ed4
