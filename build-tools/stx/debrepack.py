@@ -337,24 +337,34 @@ class Parser():
 
         if "PKG_GITREVCOUNT" in revision_data:
             if "PKG_BASE_SRCREV" in revision_data:
-                revision = int(run_shell_cmd(git_rev_list_from % (self.pkginfo["debfolder"], revision_data["PKG_BASE_SRCREV"]), self.logger))
+                revision += int(run_shell_cmd(git_rev_list_from % (self.pkginfo["debfolder"], revision_data["PKG_BASE_SRCREV"]), self.logger))
             else:
-                revision = int(run_shell_cmd(git_rev_list % self.pkginfo["debfolder"], self.logger))
+                revision += int(run_shell_cmd(git_rev_list % self.pkginfo["debfolder"], self.logger))
             revision += int(run_shell_cmd(git_status % self.pkginfo["debfolder"], self.logger))
 
-        if "src_path" not in self.meta_data:
-            return dist + "." + str(revision)
-
-        src_path = self.meta_data["src_path"]
-        if src_path is None:
-            return dist + "." + str(revision)
-
         if "SRC_GITREVCOUNT" in revision_data:
-            if "SRC_BASE_SRCREV" not in revision_data:
-                self.logger.error("SRC_BASE_SRCREV must be set")
-                raise ValueError("SRC_BASE_SRCREV must be set")
-            revision += int(run_shell_cmd(git_rev_list_from % (src_path, revision_data["SRC_BASE_SRCREV"]), self.logger))
+            if "src_path" not in self.meta_data:
+                self.logger.error("SRC_GITREVCOUNT is set, but no \"src_path\" in meta_data.yaml")
+                raise Exception(f"SRC_GITREVCOUNT is set, but no \"src_path\" in meta_data.yaml")
+            src_path = self.meta_data["src_path"]
+            src_gitrevcount = revision_data["SRC_GITREVCOUNT"]
+            if "SRC_BASE_SRCREV" in src_gitrevcount:
+                revision += int(run_shell_cmd(git_rev_list_from % (src_path, src_gitrevcount["SRC_BASE_SRCREV"]), self.logger))
+            else:
+                revision += int(run_shell_cmd(git_rev_list % src_path, self.logger))
             revision += int(run_shell_cmd(git_status % src_path, self.logger))
+
+        if "GITREVCOUNT" in revision_data:
+            gitrevcount = revision_data["GITREVCOUNT"]
+            if "SRC_DIR" not in gitrevcount:
+                self.logger.error("Not set SRC_DIR in GITREVCOUNT")
+                raise Exception(f"Not set SRC_DIR in GITREVCOUNT")
+            if "BASE_SRCREV" not in gitrevcount:
+                self.logger.error("Not set BASE_SRCREV in GITREVCOUNT")
+                raise Exception(f"Not set BASE_SRCREV in GITREVCOUNT")
+            src_dir = os.path.expandvars(gitrevcount["SRC_DIR"])
+            revision += int(run_shell_cmd(git_rev_list_from % (src_dir, gitrevcount["BASE_SRCREV"]), self.logger))
+            revision += int(run_shell_cmd(git_status % src_dir, self.logger))
 
         return dist + "." + str(revision)
 
@@ -393,6 +403,18 @@ class Parser():
         for f in sorted(files_list):
             with open(f, 'r', encoding="ISO-8859-1") as fd:
                 content += fd.read()
+
+        if "revision" not in self.meta_data:
+            return get_str_md5(content)
+
+        revision_data = self.meta_data["revision"]
+        if "GITREVCOUNT" in revision_data:
+            gitrevcount = revision_data["GITREVCOUNT"]
+            if "SRC_DIR" in gitrevcount:
+                src_dir = os.path.expandvars(gitrevcount["SRC_DIR"])
+                if os.path.exists(src_dir):
+                    content += run_shell_cmd("cd %s; git log --oneline -10" % src_dir, self.logger)
+                    content += run_shell_cmd("cd %s; git diff" % src_dir, self.logger)
 
         return get_str_md5(content)
 
