@@ -187,10 +187,11 @@ def checksum(dl_file, checksum, cmd, logger):
 
 
 def download(url, savepath, logger):
-
     logger.info(f"Download {url} to {savepath}")
-    download_cmd = "wget -t 5 --wait=15 %s -O %s"
-    run_shell_cmd(download_cmd % (url, savepath), logger)
+
+    # Need to avoid using the shell as the URL may include '&' characters.
+    run_shell_cmd(["wget", "-t", "5", "--wait=15", url, "-O", savepath], logger)
+
     return True
 
 
