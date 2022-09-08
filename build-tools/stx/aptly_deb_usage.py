@@ -242,10 +242,14 @@ class Deb_aptly():
                     self.logger.warning('Remove publication failed %s : %s' % (name, self.aptly.tasks.show(task.id).state))
         # Rename the snapshot if exists
         snap_list = self.aptly.snapshots.list()
-        for snap in snap_list:
-            if snap.name == name:
-                backup_name = 'backup-' + name
-                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(name, backup_name).id)
+
+        exists = [snap for snap in snap_list if snap.name == name]
+        backup_exists = [snap for snap in snap_list if snap.name == 'backup-' + name]
+        if exists:
+            backup_name = 'backup-' + name
+            if backup_exists:
+                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.delete(backup_name, force=True).id)
+            self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(name, backup_name).id)
 
         # crate a snapshot
         task = None
