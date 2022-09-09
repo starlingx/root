@@ -23,11 +23,14 @@ usage () {
     echo "             [ --exclude-projects=<projects> ]"
     echo "             [ --manifest [ --manifest-file=<manifest.xml> ] [--manifest-prefix <prefix>]]"
     echo "             [ --bypass-gerrit ] [--safe-gerrit-host=<host>]"
-    echo "             [ --dry-run ]"
+    echo "             [ --access-token=<remote>:<token> ] [ --dry-run ]"
     echo " "
     echo "Push a pre-existing git tag into all listed projects, and all projects"
     echo "hosted by all listed remotes, minus excluded projects."
     echo "Lists are comma separated."
+    echo ""
+    echo "--access-token can be used to supply an access token for direct (non-gerrit) push attempts"
+    echo "               to specific remotes.   e.g. github now requires this"
     echo ""
     echo "A manifest push can also be requested."
     echo ""
@@ -38,7 +41,7 @@ usage () {
 
 }
 
-TEMP=$(getopt -o h,n --long remotes:,projects:,exclude-projects:,tag:,manifest,manifest-file:,manifest-prefix:,bypass-gerrit,safe-gerrit-host:,help,dry-run -n 'push_tags.sh' -- "$@")
+TEMP=$(getopt -o h,n --long remotes:,projects:,exclude-projects:,tag:,manifest,manifest-file:,manifest-prefix:,bypass-gerrit,safe-gerrit-host:,access-token:,help,dry-run -n 'push_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     echo_stderr "ERROR: getopt failure"
     usage
@@ -58,6 +61,7 @@ manifest=""
 manifest_prefix=""
 new_manifest=""
 repo_root_dir=""
+declare -A access_token
 
 safe_gerrit_hosts=()
 while true ; do
@@ -73,6 +77,15 @@ while true ; do
         --manifest-file)   repo_set_manifest_file "$2"; shift 2;;
         --manifest-prefix) manifest_prefix=$2; shift 2;;
         --safe-gerrit-host) safe_gerrit_hosts+=("$2") ; shift 2 ;;
+        --access-token)    val=$2
+                           at_remote=$(echo "$val" | cut -d ':' -f 1)
+                           at_token=$(echo "$val" | cut -d ':' -f 2)
+                           if [ -z "$at_token" ]; then
+                               usage
+                               exit 1
+                           fi
+                           access_token["$at_remote"]="$at_token"
+                           shift 2 ;;
         --)                shift ; break ;;
         *)                 usage; exit 1 ;;
     esac
@@ -202,8 +215,16 @@ for subgit in $SUBGITS; do
         echo "git push ${review_remote} ${tag}"
         with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${tag} ${DRY_RUN}
     else
+        if [ "${access_token[${remote}]}" != "" ]; then
+            echo "Trying remote '${remote}' with access token"
+            git_set_push_url_with_access_token "${remote}" "${access_token[${remote}]}"
+            if [ $? != 0 ]; then
+                echo_stderr "ERROR: Failed to set url with access token for remote '${remote}' in  ${subgit}"
+                exit 1
+            fi
+        fi
         echo "git push ${remote} ${tag}"
-        with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${tag} ${DRY_RUN}
+        with_retries -d 45 -t 15 -k 5 2 git push ${remote} ${tag} ${DRY_RUN}
     fi
 
     if [ $? != 0 ] ; then

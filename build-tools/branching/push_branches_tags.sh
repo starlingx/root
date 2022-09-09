@@ -25,7 +25,7 @@ usage () {
     echo "                      [ --exclude-projects=<projects> ]"
     echo "                      [ --manifest [ --manifest-file=<file.xml> ] ]"
     echo "                      [ --bypass-gerrit] [--safe-gerrit-host=<host>]"
-    echo "                      [ --dry-run ]"
+    echo "                      [ --access-token=<remote>:<token> ] [ --dry-run ]"
     echo ""
     echo "Push a pre-existing branch and tag into all listed projects, and all"
     echo "projects hosted by all listed remotes, minus excluded projects."
@@ -42,10 +42,13 @@ usage () {
     echo "--safe-gerrit-host allows one to specify host names of gerrit servers"
     echo "that are safe to push reviews to."
     echo ""
+    echo "--access-token can be used to supply an access token for direct (non-gerrit) push attempts"
+    echo "               to specific remotes.   e.g. github now requires this"
+    echo ""
     echo "--dry-run will print out git push commands without executing them"
 }
 
-TEMP=$(getopt -o h,n --long remotes:,projects:,exclude-projects:,branch:,tag:,bypass-gerrit,manifest,manifest-file:,safe-gerrit-host:,help,dry-run -n 'push_branches_tags.sh' -- "$@")
+TEMP=$(getopt -o h,n --long remotes:,projects:,exclude-projects:,branch:,tag:,bypass-gerrit,manifest,manifest-file:,safe-gerrit-host:,help,access-token:,dry-run -n 'push_branches_tags.sh' -- "$@")
 if [ $? -ne 0 ]; then
     echo_stderr "ERROR: getopt failure"
     usage
@@ -64,6 +67,7 @@ branch=""
 tag=""
 manifest=""
 repo_root_dir=""
+declare -A access_token
 
 safe_gerrit_hosts=()
 while true ; do
@@ -79,6 +83,15 @@ while true ; do
         --manifest)       MANIFEST=1 ; shift ;;
         --manifest-file)  repo_set_manifest_file "$2" ; shift 2;;
         --safe-gerrit-host) safe_gerrit_hosts+=("$2") ; shift 2;;
+        --access-token)    val=$2
+                           at_remote=$(echo "$val" | cut -d ':' -f 1)
+                           at_token=$(echo "$val" | cut -d ':' -f 2)
+                           if [ -z "$at_token" ]; then
+                               usage
+                               exit 1
+                           fi
+                           access_token["$at_remote"]="$at_token"
+                           shift 2 ;;
         --)               shift ; break ;;
         *)                usage; exit 1 ;;
     esac
@@ -252,12 +265,26 @@ for subgit in $SUBGITS; do
             echo "git review --topic=${branch/\//.}" && \
             $DRY_RUN_CMD with_retries -d 45 -t 15 -k 5 5 git review --topic="${branch/\//.}"
         else
+            if [ "${access_token[${review_remote}]}" != "" ]; then
+                git_set_push_url_with_access_token "${review_remote}" "${access_token[${review_remote}]}"
+                if [ $? != 0 ]; then
+                    echo_stderr "ERROR: Failed to set url with access token for remote '${review_remote}' in  ${subgit}"
+                    exit 1
+                fi
+            fi
             echo "git push ${review_remote} ${branch}:${branch} $DRY_RUN" && \
             with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${branch}:${branch} $DRY_RUN && \
             echo "git push ${review_remote} ${tag}:${tag} $DRY_RUN" && \
             with_retries -d 45 -t 15 -k 5 5 git push ${review_remote} ${tag}:${tag} $DRY_RUN
         fi
     else
+        if [ "${access_token[${remote}]}" != "" ]; then
+            git_set_push_url_with_access_token "${remote}" "${access_token[${remote}]}"
+            if [ $? != 0 ]; then
+                echo_stderr "ERROR: Failed to set url with access token for remote '${remote}' in  ${subgit}"
+                exit 1
+            fi
+        fi
         echo "git push ${remote} ${branch}:${branch} $DRY_RUN" && \
         with_retries -d 45 -t 15 -k 5 5 git push ${remote} ${branch}:${branch} $DRY_RUN && \
         echo "git push ${remote} ${tag}:${tag} $DRY_RUN" && \

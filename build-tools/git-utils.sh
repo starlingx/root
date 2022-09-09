@@ -585,3 +585,16 @@ git_review_remote () {
         git_remote
     fi
 }
+
+git_set_push_url_with_access_token () {
+    local remote="$1"
+    local access_token="$2"
+    local push_url=""
+
+    # Get url of remote.   Insert 'access_token@ into the url
+    push_url=$(git remote get-url ${remote} | sed "s#://#://${access_token}@#")
+    if [ $? != 0 ] || [ "$push_url" == "" ] ; then
+        return 1
+    fi
+    git remote set-url --push ${remote} ${push_url}
+}
