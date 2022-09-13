@@ -38,12 +38,17 @@ mirror_1 = 'http://security.debian.org/debian-security bullseye-security main co
 mirrors = [mirror_0, mirror_1]
 apt_rootdir = '/tmp/dsc_depend'
 DEFAULT_CIRCULAR_CONFIG = os.path.join(os.environ.get('MY_BUILD_TOOLS_DIR'), 'stx/circular_dep.conf')
+# Use /etc/apt/sources.list of the host
+USE_HOST_RESOURCE = True
 
 
 def get_aptcache(rootdir):
     '''
     `apt update` for specified Debian repositories.
     '''
+    if USE_HOST_RESOURCE:
+        apt_cache = apt.Cache()
+        return apt_cache
     try:
         if os.path.exists(rootdir):
             if os.path.isdir(rootdir):
