@@ -190,7 +190,9 @@ def download(url, savepath, logger):
     logger.info(f"Download {url} to {savepath}")
 
     # Need to avoid using the shell as the URL may include '&' characters.
-    run_shell_cmd(["wget", "-t", "5", "--wait=15", url, "-O", savepath], logger)
+    run_shell_cmd(["curl", "--fail", "--location", "--connect-timeout", "15",
+        "--speed-time", "15", "--speed-limit", "1", "--retry", "5",
+        "-o", savepath, url], logger)
 
     return True
 
