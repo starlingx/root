@@ -1,0 +1,8 @@
+loci/patches:
+- loci/patches/0001-starlingx-wheels-from-filesystem-pkg-repos.patch : this patch
+  makes docker images very large when COPY'ing a local wheels tarball.
+- Remove all patches; or re-work & merge upstream & then switch to an upstream loci.
+  They may not apply to Loci/master as is; and they have problems as well as
+  some STX-specific functionality.
+
+
