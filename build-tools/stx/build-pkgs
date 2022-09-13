@@ -646,7 +646,7 @@ class BuildController():
         # Check whether there are changes on package's debian folder
         new_checksum = self.kits['dsc_maker'][build_type].checksum(pkg_dir)
         self.pkgs_digests[pkg_dir] = new_checksum
-        if self.kits['dsc_cache'][build_type]:
+        if self.attrs['avoid'] and self.kits['dsc_cache'][build_type]:
             dsc_file, old_checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
             if dsc_file and old_checksum:
                 if old_checksum and old_checksum == new_checksum:
