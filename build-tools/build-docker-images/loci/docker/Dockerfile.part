@@ -1,5 +1,0 @@
-ARG DIST_REPOS
-COPY stx-scripts /opt/loci/stx-scripts
-COPY stx-wheels  /opt/loci/stx-wheels
-RUN /opt/loci/stx-scripts/install.sh
-

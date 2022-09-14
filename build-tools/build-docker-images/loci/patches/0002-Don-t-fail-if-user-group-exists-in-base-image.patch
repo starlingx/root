@@ -1,0 +1,122 @@
+From e2f044c29b7c5d08113ee633abf7c3b9680d583d Mon Sep 17 00:00:00 2001
+From: Davlet Panech <davlet.panech@windriver.com>
+Date: Thu, 8 Sep 2022 21:13:35 +0000
+Subject: [PATCH 2/2] Don't fail if user/group exists in base image
+
+New parameter NON_UNIQUE_SYSTEM_ACCOUNT: allow creation of user/group
+with non-unique IDs
+
+New parameter UPDATE_SYSTEM_ACCOUNT: update UID/GID/HOME if account
+already exists and doesn't match what we expect.
+
+Signed-off-by: Davlet Panech <davlet.panech@windriver.com>
+---
+ Dockerfile             |  2 ++
+ scripts/create_user.sh | 77 ++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 77 insertions(+), 2 deletions(-)
+
+diff --git a/Dockerfile b/Dockerfile
+index 145d284..6567c90 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -20,6 +20,8 @@ ARG EXTRA_PYDEP=""
+ ARG REGISTRY_PROTOCOL="detect"
+ ARG REGISTRY_INSECURE="False"
+ ARG KEEP_ALL_WHEELS="False"
++ARG UPDATE_SYSTEM_ACCOUNT="no"
++ARG NON_UNIQUE_SYSTEM_ACCOUNT="no"
+ 
+ ARG UID=42424
+ ARG GID=42424
+diff --git a/scripts/create_user.sh b/scripts/create_user.sh
+index 417875d..fb59bd8 100755
+--- a/scripts/create_user.sh
++++ b/scripts/create_user.sh
+@@ -1,9 +1,82 @@
+ #!/bin/bash
+ 
++#
++# UPDATE_SYSTEM_ACCOUNT: yes/no, default=no
++#   if "yes":
++#     if user/group exist, change their UID, GID & home dir
++#   else:
++#     if user/group exist, and their UID/UID/home dir are not what
++#     we expect, then fail
++#
++# NON_UNIQUE_SYSTEM_ACCOUNT: yes/no, default=no
++#   if yes: allow non-unique UID/GUID
++
+ set -ex
+ 
+-groupadd -g ${GID} ${PROJECT}
+-useradd -u ${UID} -g ${PROJECT} -M -d /var/lib/${PROJECT} -s /usr/sbin/nologin -c "${PROJECT} user" ${PROJECT}
++if [[ "$NON_UNIQUE_SYSTEM_ACCOUNT" == "yes" ]] ; then
++    non_unique="-o"
++fi
++
++# Group exists?
++if grent="$(getent group ${PROJECT})" ; then
++    # make sure GID matches
++    gid=$(echo "$grent" | awk -v FS=: '{print $3}')
++    if [[ $gid != $GID ]] ; then
++        if [[ "$UPDATE_SYSTEM_ACCOUNT" != "yes" ]] ; then
++            echo "Group ${PROJECT} already exists and has an unexpected GID $gid (expecting: $GID)" >&2
++            exit 1
++        fi
++        echo "## group ${PROJECT}: changing gid $gid -> $GID" >&2
++        groupmod $non_unique -g "$GID" "${PROJECT}"
++    fi
++# no group: create it
++else
++    echo "## group ${PROJECT}: creating gid=$gid" >&2
++    groupadd $non_unique -g ${GID} ${PROJECT}
++fi
++
++# User exists?
++if pwent="$(getent passwd "${PROJECT}")" ; then
++    # make sure GID, UID & home dir match
++    uid=$(echo "$pwent" | awk -v FS=: '{ print $3 }')
++    gid=$(echo "$pwent" | awk -v FS=: '{ print $4 }')
++    homedir=$(echo "$pwent" | awk -v FS=: '{ print $6 }')
++    # check UID
++    if [[ "$uid" != "$UID" ]] ; then
++        if [[ "$UPDATE_SYSTEM_ACCOUNT" != "yes" ]] ; then
++            echo "User ${PROJECT} already exists and has an unexpected UID $uid (expecting: $UID)" >&2
++            exit 1
++        fi
++        echo "## user ${PROJECT}: changing uid $uid -> $UID" >&2
++        usermod $non_unique -u "$UID" "${PROJECT}"
++    fi
++    # check GID
++    if [[ "$gid" != "$GID" ]] ; then
++        if [[ "$UPDATE_SYSTEM_ACCOUNT" != "yes" ]] ; then
++            echo "User ${PROJECT} already exists and has an unexpected GID $gid (expecting: $GID)" >&2
++            exit 1
++        fi
++        echo "## user ${PROJECT}: changing gid $gid -> $GID" >&2
++        usermod -g "$GID" "${PROJECT}"
++    fi
++    # check home dir
++    # see https://www.gnu.org/software/coreutils/manual/html_node/realpath-invocation.html#realpath-invocation
++    canon_homedir="$(realpath --canonicalize-missing --no-symlinks "$homedir")"
++    canon_ref_homedir="/var/lib/${PROJECT}"
++    if [[ "$canon_homedir" != "$canon_ref_homedir" ]] ; then
++        if [[ "$UPDATE_SYSTEM_ACCOUNT" != "yes" ]] ; then
++            echo "User ${PROJECT} already exists and has an unexpected home directory $homedir (expecting: /var/lib/${PROJECT}" >&2
++            exit 1
++        fi
++        echo "## user ${PROJECT}: changing home $homedir -> /var/lib/${PROJECT}" >&2
++        usermod -d "/var/lib/${PROJECT}" "${PROJECT}"
++    fi
++# no user: create it
++else
++    echo "## user ${PROJECT}: creating uid=$UID gid=$GID home=/var/lib/${PROJECT}" >&2
++    useradd $non_unique -u "${UID}" -g "${PROJECT}" -M -d "/var/lib/${PROJECT}" -s /usr/sbin/nologin -c "${PROJECT} user" "${PROJECT}"
++fi
+ 
++# create any missing dirs
+ mkdir -p /etc/${PROJECT} /var/log/${PROJECT} /var/lib/${PROJECT} /var/cache/${PROJECT}
+ chown ${PROJECT}:${PROJECT} /etc/${PROJECT} /var/log/${PROJECT} /var/lib/${PROJECT} /var/cache/${PROJECT}
+-- 
+2.30.2
+

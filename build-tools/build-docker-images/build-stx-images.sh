@@ -229,47 +229,11 @@ function get_loci {
 }
 
 function patch_loci {
-    # Loci contains a Docker file, which runs a script that installs
-    # Python modules etc based on build parameters. We replace the call
-    # to Loci's install script with our own, so that we can perform
-    # additional actions within the Dockerfile before Loci does its thing.
-    #
-    # loci/                <-- clone of Loci git repo
-    #   Dockerfile
-    #   ...
-    #   Dockerfile.stx     <-- create this by replacing "RUN..." in Dockerfile
-    #                          with the contents of loci/docker/Dockerfile.part
-    #   stx-scripts/       <-- copy of build-docker-images/loci/docker/stx-scripts
-    #   stx-wheels/        <-- copy of wheels tarball(s) specified on cmd line
-    #
-
     echo "Patching ${WORKDIR}/loci/Dockerfile" >&2
-
-    # Make a copy of Dockerfile
-    \cp -f "${WORKDIR}/loci/Dockerfile" "${WORKDIR}/loci/Dockerfile.stx" || exit 1
-
-    # Replace "RUN .../install.sh" with our own commands
-    sed -i -r  "${WORKDIR}/loci/Dockerfile.stx" -e "
-        \\%^\\s*(RUN|run)\\s+/opt/loci/scripts/install.sh\\s*\$% {
-            s/^(.*)$/#\\1/
-            r ${MY_SCRIPT_DIR}/loci/docker/Dockerfile.part
-        }
-    " || exit 1
-    if diff -q "${WORKDIR}/loci/Dockerfile" "${WORKDIR}/loci/Dockerfile.stx" >/dev/null ; then
-        echo "${WORKDIR}/loci/Dockerfile: failed to patch Loci Dockerfile" >&2
-        exit 1
-    fi
-
-    # Copy stx-scripts to Loci dir
-    \rm -rf "${WORKDIR}/loci/stx-scripts" || exit 1
-    \cp -ar "${MY_SCRIPT_DIR}/loci/docker/stx-scripts" "${WORKDIR}/loci/" || exit 1
-
-    #diff -u "${WORKDIR}/loci/Dockerfile" "${WORKDIR}/loci/Dockerfile.stx" >&2
+    ( cd "${WORKDIR}/loci" && git am $( \ls -1 $MY_SCRIPT_DIR/loci/patches/*.patch | sort ) ; )
 
     # clear wheels dir
-    \rm -rf "${WORKDIR}/loci/stx-wheels" || exit 1
-    mkdir -p "${WORKDIR}/loci/stx-wheels" || exit 1
-
+    \rm -rf "${WORKDIR}/loci/stx-wheels/"* || exit 1
 }
 
 function download_loci_wheels {
@@ -433,6 +397,10 @@ function build_image_loci {
     SPICE_REF=$(source ${image_build_file} && echo ${SPICE_REF})
     local DIST_REPOS
     DIST_REPOS=$(source ${image_build_file} && echo ${DIST_REPOS})
+    local NON_UNIQUE_SYSTEM_ACCOUNT
+    NON_UNIQUE_SYSTEM_ACCOUNT=$(source ${image_build_file} && echo ${NON_UNIQUE_SYSTEM_ACCOUNT})
+    local UPDATE_SYSTEM_ACCOUNT
+    UPDATE_SYSTEM_ACCOUNT=$(source ${image_build_file} && echo ${UPDATE_SYSTEM_ACCOUNT})
 
     echo "Building ${LABEL}"
 
@@ -548,8 +516,13 @@ function build_image_loci {
         BUILD_ARGS+=(--build-arg DIST_REPOS="${DIST_REPOS}")
     fi
 
-    # Use patched docker file
-    BUILD_ARGS+=(--file "${WORKDIR}/loci/Dockerfile.stx")
+    if [ -n "${NON_UNIQUE_SYSTEM_ACCOUNT}" ]; then
+        BUILD_ARGS+=(--build-arg NON_UNIQUE_SYSTEM_ACCOUNT="${NON_UNIQUE_SYSTEM_ACCOUNT}")
+    fi
+
+    if [ -n "${UPDATE_SYSTEM_ACCOUNT}" ]; then
+        BUILD_ARGS+=(--build-arg UPDATE_SYSTEM_ACCOUNT="${UPDATE_SYSTEM_ACCOUNT}")
+    fi
 
     # Disable build cache
     if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
