@@ -218,11 +218,11 @@ function from_tar {
 
         tarball=$(basename $wgetsrc)
         if [[ $tarball =~ gz$ ]]; then
-            taropts="xzf"
+            taropts="-xzf"
         elif [[ $tarball =~ bz2$ ]]; then
-            taropts="xjf"
+            taropts="-xjf"
         else
-            taropts="xf"
+            taropts="-xf"
         fi
 
         with_retries ${MAX_ATTEMPTS} wget $wgetsrc
@@ -231,7 +231,14 @@ function from_tar {
             continue
         fi
 
-        tar $taropts $(basename $wgetsrc)
+        local -a tar_base_opts
+        if [[ -z "$basedir" || "$basedir" == "." ]] ; then
+            basedir="$(echo "$tarball" | sed -r -e 's#[.]tar([.].*)?$##')"
+            mkdir -p "$basedir"
+            tar_basedir_opts+=("-C" "$basedir")
+        fi
+
+        tar "${tar_basedir_opts[@]}" $taropts $(basename $wgetsrc)
         if [ $? -ne 0 ]; then
             echo "Failure running: tar $taropts $(basename $wgetsrc)"
             echo $wheelname >> $FAILED_LOG
