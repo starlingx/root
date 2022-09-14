@@ -44,6 +44,8 @@ ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
+CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
+
 def get_downloaded(dl_dir, dl_type):
     """
     Browse and get the already downloaded binary or source
@@ -224,11 +226,20 @@ class DebDownloader(BaseDownloader):
 
     def download(self, _name, _version, url=None):
         if url != None:
-            dl_file = '_'.join([_name, _version, self.arch]) + '.deb'
+            # The "+" in url is converted to "%2B", so convert
+            # it back to "+" in save file.
+            dl_file = os.path.basename(url).replace("%2B", "+")
             ret = os.path.join(self.dl_dir, dl_file)
             tmp_file = ".".join([ret, "tmp"])
             utils.run_shell_cmd(["rm", "-rf", tmp_file], logger)
-            utils.run_shell_cmd(["curl", "-k", "-f", url, "-o", tmp_file], logger)
+            (dl_url, alt_dl_url) = utils.get_download_url(url, CENGN_STRATEGY)
+            if alt_dl_url:
+                try:
+                    utils.run_shell_cmd(["curl", "-k", "-f", dl_url, "-o", tmp_file], logger)
+                except:
+                    utils.run_shell_cmd(["curl", "-k", "-f", alt_dl_url, "-o", tmp_file], logger)
+            else:
+                utils.run_shell_cmd(["curl", "-k", "-f", dl_url, "-o", tmp_file], logger)
             utils.run_shell_cmd(["mv", tmp_file, ret], logger)
             return ret
 

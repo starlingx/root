@@ -16,7 +16,12 @@
 
 import logging
 import os
+import pathlib
 import subprocess
+import urllib.parse
+import urllib.request
+
+CENGN_BASE = os.path.join(os.environ.get('CENGNURL'), "debian")
 
 log_levels = {
     'debug': logging.DEBUG,
@@ -154,3 +159,46 @@ def run_shell_cmd(cmd, logger):
         raise Exception(f'[ Failed - "{cmd}" ]')
 
     return outs.strip()
+
+
+def url_to_cengn(url):
+
+    url_change = urllib.parse.urlparse(url)
+    url_path = pathlib.Path(url_change.path)
+    if url_change.netloc != '':
+        path = pathlib.Path(url_change.netloc, url_path.relative_to("/"))
+    else:
+        path = url_path
+
+    # FIXME: the ":" in a path is converted to "%25", after
+    # uploading to CENGN, the "%25" in the path is converted
+    # to "%2525".
+    return os.path.join(CENGN_BASE, path).replace("%25", "%2525")
+
+
+def get_download_url(url, strategy):
+
+    alt_rt_url = None
+    cengn_url = url_to_cengn(url)
+    if strategy == "cengn":
+        rt_url = cengn_url
+    elif strategy == "upstream":
+        rt_url = url
+    elif strategy == "cengn_first":
+        try:
+            urllib.request.urlopen(cengn_url)
+            rt_url = cengn_url
+            alt_rt_url = url
+        except:
+            rt_url = url
+    elif strategy == "upstream_first":
+        try:
+            urllib.request.urlopen(url)
+            rt_url = url
+            alt_rt_url = cengn_url
+        except:
+            rt_url = cengn_url
+    else:
+        raise Exception(f'Invalid value "{strategy}" of CENGN_STRATEGY')
+
+    return (rt_url, alt_rt_url)
