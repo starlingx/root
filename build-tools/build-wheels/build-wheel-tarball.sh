@@ -32,6 +32,7 @@ DOCKER_USER=${USER}
 declare -i MAX_ATTEMPTS=1
 PYTHON2=no
 USE_DOCKER_CACHE=no
+EXTRA_WHEELS_DIR=
 
 # Requirement/constraint URLs -- these will be read from openstack.cfg
 STABLE_OPENSTACK_REQ_URL=
@@ -74,6 +75,7 @@ Options:
     --version:    Version for pushed image (if used with --push)
     --attempts:   Max attempts, in case of failure (default: 1)
     --python2:    Build a python2 tarball
+    --extra-wheels-dir: Directory containing additional .whl files
     --keep-image: Don't delete wheel builder image at the end
 
     --cache:      Allow docker to use filesystem cache when building
@@ -83,7 +85,7 @@ Options:
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2,keep-image,cache -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2,extra-wheels-dir:,keep-image,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -150,6 +152,10 @@ while true; do
             PYTHON2=yes
             shift
             ;;
+        --extra-wheels-dir)
+            EXTRA_WHEELS_DIR="$2"
+            shift 2
+            ;;
         --keep-image)
             KEEP_IMAGE=yes
             shift
@@ -199,6 +205,11 @@ source "$OPENSTACK_CFG" || exit 1
 if [ "${PYTHON2}" = "yes" ]; then
     SKIP_CONSTRAINTS=("${SKIP_CONSTRAINTS_PY2[@]}")
     PY_SUFFIX="-py2"
+fi
+
+# Resolve $EXTRA_WHEELS_DIR
+if [[ -n "$EXTRA_WHEELS_DIR" ]] ; then
+    EXTRA_WHEELS_DIR="$(readlink -ev "$EXTRA_WHEELS_DIR")" || exit 1
 fi
 
 # Build the base wheels and retrieve the StarlingX wheels
@@ -305,7 +316,16 @@ if [ "${OS}" == "debian" ]; then
 else
     stx_find_wheels_cmd=(find ../stx/wheels -mindepth 1 -maxdepth 1 -name '*.whl')
 fi
-for wheel in ../base${PY_SUFFIX}/*.whl $("${stx_find_wheels_cmd[@]}") ; do
+if [[ -d "$EXTRA_WHEELS_DIR" ]] ; then
+    find_extra_wheels_cmd=(find "$EXTRA_WHEELS_DIR" -mindepth 1 -maxdepth 1 -name '*.whl')
+else
+    find_extra_wheels_cmd=()
+fi
+for wheel in ../base${PY_SUFFIX}/*.whl $("${stx_find_wheels_cmd[@]}") $("${find_extra_wheels_cmd[@]}") ; do
+    if [[ ! -f "$wheel" ]] ; then
+        echo "WARNING: $wheel doesn't exist or is not a regular file" >&2
+        continue
+    fi
     # Get the wheel name and version from the METADATA
     METADATA=$(unzip -p ${wheel} '*/METADATA')
     name=$(echo "${METADATA}" | grep '^Name:' | awk '{print $2}')
