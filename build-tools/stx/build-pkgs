@@ -14,6 +14,8 @@
 #
 # Copyright (C) 2021-2022 Wind River Systems,Inc
 
+import apt
+import apt_pkg
 import argparse
 import debrepack
 import debsentry
@@ -28,6 +30,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import utils
 import yaml
@@ -41,7 +44,10 @@ STX_ROOT = os.environ.get('MY_REPO_ROOT_DIR')
 PKGBUILDER_ROOT = "/localdisk/pkgbuilder"
 USER = os.environ.get('MYUNAME')
 PROJECT = os.environ.get('PROJECT')
+DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
 STX_ARCH = 'amd64'
+STX_META_NAME = 'stx-meta'
+STX_META_PKG = 'stx-meta_1.0.orig.tar.gz'
 # Different reasons can lead to package build failure
 # Set maximum retry count for failed packages
 MAX_PKG_BUILD_COUNT = 3
@@ -53,11 +59,12 @@ DEFAULT_PARALLEL_TASKS = 1
 DEFAULT_POLL_INTERVAL = 10
 # Maximum number of package make jobs
 MAX_PKG_MAKE_JOBS = 6
-
-
-# TODO - Do we want a seperate repo for each layer? each build type?
+# The local STX repository which contains build output
 REPO_BUILD = 'deb-local-build'
+# The local STX source repository
 REPO_SOURCE = 'deb-local-source'
+# The mirror created with reused URL
+REUSE_MIRROR = 'deb-remote-reuse'
 
 # Listed all stx source layers which contains 'debian_pkg_dirs'
 STX_SOURCE_REPOS = [
@@ -110,17 +117,25 @@ logger = logging.getLogger('debcontroller')
 utils.set_logger(logger)
 
 
+def get_debs_clue(btype):
+    if btype != 'rt':
+        btype = 'std'
+    return os.path.join(BUILD_ROOT, 'caches', btype + '_debsentry.pkl')
+
+
 def get_pkg_dir_from_dsc(dscs, dsc_path):
     for pkg_dir, dsc in dscs.items():
         if dsc.strip() in dsc_path:
             return pkg_dir
     return None
 
+
 def get_dsc_path_with_pkgdir(dscs, dst_pkg_dir):
     for pkg_dir, dsc in dscs.items():
         if pkg_dir.strip() == dst_pkg_dir:
             return dsc
     return None
+
 
 def get_dsc_list_from_dict(dscs_dict):
     dsc_list = []
@@ -136,6 +151,63 @@ def get_pkgname_ver_with_deb(deb_name):
     if len(name_list) < 2:
         return None
     return name_list[0], name_list[1]
+
+
+def get_aptcache(rootdir, repo_url, distribution):
+    try:
+        os.makedirs(rootdir + '/etc/apt')
+        f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
+        repo_line = ' '.join(['deb-src [trusted=yes]', repo_url, distribution, 'main\n'])
+        f_sources.write(repo_line)
+        f_sources.close()
+    except Exception as e:
+        logger.error(e)
+        return None
+    try:
+        apt_cache = apt.Cache(rootdir=rootdir)
+        ret = apt_cache.update()
+    except Exception as e:
+        logger.error(e)
+        return None
+    if not ret:
+        return None
+    apt_cache.open()
+    return apt_cache
+
+
+def fetch_src(apt_cache, pkg_name, download_dir):
+    src = apt_pkg.SourceRecords()
+    source_lookup = src.lookup(pkg_name)
+    if not source_lookup:
+        logger.error('Source package %s does not exist.' % pkg_name)
+        return False
+    try:
+        for src_file in src.files:
+            res = requests.get(src.index.archive_uri(src_file.path), stream=True)
+            logger.debug('Fetch package file %s' % src.index.archive_uri(src_file.path))
+            with open(os.path.join(download_dir, os.path.basename(src_file.path)), 'wb') as download_file:
+                for chunk in res.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        download_file.write(chunk)
+        logger.info('Source package %s downloaded.' % pkg_name)
+    except Exception as e:
+        logger.error(e)
+        return False
+    return True
+
+
+def get_shared_source(repo_url, pkg_name, distribution, download_dir):
+    tmp_folder = tempfile.TemporaryDirectory()
+    apt_cache = get_aptcache(tmp_folder.name, repo_url, distribution)
+    if None == apt_cache:
+        tmp_folder.cleanup()
+        logger.warning('get_shared_source: apt update failed')
+        return False
+    ret = fetch_src(apt_cache, pkg_name, download_dir)
+    apt_cache.clear()
+    apt_cache.close()
+    tmp_folder.cleanup()
+    return ret
 
 
 def req_chroots_action(action, extra_params):
@@ -210,26 +282,6 @@ def pkgdirs_entry_handler(entry):
     return []
 
 
-def get_all_packages():
-    """
-    Scan all STX source layers to get all buildable packages
-    Params: None
-    Return:
-        List of all STX buildable packages
-    """
-    pkgs = []
-    projects_root = os.environ.get('MY_REPO')
-    for root, dirs, files in os.walk(projects_root):
-        if dirs:
-            pass
-        for r in files:
-            if r == 'debian_pkg_dirs':
-                pkgs_file = os.path.join(root, r)
-                pkgs.extend(bc_safe_fetch(pkgs_file, pkgdirs_entry_handler))
-    # Remove duplication
-    return list(set(pkgs))
-
-
 def get_package_jobs(pkg_dir, distro=STX_DEFAULT_DISTRO):
     '''
     Returns the number of parallel jobs of the package
@@ -300,10 +352,14 @@ class BuildController():
             'run_tests': False,
             'build_depend': False,
             'upload_source': False,
-            'poll_build_status': True
+            'poll_build_status': True,
+            'reuse': False,
+            'build_all': False,
+            'reuse_export': True
         }
         self.kits = {
             'dsc_cache': {},
+            'dsc_rcache': {},
             'repo_mgr': None,
             'dsc_maker': {},
         }
@@ -330,11 +386,76 @@ class BuildController():
     def build_avoid(self, avoid):
         self.attrs['avoid'] = avoid
 
+    def get_reuse(self, build_types):
+        if not self.attrs['reuse']:
+            return True
+        # 'reuse' should be handled for either no '-c' or '-c -all'
+        if not self.attrs['avoid'] and not self.attrs['build_all']:
+            return True
+
+        reuse_url = os.environ.get('STX_SHARED_REPO')
+        if not reuse_url:
+            logger.error("Reuse is enabled, failed to get STX_SHARED_REPO from ENV")
+            return False
+        logger.debug("Reuse is enabled, the reused repository is %s", reuse_url)
+
+        reuse_src_url = os.environ.get('STX_SHARED_SOURCE')
+        if not reuse_src_url:
+            logger.error("Reuse is enabled, failed to get STX_SHARED_SOURCE from ENV")
+            return False
+        logger.debug("Reuse is enabled, the reused source repository is %s", reuse_src_url)
+
+        kwargs = {'url': reuse_url, 'distribution': DISTRIBUTION, 'component': 'main',
+                  'architectures': STX_ARCH}
+        try:
+            ret = self.kits['repo_mgr'].mirror(REUSE_MIRROR, **kwargs)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to create reused mirror with %s", reuse_url)
+            return False
+        else:
+            if ret:
+                logger.info("Successfully created reuse mirror with %s", reuse_url)
+            else:
+                logger.error("Failed to create reused mirror with %s", reuse_url)
+                return False
+
+        meta_dir = os.path.join(BUILD_ROOT, 'stx-meta')
+        os.makedirs(meta_dir, exist_ok=True)
+        try:
+            ret = get_shared_source(reuse_src_url, STX_META_NAME, DISTRIBUTION, meta_dir)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to download stx-meta to reuse")
+            return False
+
+        meta_file = os.path.join(meta_dir, STX_META_PKG)
+        os.system('tar zxvf ' + meta_file + ' -C ' + meta_dir)
+        rcache_dir = os.path.join(meta_dir, STX_META_NAME + '-1.0')
+        if not os.path.exists(rcache_dir):
+            logger.error("Failed to get remote stx-meta in %s", BUILD_ROOT)
+            return False
+        logger.info("Successfully downloaded stx-meta in %s", BUILD_ROOT)
+        for btype in build_types:
+            logger.info("Loaded remote pkl for %s", btype)
+            remote_pkl = os.path.join(rcache_dir, btype + '_dsc.pkl')
+            self.kits['dsc_rcache'][btype] = dsccache.DscCache(logger, remote_pkl)
+        return True
+
     def start(self, build_types=ALL_BUILD_TYPES):
         build_types_to_init = ALL_BUILD_TYPES
         if build_types is not None:
             build_types_to_init = build_types
         self.build_types = build_types_to_init
+
+        if not self.kits['repo_mgr']:
+            logger.critical("Failed to create repo manager")
+            return False
+        self.kits['repo_mgr'].upload_pkg(REPO_BUILD, None)
+        self.kits['repo_mgr'].upload_pkg(REPO_SOURCE, None)
+
+        caches_dir = os.path.join(BUILD_ROOT, 'caches')
+        os.makedirs(caches_dir, exist_ok=True)
 
         for build_type in build_types_to_init:
             self.lists['success_' + build_type] = []
@@ -342,19 +463,29 @@ class BuildController():
             self.lists['build-needed_' + build_type] = []
             self.lists['success_depends_' + build_type] = []
             self.lists['fail_depends_' + build_type] = []
+            self.lists['reuse_' + build_type] = []
+            self.lists['reuse_pkgname_' + build_type] = []
 
-            if not build_type in self.kits['dsc_cache']:
-                pkl_file = os.path.join(BUILD_ROOT, build_type, 'dsc.pkl')
-                self.kits['dsc_cache'][build_type] = dsccache.DscCache(logger, pkl_file)
+            if build_type not in self.kits['dsc_cache']:
+                # Transparently migrate dsc cache files
+                dsc_pkl = os.path.join(caches_dir, build_type + '_dsc.pkl')
+                if not os.path.exists(dsc_pkl):
+                    old_dsc_pkl = os.path.join(BUILD_ROOT, build_type, 'dsc.pkl')
+                    if os.path.exists(old_dsc_pkl):
+                        os.system('mv -f %s %s' % (old_dsc_pkl, dsc_pkl))
+                self.kits['dsc_cache'][build_type] = dsccache.DscCache(logger, dsc_pkl)
                 if not self.kits['dsc_cache'][build_type]:
-                    logger.warning(' '.join(['Failed to create dsc cache',
-                                   pkl_file]))
+                    logger.warning('Failed to create dsc cache %s', dsc_pkl)
 
-        if not self.kits['repo_mgr']:
-            logger.critical("Failed to create repo manager")
-            return False
-        self.kits['repo_mgr'].upload_pkg(REPO_BUILD, None)
-        self.kits['repo_mgr'].upload_pkg(REPO_SOURCE, None)
+                # Transparently migrate debsentry cache files
+                debsentry_pkl = os.path.join(caches_dir, build_type + '_debsentry.pkl')
+                if not os.path.exists(debsentry_pkl):
+                    if build_type == 'rt':
+                        old_debsentry_pkl = os.path.join(BUILD_ROOT, 'debs_entry_rt.pkl')
+                    else:
+                        old_debsentry_pkl = os.path.join(BUILD_ROOT, 'debs_entry.pkl')
+                    if os.path.exists(old_debsentry_pkl):
+                        os.system('mv -f %s %s' % (old_debsentry_pkl, debsentry_pkl))
 
         recipes_dir = os.path.join(BUILD_ROOT, 'recipes')
         os.makedirs(recipes_dir, exist_ok=True)
@@ -363,7 +494,7 @@ class BuildController():
             build_dir = os.path.join(BUILD_ROOT, build_type)
             os.makedirs(build_dir, exist_ok=True)
 
-            if not build_type in self.kits['dsc_maker']:
+            if build_type not in self.kits['dsc_maker']:
                 try:
                     if build_type == 'rt':
                         self.kits['dsc_maker'][build_type] = debrepack.Parser(build_dir, recipes_dir,
@@ -375,8 +506,11 @@ class BuildController():
                     logger.error("Failed to create dsc maker")
                     return False
                 else:
-                    logger.info("Successfully created dsc maker")
+                    logger.info("Successfully created dsc maker for %s", build_type)
 
+        # Prepare for build output reuse
+        if not self.get_reuse(build_types_to_init):
+            return False
         # load the persistent chroot on shared volume
         logger.info("Loading chroot")
         req_chroots_action('loadchroot', None)
@@ -388,6 +522,41 @@ class BuildController():
         self.req_stop_task()
         return self.show_build_stats()
 
+    def set_reuse(self, cache_dir):
+        meta_files = []
+        if not self.attrs['reuse_export']:
+            return
+
+        logger.debug("Build_all done, upload cache for build output reuse")
+        for btype in ALL_BUILD_TYPES:
+            dsc_path = os.path.join(cache_dir, btype + '_dsc.pkl')
+            if os.path.exists(dsc_path):
+                meta_files.append(dsc_path)
+        for btype in ALL_BUILD_TYPES:
+            debsentry_path = os.path.join(cache_dir, btype + '_debsentry.pkl')
+            if os.path.exists(debsentry_path):
+                meta_files.append(debsentry_path)
+        logger.debug("All the cache files which need to be uploaded:%s", ','.join(meta_files))
+
+        if not meta_files:
+            return
+
+        try:
+            outputs = self.kits['dsc_maker']['std'].dummy_package(meta_files, STX_META_NAME)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to create the package %s to reuse", STX_META_NAME)
+        else:
+            logger.debug("Successfully created the package %s to reuse", STX_META_NAME)
+            for recipe in outputs:
+                if recipe.endswith(".dsc"):
+                    logger.info("Uploading %s with dsc %s for reuse", STX_META_NAME, recipe)
+                    if not self.upload_with_dsc(STX_META_NAME, recipe, REPO_SOURCE):
+                        logger.warning("Failed to upload %s to %s for reuse", STX_META_NAME, REPO_SOURCE)
+                    else:
+                        logger.debug("Successfully uploaded %s to %s for reuse", STX_META_NAME, REPO_SOURCE)
+                    break
+
     def clean(self, build_types=ALL_BUILD_TYPES):
         """
         Clean the build env includes cleaning all these build artifacts under
@@ -395,7 +564,7 @@ class BuildController():
         """
 
         if build_types is None:
-            build_types=ALL_BUILD_TYPES
+            build_types = ALL_BUILD_TYPES
 
         # clean build artifacts
         for build_type in build_types:
@@ -416,6 +585,8 @@ class BuildController():
                 logger.debug(' '.join(['Failed to clean', REPO_BUILD]))
             else:
                 logger.debug(' '.join(['Successfully cleaned', REPO_BUILD]))
+                cache_dir = os.path.join(BUILD_ROOT, 'caches')
+                os.system("rm -f %s" % os.path.join(cache_dir, '*.pkl'))
 
     def add_chroot(self, mirror):
         extra_req = {}
@@ -480,6 +651,36 @@ class BuildController():
             logger.info("Successfully deployed the repository %s", dst_repo)
         return True
 
+    def remove_pkg_debs(self, package, build_type):
+        """
+        remove package's all sub debs from the binary repo
+        Params:
+            package: target package name
+            build_type:
+        """
+        logger.debug(' '.join(['Remove all old version of debs for', package]))
+        debs_clue = get_debs_clue(build_type)
+        subdebs = debsentry.get_subdebs(debs_clue, package, logger)
+        if not subdebs:
+            logger.warning('Failed to get sub deb packages for %s', package)
+            return False
+        for deb in subdebs:
+            pkg_item = deb.split('_')
+            msg = ''.join(['package ', pkg_item[0], '(', pkg_item[1], ')'])
+
+            logger.info(' '.join(['Searching for binary', msg, 'in repository', REPO_BUILD]))
+            if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0]):
+                logger.info('Found binary %s in repository %s', msg, REPO_BUILD)
+                if self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0], 'binary', None, deploy=False):
+                    logger.info('Successfully deleted binary %s from repository %s',
+                                msg, REPO_BUILD)
+                else:
+                    logger.info('Failed to delete binary %s from repository %s', msg,
+                                REPO_BUILD)
+        ''' Fixme: not sure whether it's ok to skip self.publish_repo(REPO_BUILD) here
+        '''
+        return True
+
     def upload_with_deb(self, package, debs_dir, build_type):
         """
         upload the local build debian binaries to repo manager
@@ -488,12 +689,7 @@ class BuildController():
             debs_dir: the directory to debian binaries
         """
         logger.debug(' '.join(['Remove all old version of debs for', package]))
-        if build_type == 'rt':
-            debs_clue = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'),
-                                     'debs_entry_rt.pkl')
-        else:
-            debs_clue = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'),
-                                     'debs_entry.pkl')
+        debs_clue = get_debs_clue(build_type)
         subdebs = debsentry.get_subdebs(debs_clue, package, logger)
         if subdebs:
             for deb in subdebs:
@@ -501,7 +697,7 @@ class BuildController():
                 msg = ''.join(['package ', pkg_item[0], '(', pkg_item[1], ')'])
 
                 logger.info(' '.join(['Searching for binary', msg, 'in repository', REPO_BUILD]))
-                if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0], None, True):
+                if self.kits['repo_mgr'].search_pkg(REPO_BUILD, pkg_item[0]):
                     logger.info('Found binary %s in repository %s', msg, REPO_BUILD)
                     if self.kits['repo_mgr'].delete_pkg(REPO_BUILD, pkg_item[0], 'binary', None, deploy=False):
                         logger.info('Successfully deleted binary %s from repository %s',
@@ -509,8 +705,8 @@ class BuildController():
                     else:
                         logger.info('Failed to delete binary %s from repository %s', msg,
                                     REPO_BUILD)
-            #self.publish_repo(REPO_BUILD)
-
+        ''' Fixme: not sure whether it's ok to skip self.publish_repo(REPO_BUILD) here
+        '''
         sdebs = []
         if not os.path.exists(debs_dir):
             logger.error(' '.join(['Noneexistent directory', debs_dir]))
@@ -532,7 +728,7 @@ class BuildController():
 
         if sdebs:
             debsentry.set_subdebs(debs_clue, package, sdebs, logger)
-            logger.debug("%s_%s is saved into debs_entry", pkg_item[0], pkg_item[1])
+            logger.debug("%s_%s is saved into debsentry", pkg_item[0], pkg_item[1])
 
         return True
 
@@ -548,7 +744,7 @@ class BuildController():
         logger.info(' '.join(['Existing source for', dsc_pkg,
                               'will be deleted from repository', repo_name, 'before new source is uploaded']))
         logger.info("Searching for %s in repository %s", dsc_pkg, repo_name)
-        if self.kits['repo_mgr'].search_pkg(repo_name, dsc_pkg, None, False):
+        if self.kits['repo_mgr'].search_pkg(repo_name, dsc_pkg, binary=False):
             logger.info("Found %s in repository %s, attempting to delete", dsc_pkg, repo_name)
             if not self.kits['repo_mgr'].delete_pkg(repo_name, dsc_pkg, 'source'):
                 logger.error("Failed to delete source %s from repository %s", dsc_pkg, repo_name)
@@ -645,15 +841,46 @@ class BuildController():
         skip_create_dsc = False
         # Check whether there are changes on package's debian folder
         new_checksum = self.kits['dsc_maker'][build_type].checksum(pkg_dir)
+        # If the sharing mode is enabled
+        if self.attrs['reuse']:
+            # 'reuse' should be handled for either no '-c' or '-c -all'
+            if self.attrs['avoid'] or (self.attrs['build_all'] and not self.attrs['avoid']):
+                logger.debug("Compare with the remote shared dsc cache for %s", build_type)
+                remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_dir)
+                logger.debug("The remote shared checksum=%s, the local checksum=%s", shared_checksum, new_checksum)
+                if shared_checksum and shared_checksum == new_checksum:
+                    logger.debug("No updates on debian meta source compared with the remote shared")
+                    # True None: just continue in the external for loop
+                    skip_create_dsc = True
+                    '''
+                    Here the local dsc_cache also need to be set which prevents the subsequent
+                    build without 'reuse' rebuilding the package with same checksum again
+                    '''
+                    self.kits['dsc_cache'][build_type].set_package(pkg_dir, 'reuse:' + shared_checksum)
+                    return skip_create_dsc, None
+                else:
+                    logger.debug("The remote checksum is different to the local checksum, now follow the local way")
+
         self.pkgs_digests[pkg_dir] = new_checksum
         if self.attrs['avoid'] and self.kits['dsc_cache'][build_type]:
             dsc_file, old_checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
             if dsc_file and old_checksum:
                 if old_checksum and old_checksum == new_checksum:
                     logger.info("No update on package meta of %s", pkg_name)
+                    '''
+                    The specifial value 'reuse' of dsc field shows that this package
+                    comes from the shared repo before and there are no changes, it
+                    continues to be used
+                    '''
+                    if dsc_file == 'reuse':
+                        logger.info("%s is reused package which has no meta changes", pkg_name)
+                        skip_create_dsc = True
+                        return skip_create_dsc, None
+
                     if os.path.exists(dsc_file):
                         logger.info("Skip creating dsc for %s again", pkg_name)
                         skip_create_dsc = True
+                        # True not None: just continue in the external for loop
                         return skip_create_dsc, dsc_file
                     else:
                         logger.info("Found %s in dsc_cache, but does not exist, need to create", pkg_name)
@@ -674,15 +901,18 @@ class BuildController():
             dsc_recipes = self.kits['dsc_maker'][build_type].package(pkg_dir, src_mirror_dir)
         except Exception as e:
             logger.error(str(e))
+            # False None: Fatal error, should exit
             return skip_create_dsc, None
         else:
             if not dsc_recipes:
                 logger.error("Failed to create dsc for %s", pkg_name)
+                # False None: Fatal error, should exit
                 return skip_create_dsc, None
             logger.debug("Successfully created dsc for %s", pkg_name)
             pkg_checksum = self.pkgs_digests[pkg_dir]
             dsc_path = os.path.join(pkg_build_dir, dsc_recipes[0])
             self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_path + ':' + pkg_checksum)
+            # False not None: normal case
             return skip_create_dsc, os.path.join(pkg_build_dir, dsc_recipes[0])
 
     def get_stamp(self, pkg_dir, dsc_path, build_type, state):
@@ -781,12 +1011,13 @@ class BuildController():
                 log = dsc.replace('.dsc', '_' + STX_ARCH + '.build')
                 if not os.path.exists(log):
                     continue
-                cmd_status = 'sed -n \'/| Summary /,$P\' %s | grep \'^Status: \'' %(log)
+                cmd_status = 'sed -n \'/| Summary /,$P\' %s | grep \'^Status: \'' % (log)
                 try:
                     status_line = subprocess.check_output(cmd_status, shell=True).decode()
                     if not status_line:
                         continue
-                except Exception as e:
+                except Exception:
+                    # logger.error(str(e))
                     continue
                 else:
                     logger.debug("Captured result of cmd_status is %s from log %s", status_line, log)
@@ -795,7 +1026,7 @@ class BuildController():
                         return dsc, 'success'
                     else:
                         logger.info("Got failed status for %s", dsc)
-                        cmd_stage = 'sed -n \'/| Summary /,$P\' %s | grep \'^Fail-Stage: \'' %(log)
+                        cmd_stage = 'sed -n \'/| Summary /,$P\' %s | grep \'^Fail-Stage: \'' % (log)
                         try:
                             stage_line = subprocess.check_output(cmd_stage, shell=True).decode()
                         except Exception as e:
@@ -877,7 +1108,7 @@ class BuildController():
                         dscs_list.remove(dsc_path)
                     continue
                 # For the depended packages, skip checking the 'avoid' option
-                if not pkg_dir in target_pkgdir_dscs.keys():
+                if pkg_dir not in target_pkgdir_dscs.keys():
                     if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
                         logger.info("Stamp[build_done] found for the depended package %s, skipped", pkg_name)
                         deps_resolver.pkg_accomplish(dsc_path)
@@ -922,7 +1153,7 @@ class BuildController():
                 else:
                     logger.info("Successfully sent request to add build task for %s", pkg_name)
                     # The build task is accepted and the package will be built
-                    if not pkg_dir in build_counter.keys():
+                    if pkg_dir not in build_counter.keys():
                         build_counter[pkg_dir] = 1
                     else:
                         build_counter[pkg_dir] += 1
@@ -1053,7 +1284,7 @@ class BuildController():
                         self.lists['fail_' + build_type].append(pkgdir)
                     else:
                         self.lists['fail_std'].append(pkgdir)
-    
+
     def build_layer_and_build_type(self, layer=None, build_type=None, packages=None):
         pkgs_exist = {}
 
@@ -1075,9 +1306,8 @@ class BuildController():
             layer_pkg_dirs = pkg_dirs
 
         if not pkg_dirs:
-            logger.debug(' '.join(['Found no buildable packages matching selection criteria in',
-                              'build_type', build_type,
-                              'of layer', layer]))
+            logger.debug(' '.join(['Found no buildable packages matching selection criteria in build_type',
+                                   build_type, 'of layer %s', layer]))
             return
 
         logger.info(' '.join(['Start to build', word, 'packages in',
@@ -1092,7 +1322,6 @@ class BuildController():
         logger.info(' '.join(['Finished building packages in',
                               'build_type', build_type,
                               'of layer', layer]))
-
 
     def build_layer_and_build_types(self, layer=None, build_types=STX_DEFAULT_BUILD_TYPE_LIST, packages=None):
         if not layer:
@@ -1141,7 +1370,6 @@ class BuildController():
         logger.info(' '.join(['Finished building packages in layer',
                               layer]))
         return
-
 
     def build_layers(self, layers=None, build_types=None, packages=None):
         if not layers:
@@ -1197,15 +1425,18 @@ class BuildController():
                 fdsc_file.write(dsc_file + '\n')
                 if self.attrs['upload_source'] and not skip_dsc and self.kits['repo_mgr']:
                     self.upload_with_dsc(pkg_name, dsc_file, REPO_SOURCE)
-            elif dsc_file is None:
-                # Exit if fails to create dsc file
-                if fdsc_file:
-                    fdsc_file.close()
-                logger.error("Failed to create needed dsc file, exit")
-                return
             else:
-                # Empty set indicates the package is unchanged
-                continue
+                if skip_dsc:
+                    logger.debug("Reuse the remote debs, skip this dsc")
+                    self.lists['reuse_' + build_type].append(pkg_dir)
+                    self.lists['reuse_pkgname_' + build_type].append(pkg_name)
+                    continue
+                else:
+                    # Exit if fails to create dsc file
+                    if fdsc_file:
+                        fdsc_file.close()
+                    logger.error("Failed to create needed dsc file, exit")
+                    return
 
         if fdsc_file:
             fdsc_file.close()
@@ -1215,6 +1446,45 @@ class BuildController():
         for pkg in pkg_dirs:
             if pkg in layer_pkgdir_dscs.keys():
                 target_pkgdir_dscs[pkg] = layer_pkgdir_dscs[pkg]
+
+        if len(self.lists['reuse_pkgname_' + build_type]) > 0:
+            logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
+            stx_meta_dir = os.path.join(STX_META_NAME, STX_META_NAME + '-1.0')
+            remote_debsentry = os.path.join(BUILD_ROOT, stx_meta_dir, build_type + '_debsentry.pkl')
+            for pkgname in self.lists['reuse_pkgname_' + build_type]:
+                logger.debug("First try to remove all sub deb packages from %s for %s", REPO_BUILD, pkgname)
+                self.remove_pkg_debs(pkgname, build_type)
+                logger.debug("Then try to copy all sub deb packages of %s from mirror to %s", pkgname, REPO_BUILD)
+
+                logger.debug("Get the sub debs of %s with remote %s", pkgname, remote_debsentry)
+                debs_list = debsentry.get_subdebs(remote_debsentry, pkgname, logger)
+                if not debs_list:
+                    logger.warning("Failed to get sub debs from the remote cache")
+                    continue
+
+                debs_reused = None
+                for deb in debs_list:
+                    if not debs_reused:
+                        debs_reused = deb.split('_')[0]
+                    else:
+                        debs_reused = debs_reused + ',' + (deb.split('_')[0])
+
+                if debs_reused:
+                    logger.info("All sub debs of %s will be imported:%s", pkgname, debs_reused)
+                    try:
+                        logger.debug("Calls copy_pkgs: mirror=%s local_repo=%s type=binary deploy=True overwrite=True",
+                                     REUSE_MIRROR, REPO_BUILD)
+                        ret = self.kits['repo_mgr'].copy_pkgs(REUSE_MIRROR, REPO_BUILD, debs_reused,
+                                                              pkg_type='binary',
+                                                              deploy=True, overwrite=True)
+                    except Exception as e:
+                        logger.error(str(e))
+                        logger.error("Exception occurrs when call repomgr.copy_pkgs");
+                    else:
+                        if ret:
+                            logger.debug("Successfully call repomgr.copy_pkgs to import reused debs")
+                        else:
+                            logger.warning("Failed to imported all reused debs with repomgr.copy_pkgs")
 
         if target_pkgdir_dscs:
             self.run_build_loop(layer_pkgdir_dscs, target_pkgdir_dscs, layer, build_type=build_type)
@@ -1230,6 +1500,18 @@ class BuildController():
         ret_val = 0
         for build_type in self.build_types:
             logger.info("Total %s packages needing to be built: %d", build_type, len(self.lists['build-needed_' + build_type]))
+            logger.info("-------------------------------------------")
+            logger.info("Total %s packages reused from remote: %d", build_type, len(self.lists['reuse_' + build_type]))
+            reuse_list = list(set(self.lists['reuse_' + build_type]))
+            reuse_number = len(reuse_list)
+            if reuse_number > 0:
+                logger.info("Successfully reused: %d", reuse_number)
+                for pkg_dir in sorted(reuse_list):
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
+                    logger.info(pkg_name)
+
+            self.lists['build-needed_' + build_type] = list(set(self.lists['build-needed_' + build_type]) - set(self.lists['reuse_' + build_type]))
+            logger.info("Total %s packages needing to be built locally: %d", build_type, len(self.lists['build-needed_' + build_type]))
             success_list = list(set(self.lists['success_' + build_type]))
             success_number = len(success_list)
             if success_number > 0:
@@ -1299,6 +1581,7 @@ if __name__ == "__main__":
                         action='store_true')
     parser.add_argument('-t', '--test', help="Run package tests during build",
                         action='store_true')
+    parser.add_argument('--reuse', help="Reuse the debs from STX_SHARED_REPO", action='store_true')
     parser.add_argument('--refresh_chroots', help="Force to fresh chroots before build", action='store_true')
     parser.add_argument('--parallel', help="The number of parallel build tasks", type=int, default=DEFAULT_PARALLEL_TASKS)
     parser.add_argument('--poll_interval', help="The interval to poll the build status", type=int, default=DEFAULT_POLL_INTERVAL)
@@ -1309,7 +1592,7 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
                         default='std,rt', required=False)
-    parser.add_argument('-l', '--layers', type=str, 
+    parser.add_argument('-l', '--layers', type=str,
                         help="comma separated list of all layers to build\n   %s" % ALL_LAYERS,
                         default=None, required=False)
     # set mutually options pair for package build and layer build
@@ -1318,7 +1601,13 @@ if __name__ == "__main__":
                              action='store_true')
     build_group.add_argument('-p', '--packages', help="Packages with comma",
                              type=str)
+
     args = parser.parse_args()
+
+    if args.reuse:
+        if args.clean and not args.all:
+            logger.error("Reuse mode can not be used for the clean build of specific packages.");
+            sys.exit(1)
 
     if args.distro:
         if args.distro not in ALL_DISTROS:
@@ -1345,17 +1634,12 @@ if __name__ == "__main__":
                 logger.error("Please consult: build-pkgs --help")
                 sys.exit(1)
 
-    if args.packages:
-        packages = args.packages.strip().split(',')
-    else:
-        if args.all:
-            packages = None
-
     build_controller = BuildController(distro=distro)
     if args.clean:
         build_controller.build_avoid = False
         if args.all:
             build_controller.clean(build_types=build_types)
+
     if args.exit_on_fail:
         build_controller.attrs['exit_on_fail'] = True
     if args.test:
@@ -1369,6 +1653,15 @@ if __name__ == "__main__":
         build_controller.attrs['poll_interval'] = args.poll_interval
     if args.max_make_jobs:
         build_controller.attrs['max_make_jobs'] = args.max_make_jobs
+
+    if args.reuse:
+        build_controller.attrs['reuse'] = True
+    if args.packages:
+        packages = args.packages.strip().split(',')
+    else:
+        if args.all:
+            build_controller.attrs['build_all'] = True
+        packages = None
 
     if not build_controller.start(build_types=build_types):
         logger.critical("Fail to initialize build controller, exit ......")
@@ -1392,7 +1685,11 @@ if __name__ == "__main__":
             logger.info("Successfully refreshed all the idle chroots")
 
     build_controller.build_all(layers=layers, build_types=build_types, packages=packages)
+
+    build_controller.set_reuse(os.path.join(BUILD_ROOT, 'caches'))
+
     ret_value = build_controller.stop()
 
     logger.info("build-pkgs done")
+
     sys.exit(ret_value)
