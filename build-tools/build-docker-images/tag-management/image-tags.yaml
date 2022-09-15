@@ -110,3 +110,15 @@ images:
     src_build_tag: master-distroless-stable-20220616T173558Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/0783ec950b424c980658765515a649c846dc5121
     tag: stx.7.0-v1.0.0
+  - name: docker.io/starlingx/sriov-fec-operator
+    src_build_tag: master-centos-stable-20220915T032802Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/47dd349f617c715c6abf494084a502a50212d43c
+    tag: stx.8.0-v2.1.1
+  - name: docker.io/starlingx/sriov-fec-labeler
+    src_build_tag: master-centos-stable-20220915T032802Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/47dd349f617c715c6abf494084a502a50212d43c
+    tag: stx.8.0-v2.1.1
+  - name: docker.io/starlingx/sriov-fec-daemon
+    src_build_tag: master-centos-stable-20220915T032802Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/47dd349f617c715c6abf494084a502a50212d43c
+    tag: stx.8.0-v2.1.1
