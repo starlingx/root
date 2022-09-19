@@ -41,6 +41,7 @@ DEFAULT_TIMEOUT_COUNT = 10
 #     upload_pkg_local: Upload a deb package into a local repository
 #     delete_pkg_local: Remove a deb package from a local repository
 #     pkg_exist: Search a package in a set of repos
+#     copy_pkgs: Copy packages from one repo to another
 #     deploy_local: Deploy a local repository
 #     list_local: List all local repositories
 #     remove_local: Delete a local repository
@@ -633,6 +634,91 @@ class Deb_aptly():
                             self.logger.debug('pkg_exist find package %s in %s.', pkg_name, repo_name)
                             return True
         return False
+
+    # Copy a set of packages from one repository into another
+    # source: the repository name that packages been copied from
+    # dest: the repository name that packages been copied to
+    # pkg_list: list of package name to be copied
+    # pkg_type: binary or source. Default is binary
+    # overwrite: True or False. Overwrite existing packages or not
+    def copy_pkgs(self, source, dest, pkg_list, pkg_type='binary', overwrite=True):
+        '''Copy package from one repository to another local repository'''
+        dest_exist = False
+        source_exist = False
+        # package key list of destination and source repository
+        dest_pkg_keys = list()
+        src_pkg_keys = list()
+        if source == dest:
+            self.logger.error('%s and %s are the same repository.' % (source, dest))
+            return False
+        for repo in self.aptly.repos.list():
+            if dest == repo.name:
+                dest_exist = True
+                pkgs = self.aptly.repos.search_packages(dest, query='Name')
+                dest_pkg_keys = [pkg.key for pkg in pkgs]
+            if source == repo.name:
+                source_exist = True
+                pkgs = self.aptly.repos.search_packages(source, query='Name')
+                src_pkg_keys = [pkg.key for pkg in pkgs]
+        if not dest_exist:
+            self.logger.warning('Destination repository %s does not exist.', dest)
+            return False
+        if not source_exist:
+            for repo in self.aptly.mirrors.list():
+                if source == repo.name:
+                    source_exist = True
+                    src_pkg_keys = self.aptly.mirrors.packages(source)
+                    break
+        if not source_exist:
+            self.logger.warning('Source repository %s dose not exist.', source)
+            return False
+        del_keys = list()
+        add_keys = list()
+        for key in src_pkg_keys:
+            package_name = key.split()[1]
+            package_type = key.split()[0]
+            if package_name not in pkg_list:
+                continue
+            if (pkg_type == 'source' and package_type != 'Psource') or (pkg_type == 'binary' and package_type == 'Psource'):
+                continue
+            # Find a package in source repository to be copied.
+            pkg_list.remove(package_name)
+            # Already exists in destination repository
+            if key in dest_pkg_keys:
+                continue
+            pkg_in_dest = False
+            for dest_key in dest_pkg_keys:
+                # [0] package type/arch: Psource, Pamd64, Pall. [1] package name
+                if package_type == dest_key.split()[0] and package_name == dest_key.split()[1]:
+                    pkg_in_dest = True
+                    if overwrite:
+                        del_keys.append(dest_key)
+                        add_keys.append(key)
+                    break
+            if not pkg_in_dest:
+                add_keys.append(key)
+            if not pkg_list:
+                break
+
+        # check to see if any packages not find in source repository
+        if pkg_list:
+            self.logger.warning('Copy package error, %s package %s not exist in %s' % (pkg_type, ' '.join(pkg_list), source))
+            return False
+        # Remove duplicate packages from destination repository
+        if del_keys:
+            task = self.aptly.repos.delete_packages_by_key(dest, *del_keys)
+            self.aptly.tasks.wait_for_task_by_id(task.id)
+            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                self.logger.warning('Delete packages failed: %s\n%s' % (self.aptly.tasks.show(task.id).state, '\n'.join(del_keys)))
+                return False
+        # Insert packages into destination repository
+        if add_keys:
+            task = self.aptly.repos.add_packages_by_key(dest, *add_keys)
+            self.aptly.tasks.wait_for_task_by_id(task.id)
+            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+                self.logger.warning('Copy packages failed: %s\n%s' % (self.aptly.tasks.show(task.id).state, '\n'.join(add_keys)))
+                return False
+        return True
 
     # Merge several repositories into a new one(just snapshot and publish)
     # name: the name of the new build snapshot/publish
