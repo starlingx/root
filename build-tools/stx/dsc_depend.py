@@ -47,7 +47,7 @@ def get_aptcache(rootdir):
     `apt update` for specified Debian repositories.
     '''
     if USE_HOST_RESOURCE:
-        apt_cache = apt.Cache()
+        apt_cache = apt.Cache(rootdir='/')
         return apt_cache
     try:
         if os.path.exists(rootdir):
