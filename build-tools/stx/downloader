@@ -21,6 +21,7 @@ import discovery
 import fnmatch
 import logging
 import os
+import pathlib
 import repo_manage
 import shutil
 import signal
@@ -297,14 +298,16 @@ class DebDownloader(BaseDownloader):
                 pkg_ver = pkg_name_array[1].split(":")[-1]
                 if len(pkg_name_array) == 3:
                     url = pkg_name_array[2]
+                    # Get arch from filename
+                    arch = pathlib.Path(url).stem.split("_")[-1]
                 else:
                     url = None
-                try:
-                    package = self.apt_cache[pkg_name]
-                except Exception as e:
-                    logger.error(str(e))
-                    sys.exit(1)
-                arch = package.candidate.architecture
+                    try:
+                        package = self.apt_cache[pkg_name]
+                    except Exception as e:
+                        logger.error(str(e))
+                        sys.exit(1)
+                    arch = package.candidate.architecture
                 pname_arch = '_'.join([pkg_name, pkg_ver, arch]) + '.deb'
                 pname_epoch_arch = '_'.join([pkg_name, pkg_name_array[1], arch]) + '.deb'
                 self.dl_need.append(pkg_name + '_' + pkg_ver)
