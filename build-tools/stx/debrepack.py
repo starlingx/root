@@ -568,7 +568,7 @@ class Parser():
 
         srcname = os.path.basename(self.pkginfo["srcdir"])
         origtargz = self.pkginfo["debname"] + '_' + self.versions["upstream_version"] + '.orig.tar.gz'
-        run_shell_cmd('cd %s; tar czvf %s %s' % (self.pkginfo["packdir"], origtargz, srcname), self.logger)
+        run_shell_cmd('cd %s; tar czf %s %s' % (self.pkginfo["packdir"], origtargz, srcname), self.logger)
 
     def create_src_package(self):
 
