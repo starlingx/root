@@ -423,6 +423,34 @@ def user_register_signals():
     signal.signal(signal.SIGPIPE, user_signal_handler)
 
 
+def sign_iso_dev(img_yaml):
+    '''
+    Sign the .iso file with the developer key
+    img_yaml: lat.yaml path
+    '''
+    logger.info("Trying to sign iso image with developer key")
+    key_path = os.path.join(os.environ.get('MY_REPO'), 'build-tools/signing/dev-private-key.pem')
+    deploy_dir = '/localdisk/deploy'
+    try:
+        with open(img_yaml) as f:
+            yaml_doc = yaml.safe_load(f)
+    except IOError as e:
+        logger.error(str(e))
+
+    if yaml_doc['name'] and yaml_doc['machine']:
+        iso_name = yaml_doc['name'] + '-' + yaml_doc['machine'] + '-cd'
+    else:
+        # default image name
+        iso_name = 'starlingx-intel-x86-64-cd'
+    # openssl dgst -sha256 -sign ${KEY_PATH} -binary -out ${DEPLOY_DIR}/${ISO_NOEXT}.sig $DEPLOY_DIR/starlingx-intel-x86-64-cd.iso
+    sign_cmd = f'openssl dgst -sha256 -sign {key_path} -binary -out {deploy_dir}/{iso_name}.sig {deploy_dir}/{iso_name}.iso'
+    ret = subprocess.call(sign_cmd, shell=True)
+    if ret == 0:
+        logger.info("Image signed %s", os.path.join(deploy_dir, iso_name + '.iso'))
+    else:
+        raise Exception("Error while signing the image")
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="build-image helper")
@@ -551,4 +579,8 @@ if __name__ == "__main__":
                     break
     # stop latd
     stop_latd()
+    # Sign iso with developer key
+    if ret == 0:
+        sign_iso_dev(lat_yaml)
+
     sys.exit(ret)
