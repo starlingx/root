@@ -590,13 +590,17 @@ class Deb_aptly():
             if repo_name.startswith(PREFIX_LOCAL):
                 query = 'Name'
                 pkgs_raw = self.aptly.repos.search_packages(repo_name, query=query)
+                pkgs_key = [pkg.key for pkg in pkgs_raw]
             elif repo_name.startswith(PREFIX_REMOTE):
-                pkgs_raw = self.aptly.mirrors.packages(repo_name)
-            for pkg in pkgs_raw:
-                pkg_name = pkg.key.split()[1]
-                pkg_ver = pkg.key.split()[2]
-                pkg_arch = pkg.key.split()[0][1:]
-                pkg_list.append("%s_%s_%s.deb" % (pkg_name, pkg_ver, pkg_arch))
+                pkgs_key = self.aptly.mirrors.packages(repo_name)
+            for key in pkgs_key:
+                pkg_name = key.split()[1]
+                pkg_ver = key.split()[2]
+                pkg_arch = key.split()[0][1:]
+                if pkg_arch == 'source':
+                    pkg_list.append("%s_%s.dsc" % (pkg_name, pkg_ver))
+                else:
+                    pkg_list.append("%s_%s_%s.deb" % (pkg_name, pkg_ver, pkg_arch))
         return pkg_list
 
 
