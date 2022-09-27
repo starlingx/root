@@ -129,34 +129,38 @@ def limited_walk(dir, max_depth=1):
 def run_shell_cmd(cmd, logger):
     if type(cmd) is str:
         shell = True
-        cmd_str = cmd
     elif type(cmd) in (tuple, list):
         shell = False
-        cmd_str = " ".join(cmd)
     else:
         raise Exception("Unrecognized 'cmd' type '%s'. Must be one of [str, list, tuple]." % (type(cmd)))
 
-    logger.info(f'[ Run - "{cmd_str}" ]')
+    logger.info(f'[ Run - "{cmd}" ]')
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    universal_newlines=True, shell=shell)
-        # process.wait()
-        outs, errs = process.communicate()
-    except Exception:
-        process.kill()
-        outs, errs = process.communicate()
-        logger.error(f'[ Failed - "{cmd}" ]')
-        raise Exception(f'[ Failed - "{cmd}" ]')
+    except Exception as e:
+        msg = f'[ Failed to execute command: "{cmd}" Exception: "{e}" ]'
+        logger.error(msg)
+        # Suppress the original exception when raising our own exception.
+        # Syntax is acquired from: https://peps.python.org/pep-0409/#proposal
+        raise Exception(msg) from None
+
+    outs, errs = process.communicate()
 
     for log in outs.strip().split("\n"):
-        if log != "":
-            logger.debug(log.strip())
+        log = log.strip()
+        if log:
+            logger.debug("stdout: %s", log)
+
+    for log in errs.strip().split("\n"):
+        log = log.strip()
+        if log:
+            logger.debug("stderr: %s", log)
 
     if process.returncode != 0:
-        for log in errs.strip().split("\n"):
-            logger.error(log)
-        logger.error(f'[ Failed - "{cmd}" ]')
-        raise Exception(f'[ Failed - "{cmd}" ]')
+        msg = f'[ Command failed with a non-zero return code: "{cmd}" return code: {process.returncode} ]'
+        logger.error(msg)
+        raise Exception(msg)
 
     return outs.strip()
 
