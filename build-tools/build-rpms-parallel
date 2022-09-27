@@ -1150,7 +1150,7 @@ mock_clean_cache_cfg () {
       cat $TMP
    fi
 
-   \rm -f $TPM
+   \rm -f $TMP
    return $RC
 }
 
