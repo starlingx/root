@@ -409,7 +409,12 @@ class RepoMgr():
                                     components=[component],
                                     architectures=[architectures])
         repo_str = self.repo.deploy_remote(repo_name)
-        self.logger.info('New mirror can be accessed through: %s' % repo_str)
+        if repo_str != None:
+            self.logger.info('New mirror can be accessed through: %s' % repo_str)
+            return True
+        else:
+            self.logger.error('Create mirror failed %s : %s' % (repo_name, url))
+            return false
 
     # List all repositories
     # Output: None
@@ -422,6 +427,29 @@ class RepoMgr():
     def clean(self):
         '''Clear all meta files. Construct a clean environment'''
         self.repo.clean_all()
+
+    # Copy specified packages from one repository to another
+    def copy_pkgs(self, source, dest, pkg_names, pkg_type='binary', deploy=True, overwrite=True):
+        '''Copy specified packages from source repository to destination repository.'''
+        if pkg_type != 'binary' and pkg_type != 'source':
+            self.logger.error('The package type must be binary or source')
+            return False
+        if source == dest:
+            self.logger.error('%s and %s are the same repository.' % (source, dest))
+            return False
+        if pkg_type != 'binary' and pkg_type != 'source':
+            self.logger.error('The package type must be binary or source')
+            return False
+        pkg_list = list()
+        for pkg in pkg_names.split(','):
+            pkg_list.append(pkg.strip())
+        ret = self.repo.copy_pkgs(source, dest, pkg_list, pkg_type)
+        if not ret:
+            self.logger.error('Copy %s packages from %s to %s failed' % (pkg_type, source, dest))
+            return False
+        elif deploy:
+            self.repo.deploy_local(dest)
+            return True
 
     # list a repository
     # repo_name: the name of the repo been listed.
@@ -687,6 +715,11 @@ def _handleMerge(args):
     repomgr.merge(args.name, args.repo_list)
 
 
+def _handleCopyPkg(args):
+    repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
+    repomgr.copy_pkgs(args.source, args.destination, args.package_name, deploy=True, pkg_type=args.package_type)
+
+
 def _handleUploadPkg(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     repomgr.upload_pkg(args.repository, args.package)
@@ -794,6 +827,14 @@ def subcmd_merge(subparsers):
     merge_parser.add_argument('--repo_list', '-l', help='a set of repos, seperate by comma', required=True)
     merge_parser.set_defaults(handle=_handleMerge)
 
+def subcmd_copy_pkg(subparsers):
+    copy_pkg_parser = subparsers.add_parser('copy_pkg',
+                                         help='Copy specified packages from source repository into destination one.\n\n')
+    copy_pkg_parser.add_argument('--source', '-s', help='Name of the source repository', required=True)
+    copy_pkg_parser.add_argument('--destination', '-d', help='Name of the destination repository, must be a local repo', required=True)
+    copy_pkg_parser.add_argument('--package_name', '-p', help='Name of the package(s) to be copied, separate by comma', required=True)
+    copy_pkg_parser.add_argument('--package_type', '-t', help='Package type, "binary" or "source"', required=False, default='binary')
+    copy_pkg_parser.set_defaults(handle=_handleCopyPkg)
 
 def main():
     # command line arguments
@@ -809,6 +850,7 @@ def main():
     subcmd_sync(subparsers)
     subcmd_mirror(subparsers)
     subcmd_merge(subparsers)
+    subcmd_copy_pkg(subparsers)
 
     clean_parser = subparsers.add_parser('clean', help='Clear all aptly repos.\n\n')
     clean_parser.set_defaults(handle=_handleClean)
