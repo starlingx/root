@@ -16,6 +16,7 @@
 
 import os
 import pickle
+import re
 
 
 class DscCache():
@@ -28,11 +29,39 @@ class DscCache():
             self.logger.warn("dscCache:%s does not exist" % self.cache_file)
             return None, None
 
-        with open(self.cache_file, 'rb') as fcache:
-            dsc_cache = pickle.load(fcache)
+        try:
+            with open(self.cache_file, 'rb') as fcache:
+                dsc_cache = pickle.load(fcache)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("DscCache failed to open the cache file")
+        else:
             if package in dsc_cache.keys():
                 dsc_file = dsc_cache[package].split(':')[0]
                 checksum = dsc_cache[package].split(':')[1]
+                return dsc_file, checksum
+        return None, None
+
+    def get_package_re(self, package):
+        if not os.path.exists(self.cache_file):
+            self.logger.warn("dscCache:%s does not exist" % self.cache_file)
+            return None, None
+
+        try:
+            with open(self.cache_file, 'rb') as fcache:
+                dsc_cache = pickle.load(fcache)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("DscCache failed to open the cache file")
+        else:
+            for pkg in dsc_cache.keys():
+                ret = re.search(package, pkg)
+                if not ret:
+                    continue
+                match_item = dsc_cache[pkg]
+                self.logger.debug("dscCache: Matched item %s" % match_item)
+                dsc_file = match_item.split(':')[0]
+                checksum = match_item.split(':')[1]
                 return dsc_file, checksum
         return None, None
 
