@@ -29,7 +29,7 @@ images:
   - name: docker.io/starlingx/stx-oidc-client
     src_build_tag: master-debian-stable-20221005T131433Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/07414fd91ccfc2d10aeeb7e2fcd4aba65a8a5d04
-    tag: stx.8.0.v1.0.5
+    tag: stx.8.0-v1.0.5
   - name: docker.io/starlingx/dex
     src_build_tag: master-centos-stable-20200204T162546Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/5d6701bdf214e77f460f2e3dd2b6f7d3186830c8
