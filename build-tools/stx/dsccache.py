@@ -16,7 +16,6 @@
 
 import os
 import pickle
-import re
 
 
 class DscCache():
@@ -55,8 +54,7 @@ class DscCache():
             logger.error("DscCache failed to open the cache file")
         else:
             for pkg in dsc_cache.keys():
-                ret = re.search(package, pkg)
-                if not ret:
+                if not pkg.endswith(package, len(package)):
                     continue
                 match_item = dsc_cache[pkg]
                 self.logger.debug("dscCache: Matched item %s" % match_item)

@@ -846,8 +846,10 @@ class BuildController():
             # 'reuse' should be handled for either no '-c' or '-c -all'
             if self.attrs['avoid'] or (self.attrs['build_all'] and not self.attrs['avoid']):
                 logger.debug("Compare with the remote shared dsc cache for %s", build_type)
-                remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_dir)
-                logger.debug("The remote shared checksum=%s, the local checksum=%s", shared_checksum, new_checksum)
+                # Only match the subdir under STX REPO
+                pkg_stx_path = pkg_dir.replace(os.environ.get('MY_REPO'), '')
+                remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_stx_path)
+                logger.debug("Checking package=%s, shared_checksum=%s, local_checksum=%s", pkg_stx_path, shared_checksum, new_checksum)
                 if shared_checksum and shared_checksum == new_checksum:
                     logger.debug("No updates on debian meta source compared with the remote shared")
                     # True None: just continue in the external for loop
