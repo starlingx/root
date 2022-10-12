@@ -875,7 +875,7 @@ class BuildController():
                     continues to be used
                     '''
                     if dsc_file == 'reuse':
-                        logger.info("%s is reused package which has no meta changes", pkg_name)
+                        logger.info("%s is a reused package which has no meta changes", pkg_name)
                         skip_create_dsc = True
                         return skip_create_dsc, None
 
@@ -1429,7 +1429,10 @@ class BuildController():
                     self.upload_with_dsc(pkg_name, dsc_file, REPO_SOURCE)
             else:
                 if skip_dsc:
-                    logger.debug("Reuse the remote debs, skip this dsc")
+                    if self.attrs['reuse']:
+                        logger.info("%s will reuse the remote debs, skip to build", pkg_name)
+                    else:
+                        logger.info("%s has reused the shared debs, skip to build", pkg_name)
                     self.lists['reuse_' + build_type].append(pkg_dir)
                     self.lists['reuse_pkgname_' + build_type].append(pkg_name)
                     continue
@@ -1449,7 +1452,7 @@ class BuildController():
             if pkg in layer_pkgdir_dscs.keys():
                 target_pkgdir_dscs[pkg] = layer_pkgdir_dscs[pkg]
 
-        if len(self.lists['reuse_pkgname_' + build_type]) > 0:
+        if self.attrs['reuse'] and len(self.lists['reuse_pkgname_' + build_type]) > 0:
             logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
             stx_meta_dir = os.path.join(STX_META_NAME, STX_META_NAME + '-1.0')
             remote_debsentry = os.path.join(BUILD_ROOT, stx_meta_dir, build_type + '_debsentry.pkl')
@@ -1474,8 +1477,8 @@ class BuildController():
                 if debs_reused:
                     logger.info("All sub debs of %s will be imported:%s", pkgname, debs_reused)
                     try:
-                        logger.debug("Calls copy_pkgs: mirror=%s local_repo=%s type=binary deploy=True overwrite=True",
-                                     REUSE_MIRROR, REPO_BUILD)
+                        logger.info("Calls copy_pkgs: mirror=%s local_repo=%s type=binary deploy=True overwrite=True",
+                                    REUSE_MIRROR, REPO_BUILD)
                         ret = self.kits['repo_mgr'].copy_pkgs(REUSE_MIRROR, REPO_BUILD, debs_reused,
                                                               pkg_type='binary',
                                                               deploy=True, overwrite=True)
@@ -1491,7 +1494,7 @@ class BuildController():
         if target_pkgdir_dscs:
             self.run_build_loop(layer_pkgdir_dscs, target_pkgdir_dscs, layer, build_type=build_type)
         else:
-            logger.info("No debian dsc files found")
+            logger.debug("There are no debian dsc files feeded to build_packages")
 
     def show_build_stats(self):
         """
