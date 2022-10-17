@@ -7,8 +7,10 @@
 *~
 installer-prebuilt
 /ansible-playbooks
+/app-kubevirt/
 /app-istio
 /app-sriov-fec-operator
+/app-sts-silicom/
 /audit-armada-app
 /cert-manager-armada-app
 /clients
