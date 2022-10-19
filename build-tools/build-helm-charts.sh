@@ -217,7 +217,7 @@ function build_image_versions_to_fluxcd_manifests {
         #
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
         find ${manifest_folder} -name "*.yaml" | while read manifest_file; do
-          ${PYTHON2:-python2} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
+          ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
           if [ $? -ne 0 ]; then
               echo "Failed to update manifest file" >&2
               exit 1
