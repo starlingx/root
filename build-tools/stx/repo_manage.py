@@ -28,188 +28,208 @@ import os
 import requests
 from requests.compat import urljoin
 import shutil
+from threading import Lock
 import urllib.request
 import utils
-
 
 REPOMGR_URL = os.environ.get('REPOMGR_URL')
 REPOMGR_ORIGIN = os.environ.get('REPOMGR_ORIGIN')
 REPOMGR_DEPLOY_URL = os.environ.get('REPOMGR_DEPLOY_URL')
 
-APTFETCH_JOBS = 10
-
-
-def get_pkg_ver(pkg_line):
-    '''Get package name and package version from a string.'''
-    # remove comment string/lines
-    if -1 == pkg_line.find('#'):
-        line = pkg_line[:-1]
-    else:
-        line = pkg_line[:pkg_line.find('#')]
-
-    if 2 == len(line.split(' ')):
-        pkg_name = line.split(' ')[0]
-        pkg_ver = line.split(' ')[1]
-    elif 1 == len(line.split(' ')):
-        pkg_name = line.split(' ')[0]
-        pkg_ver = ''
-    else:
-        pkg_name = pkg_ver = ''
-    return pkg_name, pkg_ver
+APTFETCH_JOBS = 20
 
 
 class AptFetch():
     '''
     Fetch Debian packages from a set of repositories.
-    It needs a file contains all trusted upstream repositories, later we
-    will search and get packages from these repos.
-    Python module apt is used to search and download binary packages and
-    apt_pkg for searching source packages. Python module requests is used
-    to download source package files.
     '''
-    def __init__(self, sources_list, workdir, logger):
+    def __init__(self, logger, sources_list='', workdir='/tmp/apt-fetch'):
         self.logger = logger
         self.aptcache = None
+        self.aptlock = Lock()
         self.workdir = workdir
+        self.sources_list = sources_list
         self.__construct_workdir(sources_list)
+        self.__init_apt_cache()
 
     def __construct_workdir(self, sources_list):
         '''construct some directories for repo and temporary files'''
-        #
+        # In case the sources_list is specified:
         #
         # ├── apt-root               # For apt cache
         # │   └── etc
         # │       └── apt
         # │           └── sources.list
         # └── downloads              # Sub directory to store downloaded packages
+        #       ├── binary
+        #       └── source
         #
+        # In case the sources_list is ''
+        # |
+        # └── downloads              # Sub directory to store downloaded packages
+        #       ├── binary
+        #       └── source
         basedir = self.workdir
+        try:
+            if os.path.exists(basedir):
+                shutil.rmtree(basedir)
+            os.makedirs(basedir)
+            if self.sources_list:
+                # check to see if meta file exist
+                if not os.path.exists(sources_list):
+                    raise Exception('Specified sources list file %s does not exist' % sources_list)
+                aptdir = os.path.join(basedir, 'apt-root/etc/apt')
+                os.makedirs(aptdir)
+                shutil.copyfile(sources_list, os.path.join(aptdir, 'sources.list'))
+            os.makedirs(os.path.join(basedir, 'downloads', 'binary'))
+            os.makedirs(os.path.join(basedir, 'downloads', 'source'))
+        except Exception as e:
+            self.logger.error(str(e))
+            self.logger.error('Failed to construct workdir %s' % basedir)
+            raise Exception('Failed to construct workdir %s' % basedir)
 
-        # check to see if meta file exist
-        if not os.path.exists(sources_list):
-            raise Exception('Upstream source list file %s does not exist' % sources_list)
-
-        if os.path.exists(basedir):
-            shutil.rmtree(basedir)
-        os.makedirs(basedir)
-
-        aptdir = basedir + '/apt-root'
-        if not os.path.exists(aptdir + '/etc/apt/'):
-            os.makedirs(aptdir + '/etc/apt/')
-        destdir = basedir + '/downloads/'
-        if not os.path.exists(destdir):
-            os.makedirs(destdir)
-        shutil.copyfile(sources_list, aptdir + '/etc/apt/sources.list')
-
-    def apt_update(self):
+    def __init_apt_cache(self):
         '''Construct APT cache based on specified rootpath. Just like `apt update` on host'''
-        self.aptcache = apt.Cache(rootdir=os.path.join(self.workdir, 'apt-root'))
-        ret = self.aptcache.update()
-        if not ret:
-            raise Exception('APT cache update failed')
-        self.aptcache.open()
+        # In case we use host's apt settings, no need to apt-upgrade.
+        if not self.sources_list:
+            self.aptcache = apt.Cache()
+            return None
+        try:
+            self.aptcache = apt.Cache(rootdir=os.path.join(self.workdir, 'apt-root'))
+            ret = self.aptcache.update()
+            if not ret:
+                raise Exception('APT cache update failed')
+            self.aptcache.open()
+        except Exception as e:
+            self.logger.error(str(e))
+            self.logger.error('apt cache init failed.')
+            raise Exception('apt cache init failed.')
 
     # Download a binary package into downloaded folder
     def fetch_deb(self, pkg_name, pkg_version=''):
         '''Download a binary package'''
         if not pkg_name:
-            raise Exception('Package name empty')
+            raise Exception('Binary package name empty')
 
-        destdir = self.workdir + '/downloads/'
-        pkg = self.aptcache[pkg_name]
+        destdir = os.path.join(self.workdir, 'downloads', 'binary')
+        self.aptlock.acquire()
+        pkg = self.aptcache.get(pkg_name)
         if not pkg:
-            raise Exception('Binary package "%s" not found' % pkg_name)
+            self.aptlock.release()
+            raise Exception('Binary package "%s" was not found' % pkg_name)
         if not pkg_version:
-            uri = pkg.candidate.uri
+            candidate = pkg.candidate
         else:
-            vers = pkg.versions
-            vers_find = False
-            for ver in vers:
-                if ver.version == pkg_version:
-                    uri = ver.uri
-                    vers_find = True
-                    break
-            if not vers_find:
-                raise Exception('Binary package "%s %s" not found.' % (pkg_name, pkg_version))
-        res = requests.get(uri, stream=True)
-        self.logger.debug('Fetch package file %s' % uri)
-        with open(os.path.join(destdir, os.path.basename(uri)), 'wb') as download_file:
-            for chunk in res.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    download_file.write(chunk)
-        self.logger.info('Binary package %s downloaded.' % pkg_name)
+            candidate = pkg.versions.get(pkg_version)
+            if not candidate:
+                self.aptlock.release()
+                raise Exception('Binary package "%s %s" was not found.' % (pkg_name, pkg_version))
+        uri = candidate.uri
+        filename = candidate.filename
+        self.aptlock.release()
+        try:
+            res = requests.get(uri, stream=True)
+            self.logger.debug('Fetching package file %s' % uri)
+            with open(os.path.join(destdir, os.path.basename(filename)), 'wb') as download_file:
+                for chunk in res.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        download_file.write(chunk)
+        except Exception as e:
+            self.logger.error(str(e))
+            self.logger.error('Binary package %s %s download error' % (pkg_name, pkg_version))
+            return ' '.join(['DEB-F', pkg_name, pkg_version]).strip()
+        else:
+            self.logger.debug('Binary package %s %s downloaded.' % (pkg_name, pkg_version))
+            return ' '.join(['DEB', pkg_name, pkg_version]).strip()
 
     # Download a source package into downloaded folder
     def fetch_dsc(self, pkg_name, pkg_version=''):
         '''Download a source package'''
         if not pkg_name:
-            raise Exception('Package name empty')
+            raise Exception('Source package name empty')
 
-        destdir = self.workdir + '/downloads/'
+        destdir = os.path.join(self.workdir, 'downloads', 'source')
+        self.aptlock.acquire()
         src = apt_pkg.SourceRecords()
+        source_find = False
         source_lookup = src.lookup(pkg_name)
         while source_lookup:
-            if pkg_version in ['', src.version]:
+            if pkg_name == src.package and pkg_version in ['', src.version]:
+                source_find = True
                 break
             source_lookup = src.lookup(pkg_name)
-        if not source_lookup:
-            raise ValueError("Source package %s not found" % pkg_name)
-
-        # Here the src.files is a list, each one point to a source file
-        # Download those source files one by one with requests
+        if not source_find:
+            self.aptlock.release()
+            raise ValueError("Source package %s %s was not found" % (pkg_name, pkg_version))
+        dict_files = dict()
         for src_file in src.files:
-            res = requests.get(src.index.archive_uri(src_file.path), stream=True)
-            self.logger.info('Fetch package file %s', src.index.archive_uri(src_file.path))
-            with open(os.path.join(destdir, os.path.basename(src_file.path)), 'wb') as download_file:
-                for chunk in res.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        download_file.write(chunk)
-        self.logger.info('Source package %s downloaded.' % pkg_name)
+            dict_files[src_file.path] = src.index.archive_uri(src_file.path)
+        self.aptlock.release()
 
-    # Download a ubndle of packages into downloaded folder
+        # Here the src.files is a list, each one points to a source file
+        # Download those source files one by one with requests
+        try:
+            for file_path, uri in dict_files.items():
+                res = requests.get(uri, stream=True)
+                self.logger.debug('Fetch package file %s' % uri)
+                with open(os.path.join(destdir, os.path.basename(file_path)), 'wb') as download_file:
+                    for chunk in res.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            download_file.write(chunk)
+        except Exception as e:
+            self.logger.error(str(e))
+            self.logger.error('Source package %s %s download error' % (pkg_name, pkg_version))
+            return ' '.join(['DSC-F', pkg_name, pkg_version]).strip()
+        else:
+            self.logger.debug('Source package %s %s downloaded.' % (pkg_name, pkg_version))
+            return ' '.join(['DSC', pkg_name, pkg_version]).strip()
+
+    # Download a bundle of packages into downloaded folder
     # deb_list: binary package list file
     # dsc_list: source package list file
-    def Fetch_pkg_list(self, deb_list='', dsc_list=''):
+    def fetch_pkg_list(self, deb_set=None, dsc_set=None):
         '''Download a bundle of packages specified through deb_list and dsc_list.'''
-        if not deb_list and not dsc_list:
+        if not deb_set and not dsc_set:
             raise Exception('deb_list and dsc_list, at least one is required.')
 
+        fetch_result = dict()
+        fetch_result['deb'] = list()
+        fetch_result['deb-failed'] = list()
+        fetch_result['dsc'] = list()
+        fetch_result['dsc-failed'] = list()
         with ThreadPoolExecutor(max_workers=APTFETCH_JOBS) as threads:
             obj_list = []
-            # Scan binary package list and download them
-            if deb_list:
-                if os.path.exists(deb_list):
-                    deb_count = 0
-                    pkg_list = open(deb_list, 'r')
-                    for pkg_line in pkg_list:
-                        pkg_name, pkg_version = get_pkg_ver(pkg_line)
-                        if not pkg_name:
-                            continue
-                        deb_count = deb_count + 1
-                        # self.fetch_deb(pkg_name, pkg_version)
-                        obj = threads.submit(self.fetch_deb, pkg_name, pkg_version)
-                        obj_list.append(obj)
-                    self.logger.debug('%d binary packages downloaded.' % deb_count)
+            # Download binary packages
+            for pkg_ver in deb_set:
+                pkg_name = pkg_ver.split()[0]
+                if len(pkg_ver.split()) == 1:
+                    pkg_version = ''
                 else:
-                    raise Exception('deb_list file specified but does not exist')
-
-            # Scan source package list and download them
-            if dsc_list:
-                if os.path.exists(dsc_list):
-                    dsc_count = 0
-                    pkg_list = open(dsc_list, 'r')
-                    for pkg_line in pkg_list:
-                        pkg_name, pkg_version = get_pkg_ver(pkg_line)
-                        if not pkg_name:
-                            continue
-                        dsc_count = dsc_count + 1
-                        obj = threads.submit(self.fetch_dsc, pkg_name, pkg_version)
-                        obj_list.append(obj)
-                    self.logger.debug('%d source packages downloaded.' % dsc_count)
+                    pkg_version = pkg_ver.split()[1]
+                obj = threads.submit(self.fetch_deb, pkg_name, pkg_version)
+                obj_list.append(obj)
+            # Download source packages
+            for pkg_ver in dsc_set:
+                pkg_name = pkg_ver.split()[0]
+                if len(pkg_ver.split()) == 1:
+                    pkg_version = ''
                 else:
-                    raise Exception('dsc_list file specified but does not exist')
+                    pkg_version = pkg_ver.split()[1]
+                obj = threads.submit(self.fetch_dsc, pkg_name, pkg_version)
+                obj_list.append(obj)
+            # Wait...
             for future in as_completed(obj_list):
-                self.logger.debug('download result %s' % future.result())
+                ret = future.result()
+                if ret:
+                    if ret.startswith('DEB'):
+                        fetch_result['deb'].append(ret.lstrip('DEB '))
+                    elif ret.startswith('DEB-F'):
+                        fetch_result['deb-failed'].append(ret.lstrip('DEB-F '))
+                    elif ret.startswith('DSC'):
+                        fetch_result['dsc'].append(ret.lstrip('DSC '))
+                    elif ret.startswith('DSC-F'):
+                        fetch_result['dsc-failed'].append(ret.lstrip('DSC-F '))
+        return fetch_result
 
 
 class RepoMgr():
@@ -229,40 +249,52 @@ class RepoMgr():
         self.logger = logger
         self.workdir = workdir
 
-    def __sync_deb(self, check_list, deb_list, apt_fetch):
-        '''Sync binary packages'''
-        deb_count = 0
-        pkg_list = open(deb_list, 'r')
-        # scan the deb list
-        for pkg_line in pkg_list:
-            pkg_name, pkg_ver = get_pkg_ver(pkg_line)
-            if '' == pkg_name:
+    def __sync_pkg_list(self, check_list, pkg_list_file, pkg_type='binary'):
+        '''Sync packages, return packages need to be downloaded'''
+        if pkg_type not in ['binary', 'source']:
+            self.logger.error('Parameter pkg_tye:%s error. Can only be binary or source' % pkg_type)
+            raise Exception('Parameter pkg_tye:%s error. Can only be binary or source' % pkg_type)
+        pkg_req = set()
+        # scan the package list file
+        pkg_set = self.__scan_pkg_list(pkg_list_file)
+        for pkg_ver in pkg_set:
+            pkg_name = pkg_ver.split()[0]
+            if len(pkg_ver.split()) == 1:
+                pkg_version = ''
+            else:
+                pkg_version = pkg_ver.split()[1]
+            # Search package in check_list
+            if self.repo.pkg_exist(check_list, pkg_name, pkg_type, pkg_version):
                 continue
+            pkg_req.add(pkg_ver)
+        self.logger.info('%d %s packages need to be downloaded.' % (len(pkg_req), pkg_type))
+        return pkg_req
 
-            # Search the package in check_list, if not find, download it
-            if self.repo.pkg_exist(check_list, pkg_name, 'binary', pkg_ver):
-                continue
-            # print(pkg_name, pkg_ver)
-            deb_count = deb_count + 1
-            apt_fetch.fetch_deb(pkg_name, pkg_ver)
-        pkg_list.close()
-        self.logger.info('%d binary packages downloaded.' % deb_count)
-
-    def __sync_dsc(self, check_list, dsc_list, apt_fetch):
-        '''Sync source packages'''
-        dsc_count = 0
-        # scan the dsc list
-        for pkg_line in open(dsc_list, 'r'):
-            pkg_name, pkg_ver = get_pkg_ver(pkg_line)
-            if '' == pkg_name:
-                continue
-            # Search the package in check_list, if not find, download it
-            if self.repo.pkg_exist(check_list, pkg_name, 'source', pkg_ver):
-                continue
-            # print(pkg_name, pkg_ver)
-            dsc_count = dsc_count + 1
-            apt_fetch.fetch_dsc(pkg_name, pkg_ver)
-        self.logger.info('%d source packages downloaded.' % dsc_count)
+    # Scan package list file, return required package_version in a set
+    def __scan_pkg_list(self, pkg_list_file):
+        pkg_set = set()
+        try:
+            with open(pkg_list_file, 'r') as f_list:
+                lines = f_list.readlines()
+        except Exception as e:
+            self.logger.error(str(e))
+            self.logger.error('Package list file %s read error.' % pkg_list_file)
+            raise Exception('Package list file %s read error.' % pkg_list_file)
+        else:
+            for line in lines:
+                pkg_info = line.split('#')[0].split()
+                if not pkg_info:
+                    continue
+                if len(pkg_info) == 1:
+                    pkg_set.add(pkg_info[0])
+                else:
+                    pkg_set.add(pkg_info[0] + ' ' + pkg_info[1])
+        # If xxx_1.2.3 exist, remove xxx.
+        tmp_set = pkg_set.copy()
+        for pkg_ver in tmp_set:
+            if pkg_ver.split()[0] in pkg_set:
+                pkg_set.remove(pkg_ver.split()[0])
+        return pkg_set
 
     # Download a bundle of packages and deployed them through repository
     # repo_name: the repository used to deploy these packages
@@ -273,33 +305,58 @@ class RepoMgr():
     # Output: None
     def download(self, repo_name, no_clear=False, **kwargs):
         '''Download specified packages and deploy them through a specified local repo.'''
-        sources_list = kwargs['sources_list']
         if 'deb_list' not in kwargs.keys():
-            deb_list = ''
+            deb_list_file = ''
         else:
-            deb_list = kwargs['deb_list']
+            deb_list_file = kwargs['deb_list']
         if 'dsc_list' not in kwargs.keys():
-            dsc_list = ''
+            dsc_list_file = ''
         else:
-            dsc_list = kwargs['dsc_list']
-        # print(sources_list)
-        if not deb_list and not dsc_list:
+            dsc_list_file = kwargs['dsc_list']
+        if not deb_list_file and not dsc_list_file:
             raise Exception('deb_list and dsc_list, at least one is required.')
+        # No matter if any packages can be download, create related repository firstly.
         if not self.repo.create_local(repo_name):
-            raise Exception('Local repo created failed, Please double check'
-                            ' if the repo exist already.')
+            raise Exception('Local repo created failed, Please double check if it already exists.')
 
-        # Download packages from remote repo
-        apt_fetch = AptFetch(sources_list, self.workdir, self.logger)
-        apt_fetch.apt_update()
-        apt_fetch.Fetch_pkg_list(deb_list=deb_list, dsc_list=dsc_list)
+        # Scan deb/dsc_list_file, get required packages
+        deb_set = set()
+        dsc_set = set()
+        if deb_list_file:
+            deb_set = self.__scan_pkg_list(deb_list_file)
+            self.logger.info('%d binary packages will be downloaded.' % len(deb_set))
+        if dsc_list_file:
+            dsc_set = self.__scan_pkg_list(dsc_list_file)
+            self.logger.info('%d source packages will be downloaded.' % len(dsc_set))
+        # Download packages
+        apt_fetch = AptFetch(self.logger, kwargs['sources_list'], self.workdir)
+        fetch_result = apt_fetch.fetch_pkg_list(deb_set=deb_set, dsc_set=dsc_set)
+        if fetch_result['deb'] or fetch_result['deb-failed']:
+            self.logger.info('Download %d binary packages' % len(fetch_result['deb']))
+            self.logger.info('%d binary packages download failed' % len(fetch_result['deb-failed']))
+            for pkg_ver in fetch_result['deb']:
+                self.logger.debug('Binary package %s' % pkg_ver)
+            for pkg_ver in fetch_result['deb-failed']:
+                self.logger.info('Failed to download binary package %s' % pkg_ver)
+        if fetch_result['dsc'] or fetch_result['dsc-failed']:
+            self.logger.info('Download %d source packages' % len(fetch_result['dsc']))
+            self.logger.info('%d source packages download failed' % len(fetch_result['dsc-failed']))
+            for pkg_ver in fetch_result['dsc']:
+                self.logger.debug('Source package %s' % pkg_ver)
+            for pkg_ver in fetch_result['dsc-failed']:
+                self.logger.info('Failed to download source package %s' % pkg_ver)
 
         # Add packages into local repo
-        destdir = self.workdir + '/downloads/'
+        pkg_folder = os.path.join(self.workdir, 'downloads', 'binary')
         package_files = set()
-        for filename in os.listdir(destdir):
-            package_files.add(os.path.join(destdir, filename))
-        self.repo.upload_pkg_local(package_files, repo_name)
+        for filename in os.listdir(pkg_folder):
+            package_files.add(os.path.join(pkg_folder, filename))
+        if package_files:
+            self.repo.upload_pkg_local(package_files, repo_name)
+        pkg_folder = os.path.join(self.workdir, 'downloads', 'source')
+        for filename in os.listdir(pkg_folder):
+            if filename.endswith('.dsc'):
+                self.upload_pkg(repo_name, os.path.join(pkg_folder, filename))
 
         # Deploy local repo
         repo_str = self.repo.deploy_local(repo_name)
@@ -326,8 +383,8 @@ class RepoMgr():
     # Output: None
     def sync(self, repo_name, repo_list, no_clear=False, **kwargs):
         '''
-        Sync a set of repositories with spaecified package lists, any package
-        missed, download and deploy through a specified local repo
+        Sync a set of repositories with specified package lists, if any packages
+        missed, download and deploy them through a specified local repo
         '''
         if 'deb_list' not in kwargs.keys():
             deb_list = ''
@@ -340,39 +397,70 @@ class RepoMgr():
 
         if not deb_list and not dsc_list:
             raise Exception('deb_list and dsc_list, at least one is required.')
-        # construct repo list will be checkd
+        # construct repo list will be checked
         local_list = self.repo.list_local(quiet=True)
         remote_list = self.repo.list_remotes(quiet=True)
         # Specified local repo must exist, or failed
         if repo_name not in local_list:
-            raise Exception('Sync failed, local repo does not exist, create it firstly')
+            self.logger.info('Sync, local repo %s does not exist, create it.' % repo_name)
+            if not self.repo.create_local(repo_name):
+                raise Exception('Local repo %s created failed.' % repo_name)
         # Make sure all repos in check_list exist in aptly/pulp database.
         check_list = [repo_name]
         for repo in repo_list.split():
             if repo in local_list or repo in remote_list:
-                check_list.append(repo)
+                if repo not in check_list:
+                    check_list.append(repo)
             else:
-                self.logger.warn('%s in the list but does not exists.' % repo)
+                self.logger.warning('%s in the list but does not exists.' % repo)
 
         # Download missing packages from remote repo
-        apt_fetch = AptFetch(kwargs['sources_list'], self.workdir, self.logger)
-        apt_fetch.apt_update()
-        # if os.path.exists(deb_list):
-        self.__sync_deb(check_list, deb_list, apt_fetch)
-        # if os.path.exists(dsc_list):
-        self.__sync_dsc(check_list, dsc_list, apt_fetch)
-
-        # Add packages into local repo
-        destdir = self.workdir + '/downloads/'
-        pkg_files = set()
-        for filename in os.listdir(destdir):
-            pkg_files.add(os.path.join(destdir, filename))
-        self.repo.upload_pkg_local(pkg_files, repo_name)
+        deb_set = set()
+        dsc_set = set()
+        if deb_list:
+            deb_set = self.__sync_pkg_list(check_list, deb_list, 'binary')
+        if dsc_list:
+            dsc_set = self.__sync_pkg_list(check_list, dsc_list, 'source')
+        # Download packages
+        if deb_set or dsc_set:
+            apt_fetch = AptFetch(self.logger, kwargs['sources_list'], self.workdir)
+            fetch_result = apt_fetch.fetch_pkg_list(deb_set=deb_set, dsc_set=dsc_set)
+            if fetch_result['deb'] or fetch_result['deb-failed']:
+                self.logger.info('Download %d binary packages' % len(fetch_result['deb']))
+                self.logger.info('%d binary packages download failed' % len(fetch_result['deb-failed']))
+                for pkg_ver in fetch_result['deb']:
+                    self.logger.debug('Binary package %s' % pkg_ver)
+                for pkg_ver in fetch_result['deb-failed']:
+                    self.logger.info('Failed to download binary package %s' % pkg_ver)
+            if fetch_result['dsc'] or fetch_result['dsc-failed']:
+                self.logger.info('Download %d source packages' % len(fetch_result['dsc']))
+                self.logger.info('%d source packages download failed' % len(fetch_result['dsc-failed']))
+                for pkg_ver in fetch_result['dsc']:
+                    self.logger.debug('Source package %s' % pkg_ver)
+                for pkg_ver in fetch_result['dsc-failed']:
+                    self.logger.info('Failed to download source package %s' % pkg_ver)
+            # Add packages into local repo
+            pkg_folder = os.path.join(self.workdir, 'downloads', 'binary')
+            package_files = set()
+            for filename in os.listdir(pkg_folder):
+                package_files.add(os.path.join(pkg_folder, filename))
+            self.repo.upload_pkg_local(package_files, repo_name)
+            pkg_folder = os.path.join(self.workdir, 'downloads', 'source')
+            for filename in os.listdir(pkg_folder):
+                if filename.endswith('.dsc'):
+                    self.upload_pkg(repo_name, os.path.join(pkg_folder, filename))
+            self.repo.upload_pkg_local(package_files, repo_name)
 
         # Deploy local repo
         repo_str = self.repo.deploy_local(repo_name)
         if not no_clear:
-            shutil.rmtree(self.workdir)
+            try:
+                if os.path.exists(self.workdir):
+                    shutil.rmtree(self.workdir)
+            except Exception as e:
+                self.logger.error(str(e))
+                self.logger.error('Clear work folder %s failed.' % self.workdir)
+                raise Exception('Clear work folder %s failed.' % self.workdir)
         self.logger.info('local repo can be accessed through: %s ' % repo_str)
 
     # Merge all packages of several repositories into a new publication(aptly)
@@ -496,7 +584,7 @@ class RepoMgr():
                 self.logger.info('Remove a remote mirror')
                 self.repo.remove_remote(repo)
                 return True
-        self.logger.warn("Remove repo failed: repo '%s' not found" % repo_name)
+        self.logger.warning("Remove repo failed: repo '%s' not found" % repo_name)
         return False
 
     # Before uploading a source package into a local repo, scan all repos,
@@ -693,21 +781,21 @@ def _handleDownload(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, REPOMGR_ORIGIN, applogger)
     kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list,
               'dsc_list': args.dsc_list}
-    repomgr.download(args.name, **kwargs, no_clear=args.no_clear)
+    repomgr.download(args.repository, **kwargs, no_clear=args.no_clear)
 
 
 def _handleSync(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, args.basedir, REPOMGR_ORIGIN, applogger)
     kwargs = {'sources_list': args.sources_list, 'deb_list': args.deb_list,
               'dsc_list': args.dsc_list}
-    repomgr.sync(args.name, args.repo_list, **kwargs, no_clear=args.no_clear)
+    repomgr.sync(args.repository, args.repo_list, **kwargs, no_clear=args.no_clear)
 
 
 def _handleMirror(args):
     repomgr = RepoMgr('aptly', REPOMGR_URL, '/tmp', REPOMGR_ORIGIN, applogger)
     kwargs = {'url': args.url, 'distribution': args.distribution, 'component': args.component,
               'architectures': args.architectures, 'with_sources': args.with_sources}
-    repomgr.mirror(args.name, **kwargs)
+    repomgr.mirror(args.repository, **kwargs)
 
 
 def _handleMerge(args):
@@ -764,40 +852,36 @@ def _handleClean(_args):
 def subcmd_download(subparsers):
     download_parser = subparsers.add_parser('download',
                                             help='Download specified packages and deploy them '
-                                                 'through a new repository.\n\n')
-    download_parser.add_argument('--name', '-n', help='Name of the local repo', required=False,
+                                                 'through a new build repository.\n\n')
+    download_parser.add_argument('--repository', '-r', help='Name of the local repository', required=False,
                                  default='deb-local-down')
-    download_parser.add_argument('--deb_list', help='Binary package list file', required=False,
+    download_parser.add_argument('--deb_list', help='Binary package list file', required=False, default='')
+    download_parser.add_argument('--dsc_list', help='Source package list file', required=False, default='')
+    download_parser.add_argument('--basedir', help='Temporary folder to store packages', required=False,
+                                 default='/tmp/repomgr')
+    download_parser.add_argument('--sources_list', help='Upstream sources list file.', required=False,
                                  default='')
-    download_parser.add_argument('--dsc_list', help='Source package list file', required=False,
-                                 default='')
-    download_parser.add_argument('--basedir', help='Temporary folder to store packages',
-                                 required=False, default='/tmp/repomgr')
-    download_parser.add_argument('--sources_list', help='Upstream sources list file',
-                                 default='./sources.list')
-    download_parser.add_argument('--no-clear', help='Not remove temporary files',
-                                 action='store_true')
+    download_parser.add_argument('--no-clear', help='Not remove temporary files', action='store_true')
     download_parser.set_defaults(handle=_handleDownload)
 
 
 def subcmd_sync(subparsers):
     sync_parser = subparsers.add_parser('sync',
                                         help='Sync a set of repositories with specified package'
-                                             'lists..\n\n')
-    sync_parser.add_argument('--name', '-n', help='Name of the local repo', required=False,
+                                             'lists.\n\n')
+    sync_parser.add_argument('--repository', '-r', help='Name of the local repository', required=False,
                              default='deb-local-sync')
     sync_parser.add_argument('--repo_list', '-l', help='a set of local repos', required=False,
-                             default=[])
+                             default='')
     sync_parser.add_argument('--deb_list', help='Binary package list file', required=False,
                              default='')
     sync_parser.add_argument('--dsc_list', help='Source package list file', required=False,
                              default='')
-    sync_parser.add_argument('--basedir', help='Temporary folder to store packages',
-                             required=False, default='/tmp/repomgr')
-    sync_parser.add_argument('--sources_list', help='Upstream sources list file',
-                             default='./sources.list')
-    sync_parser.add_argument('--no-clear', help='Not remove temporary files',
-                             action='store_true')
+    sync_parser.add_argument('--basedir', help='Temporary folder to store packages', required=False,
+                             default='/tmp/repomgr')
+    sync_parser.add_argument('--sources_list', help='Upstream sources list file', required=False,
+                             default='')
+    sync_parser.add_argument('--no-clear', help='Not remove temporary files', action='store_true')
     sync_parser.set_defaults(handle=_handleSync)
 
 
@@ -805,7 +889,7 @@ def subcmd_mirror(subparsers):
     mirror_parser = subparsers.add_parser('mirror',
                                           help='Construct a mirror based on a remote'
                                                'repository.\n\n')
-    mirror_parser.add_argument('--name', '-n', help='Name of the mirror', required=False,
+    mirror_parser.add_argument('--repository', '-r', help='Name of the remote repository', required=False,
                                default='deb-remote-tmp')
     mirror_parser.add_argument('--url', help='URL of remote repository', required=False,
                                default='http://nginx.org/packages/debian/')
