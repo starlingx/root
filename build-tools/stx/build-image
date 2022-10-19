@@ -306,8 +306,8 @@ def add_lat_packages(img_yaml, packages):
 
 
 def check_base_os_binaries(repomgr):
-    base_bins_list = os.path.join(PKG_LIST_DIR,
-                                  'debian/common/base-bullseye.lst')
+    base_bins_list = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
+                                  'cgcs-root/build-tools/stx/debian-image.inc')
     if not os.path.exists(base_bins_list):
         logger.error(' '.join(['Base OS packages list', base_bins_list,
                                'does not exist']))
