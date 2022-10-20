@@ -151,6 +151,7 @@ libyajl2
 linux-cpupower
 locales-all
 logrotate
+lsb-base
 lsof
 man-db
 mawk
@@ -158,6 +159,7 @@ mdadm
 memcached
 mokutil
 multipath-tools
+multipath-tools-boot
 nano
 ncurses-base
 ncurses-bin
