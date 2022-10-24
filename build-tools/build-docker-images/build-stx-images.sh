@@ -46,6 +46,11 @@ declare -a ONLY
 declare -a SKIP
 declare -i MAX_ATTEMPTS=1
 
+declare -a RESULTS_BUILT
+declare -a RESULTS_PUSHED
+declare -a RESULTS_FAILED
+declare -a RESULTS_PUSH_FAILED
+
 function usage {
     cat >&2 <<EOF
 Usage:
@@ -331,8 +336,15 @@ function post_build {
 
     if [ "${PUSH}" = "yes" ]; then
         local push_tag="${DOCKER_REGISTRY}${DOCKER_USER}/${LABEL}:${IMAGE_TAG_VERSIONED}"
+
         docker tag ${build_image_name} ${push_tag}
-        docker push ${push_tag}
+        with_retries ${MAX_ATTEMPTS} docker push ${push_tag}
+        if [[ $? -ne 0 ]] ; then
+            echo "Failed to push ${push_tag} ... Aborting"
+            RESULTS_PUSH_FAILED+=(${LABEL})
+            return 1
+        fi
+
         RESULTS_PUSHED+=(${push_tag})
 
         update_image_record ${LABEL} ${push_tag} ${TAG_LIST_FILE}
@@ -340,7 +352,12 @@ function post_build {
         if [ "$TAG_LATEST" = "yes" ]; then
             local latest_tag="${DOCKER_REGISTRY}${DOCKER_USER}/${LABEL}:${IMAGE_TAG_LATEST}"
             docker tag ${push_tag} ${latest_tag}
-            docker push ${latest_tag}
+            with_retries ${MAX_ATTEMPTS} docker push ${latest_tag}
+            if [[ $? -ne 0 ]] ; then
+                echo "Failed to push ${latest_tag} ... Aborting"
+                RESULTS_PUSH_FAILED+=(${LABEL})
+                return 1
+            fi
             RESULTS_PUSHED+=(${latest_tag})
 
             update_image_record ${LABEL} ${latest_tag} ${TAG_LIST_LATEST_FILE}
@@ -1127,8 +1144,19 @@ if [ ${#RESULTS_FAILED[@]} -gt 0 ]; then
     echo
     echo "#######################################"
     echo
-    echo "There were ${#RESULTS_FAILED[@]} failures:"
+    echo "There were ${#RESULTS_FAILED[@]} build failures:"
     for i in ${RESULTS_FAILED[@]}; do
+        echo $i
+    done | sort
+    RC=1
+fi
+
+if [ ${#RESULTS_PUSH_FAILED[@]} -gt 0 ]; then
+    echo
+    echo "#######################################"
+    echo
+    echo "There were ${#RESULTS_PUSH_FAILED[@]} push failures:"
+    for i in ${RESULTS_PUSH_FAILED[@]}; do
         echo $i
     done | sort
     RC=1
