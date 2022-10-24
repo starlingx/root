@@ -277,6 +277,7 @@ libfreetype6
 libfribidi0
 libfstrm0
 libfuse2
+libgc1
 libgcc-10-dev
 libgcc-s1
 libgcrypt20
@@ -1028,6 +1029,7 @@ vim-runtime
 vim-tiny
 virt-what
 vlan
+w3m
 wget
 whiptail
 x11-common
