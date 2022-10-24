@@ -34,6 +34,7 @@ busybox
 bzip2
 ca-certificates
 cdebconf
+cloud-init
 cluster-glue
 collectd
 collectd-core
