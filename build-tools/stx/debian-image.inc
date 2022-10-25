@@ -1003,6 +1003,7 @@ syslog-ng-mod-mongodb
 syslog-ng-mod-sql
 syslinux-utils
 sysvinit-utils
+sysstat
 tar
 targetcli-fb
 tasksel
