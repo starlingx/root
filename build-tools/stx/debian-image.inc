@@ -575,6 +575,7 @@ libzmq5
 libzstd1
 linux-base
 linux-cpupower
+linux-perf-5.10
 locales
 locales-all
 login
