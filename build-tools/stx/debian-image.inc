@@ -548,6 +548,7 @@ libunbound8
 libunistring2
 libunwind8
 liburcu6
+libutempter0
 libuuid1
 libuv1
 libwbclient0
@@ -969,6 +970,7 @@ ruby-test-unit
 ruby-xmlrpc
 runit-helper
 samba-libs
+screen
 sed
 sensible-utils
 sg3-utils
