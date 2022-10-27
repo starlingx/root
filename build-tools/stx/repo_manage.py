@@ -117,13 +117,18 @@ class AptFetch():
         if not pkg:
             self.aptlock.release()
             raise Exception('Binary package "%s" was not found' % pkg_name)
-        if not pkg_version:
-            candidate = pkg.candidate
-        else:
+        default_candidate = pkg.candidate
+        if pkg_version:
             candidate = pkg.versions.get(pkg_version)
             if not candidate:
-                self.aptlock.release()
-                raise Exception('Binary package "%s %s" was not found.' % (pkg_name, pkg_version))
+                if default_candidate:
+                    epoch, ver = default_candidate.version.split(':')
+                    if epoch.isdigit() and ver == pkg_version:
+                        self.logger.debug('epoch %s will be skipped for %s_%s', epoch, pkg_name, ver)
+                        candidate = default_candidate
+                else:
+                    self.aptlock.release()
+                    raise Exception('Binary package "%s %s" was not found.' % (pkg_name, pkg_version))
         uri = candidate.uri
         filename = candidate.filename
         self.aptlock.release()
@@ -187,7 +192,7 @@ class AptFetch():
     # Download a bundle of packages into downloaded folder
     # deb_list: binary package list file
     # dsc_list: source package list file
-    def fetch_pkg_list(self, deb_set=None, dsc_set=None):
+    def fetch_pkg_list(self, deb_set=set(), dsc_set=set()):
         '''Download a bundle of packages specified through deb_list and dsc_list.'''
         if not deb_set and not dsc_set:
             raise Exception('deb_list and dsc_list, at least one is required.')
@@ -315,9 +320,10 @@ class RepoMgr():
             dsc_list_file = kwargs['dsc_list']
         if not deb_list_file and not dsc_list_file:
             raise Exception('deb_list and dsc_list, at least one is required.')
-        # No matter if any packages can be download, create related repository firstly.
-        if not self.repo.create_local(repo_name):
-            raise Exception('Local repo created failed, Please double check if it already exists.')
+        if not repo_name == '':
+            # No matter if any packages can be download, create related repository firstly.
+            if not self.repo.create_local(repo_name):
+                raise Exception('Local repo created failed, Please double check if it already exists.')
 
         # Scan deb/dsc_list_file, get required packages
         deb_set = set()
@@ -345,6 +351,10 @@ class RepoMgr():
                 self.logger.debug('Source package %s' % pkg_ver)
             for pkg_ver in fetch_result['dsc-failed']:
                 self.logger.info('Failed to download source package %s' % pkg_ver)
+
+        if repo_name == '':
+            self.logger.info('All packages are downloaded to %s', self.workdir)
+            return
 
         # Add packages into local repo
         pkg_folder = os.path.join(self.workdir, 'downloads', 'binary')
