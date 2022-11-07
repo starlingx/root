@@ -459,7 +459,10 @@ if __name__ == "__main__":
                               action='store_true')
     kernel_types.add_argument('--rt', help="build rt image",
                               action='store_true')
-    parser.add_argument('-c', '--clean', help="Start a fresh image build",
+    parser.add_argument('-c', '--clean', help="(DEPRECATED) Start a fresh image build",
+                        default=True, action='store_true')
+    parser.add_argument('-k', '--keep', help="Keep the current environment " +
+                        "(ostree, deploy), mainly used for patching",
                         default=False, action='store_true')
     args = parser.parse_args()
     if args.rt:
@@ -547,7 +550,7 @@ if __name__ == "__main__":
         logger.error("Failed to add packages into image YAML config")
         sys.exit(ret)
 
-    if args.clean:
+    if not args.keep:
         os.system('sudo rm -rf ' + LAT_ROOT + '/workdir')
         os.system('sudo rm -rf ' + LAT_ROOT + '/sub_workdir')
         os.system('sudo rm -rf ' + LAT_ROOT + '/deploy')
