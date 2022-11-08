@@ -56,7 +56,7 @@ class Deb_aptly():
         self.logger = logger
         self.url = url
         self.aptly = Client(self.url)
-        self.logger.info('Aptly connected, version: %s', self.aptly.misc.version)
+        self.logger.info('Aptly connected, version: %s', self.aptly.misc.version())
         if origin:
             self.origin = origin.strip() or None
         else:
