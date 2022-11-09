@@ -1720,17 +1720,15 @@ if __name__ == "__main__":
     parser.add_argument('-l', '--layers', type=str,
                         help="comma separated list of all layers to build\n   %s" % ALL_LAYERS,
                         default=None, required=False)
-    # set mutually options pair for package build and layer build
-    build_group = parser.add_mutually_exclusive_group()
-    build_group.add_argument('-a', '--all', help="Builds all packages",
-                             action='store_true')
-    build_group.add_argument('-p', '--packages', help="Packages with comma",
-                             type=str)
+    parser.add_argument('-p', '--packages', help="Packages with comma",
+                        type=str)
+    parser.add_argument('-a', '--all', help="(DEPRECATED) Builds all packages",
+                        action='store_true')
 
     args = parser.parse_args()
 
     if args.reuse:
-        if args.clean and not args.all:
+        if args.clean and args.packages:
             logger.error("Reuse mode can not be used for the clean build of specific packages.");
             sys.exit(1)
 
@@ -1762,7 +1760,7 @@ if __name__ == "__main__":
     build_controller = BuildController(distro=distro)
     if args.clean:
         build_controller.build_avoid = False
-        if args.all:
+        if not args.packages and not args.layers:
             build_controller.clean(build_types=build_types)
 
     if args.exit_on_fail:
@@ -1790,7 +1788,7 @@ if __name__ == "__main__":
     if args.packages:
         packages = args.packages.strip().split(',')
     else:
-        if args.all:
+        if not args.layers:
             build_controller.attrs['build_all'] = True
         packages = None
 
