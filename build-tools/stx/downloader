@@ -222,8 +222,21 @@ class DebDownloader(BaseDownloader):
         self.need_upload = []
         self.bin_lists = _bin_lists
         self.apt_cache = apt.cache.Cache()
-        if self.repomgr:
+
+    def create_binary_repo(self):
+        if not self.repomgr:
+            logger.error("The repo manager is not created")
+            return False
+
+        try:
             self.repomgr.upload_pkg(REPO_BIN, None)
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to create repository %s", REPO_BIN)
+            return False
+
+        logger.info("Successfully created repository %s", REPO_BIN)
+        return True
 
     def download(self, _name, _version, url=None):
         if url != None:
@@ -264,11 +277,11 @@ class DebDownloader(BaseDownloader):
 
     def reports(self):
         try:
-            if self.repomgr:
-                self.repomgr.deploy_repo(REPO_BIN)
+            self.repomgr.deploy_repo(REPO_BIN)
         except Exception as e:
             logger.error(str(e))
             logger.error("Failed to publish repository %s", REPO_BIN)
+            return
 
         if len(self.bin_lists):
             logger.info("All binary lists are:")
@@ -329,17 +342,24 @@ class DebDownloader(BaseDownloader):
         for debs in self.need_upload:
             deb = debs[0]
             deb_fver = debs[1]
+            deb_path = os.path.join(stx_bin_mirror, deb)
             #  Search the package with the "eopch" in aptly repo
             if previously_uploaded and deb_fver in previously_uploaded:
-                logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
-                                      'has already been uploaded to', REPO_BIN, ', skip']))
+                logger.info("%s has already been uploaded to %s, skip", deb_path, REPO_BIN)
                 continue
-            if self.repomgr.upload_pkg(REPO_BIN, os.path.join(stx_bin_mirror, deb), deploy=False):
-                logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
-                                      'is uploaded to', REPO_BIN]))
+            try:
+                upload_ret = self.repomgr.upload_pkg(REPO_BIN, deb_path, deploy=False)
+            except Exception as e:
+                logger.error(str(e))
+                logger.error("Exception on uploading %s to %s", deb_path, REPO_BIN)
+                sys.exit(1)
             else:
-                logger.info(' '.join([os.path.join(stx_bin_mirror, deb),
-                                      'fail to uploaded to', REPO_BIN]))
+                if upload_ret:
+                    logger.debug("%s is uploaded to %s", deb_path, REPO_BIN)
+                else:
+                    logger.error("Failed to upload %s to %s", deb_path, REPO_BIN)
+                    break
+
         self.need_upload.clear()
         for debs in self.need_download:
             deb = debs[0]
@@ -352,10 +372,18 @@ class DebDownloader(BaseDownloader):
                 # strip epoch
                 deb_ver = debnames[1].split(":")[-1]
                 self.dl_success.append('_'.join([debnames[0], deb_ver]))
-                if self.repomgr.upload_pkg(REPO_BIN, ret, deploy=False):
-                    logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', REPO_BIN]))
+                try:
+                    upload_ret = self.repomgr.upload_pkg(REPO_BIN, ret, deploy=False)
+                except Exception as e:
+                    logger.error(str(e))
+                    logger.error("Exception on uploading %s to %s", deb_path, REPO_BIN)
+                    sys.exit(1)
                 else:
-                    logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', REPO_BIN]))
+                    if upload_ret:
+                        logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', REPO_BIN]))
+                    else:
+                        logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', REPO_BIN]))
+                        break
             else:
                 self.dl_failed.append(deb)
         self.need_download.clear()
@@ -547,6 +575,8 @@ if __name__ == "__main__":
     if args.download_binary:
         all_binary_lists = get_all_binary_list(distro=distro, layers=layers, build_types=build_types)
         binary_dl = DebDownloader(DEFAULT_ARCH, stx_bin_mirror, clean_mirror, all_binary_lists)
+        if not binary_dl.create_binary_repo():
+            sys.exit(1)
 
     if args.download_source:
         source_dl = SrcDownloader(DEFAULT_ARCH, stx_src_mirror, clean_mirror)
