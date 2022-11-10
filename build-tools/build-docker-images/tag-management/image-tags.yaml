@@ -44,9 +44,9 @@ images:
     src_ref: https://opendev.org/starlingx/integ/commit/896bd432a2d934c55a2ec793de8b2190e992f3e3
     tag: stx.8.0-v1.0.2
   - name: docker.io/starlingx/rvmc
-    src_build_tag: master-debian-stable-20220906T060002Z.0
-    src_ref: https://opendev.org/starlingx/metal/commit/3f181357cc7f6e2270e641c5e6ba3ce5f6f711a4
-    tag: stx.8.0-v1.0.0
+    src_build_tag: master-debian-stable-20221110T070000Z.0
+    src_ref: https://opendev.org/starlingx/metal/commit/eaf07202a9ee8197a31450cbc5fa4294dd82d396
+    tag: stx.8.0-v1.0.1
   - name: docker.io/starlingx/stx-platformclients
     src_build_tag: master-centos-stable-20220708T035210Z.0
     src_ref: https://opendev.org/starlingx/config/commit/3379be986a52009830182152fd1b4182e45cecf0
