@@ -323,6 +323,12 @@ class Parser():
             revision += int(run_shell_cmd(git_rev_list_from % (src_dir, gitrevcount["BASE_SRCREV"]), self.logger))
             revision += int(run_shell_cmd(git_status % src_dir, self.logger))
 
+        if "stx_patch" in revision_data:
+            if type(revision_data['stx_patch']) is not int:
+                self.logger.error("The stx_patch in meta_data.yaml is not an int value")
+                raise Exception(f"The stx_patch in meta_data.yaml is not an int value")
+            revision += int(revision_data["stx_patch"])
+
         return dist + "." + str(revision)
 
     def checksum(self, pkgpath):
