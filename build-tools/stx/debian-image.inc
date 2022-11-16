@@ -9,6 +9,7 @@ apache2-bin
 apache2-data
 apache2-utils
 apparmor
+apparmor-utils
 apt
 apt-utils
 auditd
@@ -662,6 +663,7 @@ python3-amqp
 python3-amqplib
 python3-aniso8601
 python3-anyjson
+python3-apparmor
 python3-appdirs
 python3-attr
 python3-babel
@@ -756,6 +758,7 @@ python3-ldap3
 python3-ldappool
 python3-ldb
 python3-lib2to3
+python3-libapparmor
 python3-libcomps
 python3-libdnf
 python3-linecache2
