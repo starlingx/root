@@ -987,6 +987,8 @@ sphinx-common
 sqlite3
 sshpass
 ssl-cert
+ssg-base
+ssg-debian
 sssd
 sssd-ad
 sssd-ad-common
