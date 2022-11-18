@@ -402,6 +402,7 @@ libncursesw6
 libndctl6
 libndp0
 libnet1
+libnetcf1
 libnetfilter-conntrack3
 libnetfilter-cthelper0
 libnetfilter-queue1
@@ -452,6 +453,7 @@ libpangoft2-1.0-0
 libpath-utils1
 libpcap0.8
 libpci3
+libpciaccess0
 libpcre2-8-0
 libpcre3
 libpcsclite1
@@ -507,6 +509,7 @@ librte-pci21
 librte-rcu21
 librtmp1
 libruby2.7
+libsanlock-client1
 libsasl2-2
 libsasl2-modules-db
 libsctp1
@@ -604,6 +607,7 @@ libxslt1.1
 libxt6
 libxtables12
 libxxhash0
+libyajl2
 libyaml-0-2
 libyaml-cpp0.6
 libz3-4
