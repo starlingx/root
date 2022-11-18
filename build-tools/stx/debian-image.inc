@@ -157,7 +157,9 @@ ipmitool
 iproute2
 iptables
 iptables-persistent
+ipxe-qemu
 iscsiuio
+iso-codes
 isomd5sum
 kbd
 kernel-wedge
@@ -215,9 +217,11 @@ libbson-1.0-0
 libbz2-1.0
 libc6
 libc6-dev
+libcacard0
 libcairo2
 libcap2
 libcap2-bin
+libcapstone4
 libcap-ng0
 libc-ares2
 libc-bin
@@ -241,6 +245,7 @@ libcurl3-gnutls
 libcurl4
 libdaemon0
 libdatrie1
+libdaxctl1
 libdb5.3
 libdbi1
 libdbus-1-3
@@ -254,6 +259,8 @@ libdnf2-common
 libdns-export1110
 libdouble-conversion3
 libdpkg-perl
+libdrm2
+libdrm-common
 libdw1
 libedit2
 libefiboot1
@@ -261,8 +268,10 @@ libefivar1
 libeinfo1
 libelf1
 libelf-dev
+libepoxy0
 libestr0
 libevent-2.1-7
+libexecs0
 libexpat1
 libexpat1-dev
 libext2fs2
@@ -279,6 +288,7 @@ libfreetype6
 libfribidi0
 libfstrm0
 libfuse2
+libgbm1
 libgc1
 libgcc-10-dev
 libgcc-s1
@@ -286,9 +296,13 @@ libgcrypt20
 libgdbm6
 libgdbm-compat4
 libgeoip1
+libgfapi0
 libgfortran5
+libgfrpc0
+libgfxdr0
 libgirepository-1.0-1
 libglib2.0-0
+libglusterfs0
 libgmp10
 libgnutls30
 libgomp1
@@ -297,6 +311,8 @@ libgpg-error0
 libgpgme11
 libgpm2
 libgraphite2-3
+libgstreamer1.0-0
+libgstreamer-plugins-base1.0-0
 libgssapi-krb5-2
 libharfbuzz0b
 libhogweed6
@@ -310,12 +326,14 @@ libip4tc2
 libip6tc2
 libipa-hbac0
 libiperf0
+libiscsi7
 libisc-export1105
 libisl23
 libisns0
 libitm1
 libivykis0
 libjansson4
+libjpeg62-turbo
 libjs-angular-file-upload
 libjs-angular-gettext
 libjs-angularjs
@@ -381,6 +399,7 @@ libmpdec3
 libmpfr6
 libncurses6
 libncursesw6
+libndctl6
 libndp0
 libnet1
 libnetfilter-conntrack3
@@ -390,6 +409,7 @@ libnet-ntp-perl
 libnettle8
 libnewt0.52
 libnfnetlink0
+libnfs13
 libnfsidmap2
 libnftables1
 libnftnl11
@@ -417,6 +437,8 @@ libopenhpi3
 libopenipmi0
 libopeniscsiusr
 libopts25
+libopus0
+liborc-0.4-0
 libp11-kit0
 libpam0g
 libpam-modules
@@ -500,6 +522,7 @@ libsepol1
 libsgutils2-2
 libsigsegv2
 libslang2
+libslirp0
 libsm6
 libsmartcols1
 libsmbclient
@@ -510,9 +533,11 @@ libsodium23
 libsolv1
 libsolvext1
 libsoup2.4-1
+libspice-server1
 libsqlite3-0
 libss2
 libssh2-1
+libssh-4
 libssl1.1
 libssl-dev
 libsss-certmap0
@@ -546,13 +571,20 @@ libtool
 libtsan0
 libubsan1
 libuchardet0
+libudev1
 libunbound8
 libunistring2
 libunwind8
 liburcu6
+liburing1
+libusb-1.0-0
+libusbredirparser1
 libutempter0
 libuuid1
 libuv1
+libvdeplug2
+libvirglrenderer1
+libwayland-server0
 libwbclient0
 libwrap0
 libx11-6
@@ -619,6 +651,7 @@ openssh-server
 openssh-sftp-server
 openssl
 original-awk
+ovmf
 passwd
 patch
 pci.ids
@@ -974,6 +1007,7 @@ ruby-test-unit
 ruby-xmlrpc
 runit-helper
 samba-libs
+seabios
 screen
 sed
 sensible-utils
