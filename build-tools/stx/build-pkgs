@@ -65,6 +65,10 @@ REPO_BUILD = 'deb-local-build'
 REPO_SOURCE = 'deb-local-source'
 # The mirror created with reused URL
 REUSE_MIRROR = 'deb-remote-reuse'
+# The maximum times that repogmr tries to create repository
+REPOMGR_MAX_RETRY = 3
+# The time interval between retires in seconds
+REPOMGR_RETRY_INTERVAL = 20
 
 # Listed all stx source layers which contains 'debian_pkg_dirs'
 STX_SOURCE_REPOS = [
@@ -448,6 +452,20 @@ class BuildController():
             self.kits['dsc_rcache'][btype] = dsccache.DscCache(logger, remote_pkl)
         return True
 
+    def create_repo(self, repo, retry=REPOMGR_MAX_RETRY, interval=REPOMGR_RETRY_INTERVAL):
+        t = 0
+        while t < retry:
+            try:
+                self.kits['repo_mgr'].upload_pkg(repo, None)
+                return True
+            except Exception as e:
+                logger.error(str(e))
+                logger.warning("Repo manager failed to create repositories, retry %d ...", t)
+                time.sleep(interval)
+                t = t + 1
+        logger.critical("Failed to create repository %s", repo)
+        return False
+
     def start(self, build_types=ALL_BUILD_TYPES):
         build_types_to_init = ALL_BUILD_TYPES
         if build_types is not None:
@@ -457,8 +475,10 @@ class BuildController():
         if not self.kits['repo_mgr']:
             logger.critical("Failed to create repo manager")
             return False
-        self.kits['repo_mgr'].upload_pkg(REPO_BUILD, None)
-        self.kits['repo_mgr'].upload_pkg(REPO_SOURCE, None)
+
+        for repo in [REPO_BUILD, REPO_SOURCE]:
+            if not self.create_repo(repo):
+                return False
 
         caches_dir = os.path.join(BUILD_ROOT, 'caches')
         os.makedirs(caches_dir, exist_ok=True)
