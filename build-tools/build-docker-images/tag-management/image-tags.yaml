@@ -74,17 +74,17 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/20148e20031a558fb83eeb01f3d2fc393a6f170c
     tag: stx.8.0-v1.0.0
   - name: docker.io/starlingx/notificationservice-base
-    src_build_tag: master-centos-stable-20221010T235842Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/63fefca36c1aecae63a197675e754cd42728354b
-    tag: stx.8.0-v2.0.0
+    src_build_tag: master-debian-stable-20221120T070000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/916f9da1126cc308a75d9856a111b147dec142d2
+    tag: stx.8.0-v2.0.1
   - name: docker.io/starlingx/locationservice-base
-    src_build_tag: master-centos-stable-20210204T224209Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/545e6b6bb093235c2f8dab8d171f30c6ae8682d3
-    tag: stx.5.0-v1.0.1
-  - name: docker.io/starlingx/notificationclient-base
-    src_build_tag: master-centos-stable-20221010T235842Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/63fefca36c1aecae63a197675e754cd42728354b
+    src_build_tag: master-debian-stable-20221120T070000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/297584e7b9a84404f837357d0aa3e407ed8c118f
     tag: stx.8.0-v2.0.0
+  - name: docker.io/starlingx/notificationclient-base
+    src_build_tag: master-debian-stable-20221120T070000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/e8b4375bb62286af9eafaa105342db6c5c8ee41c
+    tag: stx.8.0-v2.0.1
   - name: docker.io/starlingx/stx-audit
     src_build_tag: master-debian-stable-20220930T060000Z.0
     src_ref: https://opendev.org/starlingx/audit-armada-app/commit/b6bb1eed336d8144069324d382e2b2e607a09cae
