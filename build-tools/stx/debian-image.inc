@@ -14,10 +14,6 @@ apt
 apt-utils
 auditd
 augeas-lenses
-autoconf
-automake
-autopoint
-autotools-dev
 avahi-daemon
 base-files
 bash-completion
@@ -28,7 +24,6 @@ bind9-libs
 binutils
 binutils-common
 binutils-x86-64-linux-gnu
-bison
 bsdextrautils
 bsdutils
 busybox
@@ -44,7 +39,6 @@ conntrackd
 coreutils
 cpio
 cpp-10
-cpp
 cracklib-runtime
 cron
 cryptsetup-bin
@@ -57,12 +51,9 @@ dconf-gsettings-backend
 dconf-service
 debconf
 debconf-i18n
-debhelper
 debian-archive-keyring
 debianutils
 debugedit
-dh-autoreconf
-dh-strip-nondeterminism
 diffutils
 dirmngr
 distro-info-data
@@ -73,8 +64,6 @@ docker.io
 docutils-common
 dosfstools
 dpkg
-dpkg-dev
-dwz
 e2fsprogs
 efibootmgr
 eject
@@ -124,7 +113,6 @@ firmware-realtek
 firmware-samsung
 firmware-siano
 flake8
-flex
 fontconfig
 fontconfig-config
 fonts-dejavu-core
@@ -136,11 +124,9 @@ freeipmi-common
 gawk
 gcc-10
 gcc-10-base
-gcc
 gcc-9-base
 gdisk
 genisoimage
-gettext
 gettext-base
 gir1.2-glib-2.0
 glib-networking
@@ -172,7 +158,6 @@ initramfs-tools
 initramfs-tools-core
 init-system-helpers
 install-info
-intltool-debian
 iperf3
 ipmitool
 iproute2
@@ -183,7 +168,6 @@ iscsiuio
 iso-codes
 isomd5sum
 kbd
-kernel-wedge
 keyutils
 klibc-utils
 kmod
@@ -199,7 +183,6 @@ libaprutil1-dbd-sqlite3
 libaprutil1-ldap
 libapt-pkg6.0
 libarchive13
-libarchive-zip-perl
 libargon2-1
 libasan6
 libasm1
@@ -272,14 +255,12 @@ libdbi1
 libdbus-1-3
 libdconf1
 libdebconfclient0
-libdebhelper-perl
 libdebian-installer4
 libdhash1
 libdnf2
 libdnf2-common
 libdns-export1110
 libdouble-conversion3
-libdpkg-perl
 libdrm2
 libdrm-common
 libdw1
@@ -288,7 +269,6 @@ libefiboot1
 libefivar1
 libeinfo1
 libelf1
-libelf-dev
 libepoxy0
 libestr0
 libevent-2.1-7
@@ -302,7 +282,6 @@ libfdisk1
 libfdt1
 libffi7
 libfido2-1
-libfile-stripnondeterminism-perl
 libfontconfig1
 libfreeipmi17
 libfreetype6
@@ -563,14 +542,12 @@ libss2
 libssh2-1
 libssh-4
 libssl1.1
-libssl-dev
 libsss-certmap0
 libsss-idmap0
 libsss-nss-idmap0
 libstdc++6
 libstonith1
 libstrongswan
-libsub-override-perl
 libtalloc2
 libtasn1-6
 libtcl8.6
@@ -591,7 +568,6 @@ libtinfo6
 libtirpc3
 libtirpc-common
 libtirpc-dev
-libtool
 libtsan0
 libubsan1
 libuchardet0
@@ -643,9 +619,7 @@ logrotate
 logsave
 lsb-release
 lsof
-m4
 mailcap
-make
 man-db
 mariadb-common
 mawk
@@ -678,7 +652,6 @@ openssl
 original-awk
 ovmf
 passwd
-patch
 pci.ids
 pciutils
 perl
@@ -686,7 +659,6 @@ perl-base
 perl-modules-5.32
 pinentry-curses
 pipexec
-po-debconf
 policykit-1
 postgresql-13
 postgresql-client-13
@@ -1106,6 +1078,5 @@ xfsprogs
 xml-core
 xmlsec1
 xxd
-xz-utils
 zlib1g
 zlib1g-dev
