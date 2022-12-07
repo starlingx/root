@@ -20,17 +20,8 @@ if [ -z "${STX_BUILD_HOME}" ]; then
     exit 1
 fi
 
-REPO_ROOT="${STX_BUILD_HOME}"/repo
 DEPLOY_DIR="${STX_BUILD_HOME}/localdisk/deploy"
-
-RELEASE_INFO="$(get_release_info)"
-
-if [ $? -ne 0 ]; then
-   echo "ERROR: failed to find a release info file."
-   exit 1
-fi
-
-PLATFORM_RELEASE=$(source $RELEASE_INFO && echo $PLATFORM_RELEASE)
+OSTREE_REPO="${DEPLOY_DIR}/ostree_repo"
 
 function usage() {
     echo ""
@@ -55,8 +46,9 @@ function extract_metada() {
         exit 1
     fi
 
-    # Verify if ostree_repo ref matches the metadata.xml
-    xml_base=$(xmllint --xpath "string(//contents/ostree/base/commit)" ${patchesdir}/${patchid}-metadata.xml)
+    # Verify if ostree_repo ref matches the metadata.xml top commit
+    # commit1 tag contains the top commit sha
+    xml_base=$(xmllint --xpath "string(//contents/ostree/commit1/commit)" ${patchesdir}/${patchid}-metadata.xml)
     if [ "$xml_base" != "$ostree_ref" ]; then
         echo "Error, ostree head ref and patch xml base commit does not match."
         echo "ostree head: ${ostree_ref}"
@@ -229,8 +221,17 @@ chmod +w ${BUILDDIR}
 chmod -R +w ${BUILDDIR}/isolinux
 # Extract patch xml
 mkdir ${BUILDDIR}/patches
+
+echo "Updating ostree_repo..."
+ostree --repo=${BUILDDIR}/ostree_repo pull-local ${OSTREE_REPO} starlingx
+ostree --repo=${BUILDDIR}/ostree_repo summary --update
+echo "Updated iso ostree commit:"
+ostree --repo=${BUILDDIR}/ostree_repo log starlingx
+
+echo "Extracting patch metadata"
 extract_metada $PATCH_FILE
 
+echo "Packing iso..."
 # Repack the ISO
 mkisofs -o "${OUTPUT_ISO}" \
     -A 'instboot' -V 'instboot' \
@@ -246,8 +247,6 @@ isohybrid --uefi ${OUTPUT_ISO}
 implantisomd5 ${OUTPUT_ISO}
 
 # Sign the .iso with the developer private key
-# Signing with the formal key is only to be done for customer release
-# and is a manual step afterwards, as with the GA ISO
 openssl dgst -sha256 \
     -sign ${STX_BUILD_HOME}/repo/cgcs-root/build-tools/signing/dev-private-key.pem \
     -binary \
