@@ -411,8 +411,8 @@ init "$@"
 trap handle_sig  INT TERM PIPE HUP
 trap handle_exit EXIT
 
-# make sure update-iso.sh exists
-UPDATE_ISO=$MY_REPO/stx/utilities/utilities/platform-util/scripts/update-iso.sh
+# make sure update-iso-centos.sh exists
+UPDATE_ISO=$MY_REPO/stx/utilities/utilities/platform-util/scripts/update-iso-centos.sh
 : <"$UPDATE_ISO" || exit 1
 
 # make sure input ISO file exists
