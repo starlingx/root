@@ -20,6 +20,11 @@ if [ -z "${STX_BUILD_HOME}" ]; then
     exit 1
 fi
 
+if [ -z "${MY_REPO}" ]; then
+    echo "Required environment variable MY_REPO is not set"
+    exit 1
+fi
+
 DEPLOY_DIR="${STX_BUILD_HOME}/localdisk/deploy"
 OSTREE_REPO="${DEPLOY_DIR}/ostree_repo"
 
@@ -190,6 +195,8 @@ function cleanup() {
 
 }
 
+check_requirements
+
 trap cleanup EXIT
 
 MNTDIR=$(mktemp -d -p $PWD patchiso_mnt_XXXXXX)
@@ -232,9 +239,16 @@ echo "Extracting patch metadata"
 extract_metada $PATCH_FILE
 
 echo "Packing iso..."
+# get the install label
+ISO_LABEL=$(grep -ri instiso "${BUILDDIR}"/isolinux/isolinux.cfg | head -1 | xargs -n1 | awk -F= /instiso/'{print $2}')
+if [ -z "${ISO_LABEL}" ] ; then
+    echo "Error: Failed to get iso install label"
+fi
+echo "ISO Label: ${ISO_LABEL}"
+
 # Repack the ISO
 mkisofs -o "${OUTPUT_ISO}" \
-    -A 'instboot' -V 'instboot' \
+    -A "${ISO_LABEL}" -V "${ISO_LABEL}" \
     -quiet -U -J -joliet-long -r -iso-level 2 \
     -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
     -boot-load-size 4 -boot-info-table \
@@ -248,7 +262,7 @@ implantisomd5 ${OUTPUT_ISO}
 
 # Sign the .iso with the developer private key
 openssl dgst -sha256 \
-    -sign ${STX_BUILD_HOME}/repo/cgcs-root/build-tools/signing/dev-private-key.pem \
+    -sign ${MY_REPO}/build-tools/signing/dev-private-key.pem \
     -binary \
     -out ${OUTPUT_ISO/%.iso/.sig} \
     ${OUTPUT_ISO}
