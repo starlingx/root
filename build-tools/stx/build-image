@@ -39,6 +39,8 @@ REPO_BINARY = 'deb-local-binary'
 REPO_BUILD = 'deb-local-build'
 DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
 PKG_LIST_DIR = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), DEB_CONFIG_DIR)
+CERT_FILE = 'cgcs-root/build-tools/certificates/TiBoot.crt'
+CERT_PATH = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), CERT_FILE)
 img_pkgs = []
 kernel_type = 'std'
 stx_std_kernel = 'linux-image-5.10.0-6-amd64-unsigned'
@@ -554,6 +556,10 @@ if __name__ == "__main__":
         os.system('sudo rm -rf ' + LAT_ROOT + '/workdir')
         os.system('sudo rm -rf ' + LAT_ROOT + '/sub_workdir')
         os.system('sudo rm -rf ' + LAT_ROOT + '/deploy')
+
+    # Prepare the boot cert
+    os.system('sudo mkdir ' + LAT_ROOT + '/CERTS > /dev/null 2>&1')
+    os.system('sudo cp ' + CERT_PATH + ' ' + LAT_ROOT + '/CERTS/')
 
     os.system(' '.join(['latc --file=' + lat_yaml, 'build']))
     # Sleep here to wait for the log file created and feeded by latd
