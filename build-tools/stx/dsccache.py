@@ -32,8 +32,8 @@ class DscCache():
             with open(self.cache_file, 'rb') as fcache:
                 dsc_cache = pickle.load(fcache)
         except Exception as e:
-            logger.error(str(e))
-            logger.error("DscCache failed to open the cache file")
+            self.logger.error(str(e))
+            self.logger.error("DscCache failed to open the cache file")
         else:
             if package in dsc_cache.keys():
                 dsc_file = dsc_cache[package].split(':')[0]
@@ -50,11 +50,11 @@ class DscCache():
             with open(self.cache_file, 'rb') as fcache:
                 dsc_cache = pickle.load(fcache)
         except Exception as e:
-            logger.error(str(e))
-            logger.error("DscCache failed to open the cache file")
+            self.logger.error(str(e))
+            self.logger.error("DscCache failed to open the cache file")
         else:
             for pkg in dsc_cache.keys():
-                if not pkg.endswith(package, len(package)):
+                if not pkg.endswith(package):
                     continue
                 match_item = dsc_cache[pkg]
                 self.logger.debug("dscCache: Matched item %s" % match_item)
