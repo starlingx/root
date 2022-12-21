@@ -793,8 +793,9 @@ class Deb_aptly():
         # find and remove related publish
         publish_list = self.aptly.publish.list()
         for publish in publish_list:
-            if publish.prefix == name:
-                task = self.aptly.publish.drop(prefix=name, distribution='bullseye', force_delete=True)
+            # Remove all related publish including quick publish
+            if publish.prefix.startswith(name + '-') or publish.prefix == name:
+                task = self.aptly.publish.drop(prefix=publish.prefix, distribution='bullseye', force_delete=True)
                 task_state = self.__wait_for_task(task)
                 if task_state != 'SUCCEEDED':
                     self.logger.warning('Drop publish failed %s : %s', name, task_state)
