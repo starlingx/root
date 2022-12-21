@@ -17,6 +17,7 @@
 import apt
 import apt_pkg
 import argparse
+from debian import deb822
 import debrepack
 import debsentry
 import discovery
@@ -24,6 +25,7 @@ import dsc_depend
 import dsccache
 import logging
 import os
+import re
 import repo_manage
 import requests
 import shutil
@@ -119,6 +121,145 @@ ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
 logger = logging.getLogger('debcontroller')
 utils.set_logger(logger)
+
+
+def filter_depends(deps):
+    pkgs_list = []
+
+    deps = deps.replace('|', ',')
+    deps = deps.replace(' ', '').split(',')
+    for pkg in deps:
+        pkg = re.sub('\(.*?\)','', pkg)
+        pkg = re.sub('\[.*?\]','', pkg)
+        pkg = re.sub('\<.*?\>','', pkg)
+        pkgs_list.append(pkg)
+    return pkgs_list
+
+
+def get_build_depends(dsc_file, all_debs):
+        '''
+        Get package's build depends with its dsc file
+        Param: dsc_file:  Package's dsc file
+        '''
+        ret_deps = []
+        all_depends = set()
+        build_depends = None
+        build_depends_indep = None
+        build_depends_arch = None
+        if not dsc_file.endswith('dsc'):
+            logger.error("Invalid dsc %s", dsc_file)
+            return all_depends
+
+        try:
+            with open(dsc_file, 'r') as fh:
+                dsc = deb822.Dsc(fh)
+                if 'Build-Depends' in dsc.keys():
+                    build_depends = filter_depends(dsc['Build-Depends'])
+                    logger.debug("%s build_depends: %s", dsc_file, ','.join(build_depends))
+                if 'Build-Depends-Indep' in dsc.keys():
+                    build_depends_indep = filter_depends(dsc['Build-Depends-Indep'])
+                    logger.debug("%s build_depends_indep: %s", dsc_file, ','.join(build_depends_indep))
+                if 'Build-Depends-Arch' in dsc.keys():
+                    build_depends_arch = filter_depends(dsc['Build-Depends-Arch'])
+                    logger.debug("%s build_depends_arch: %s", dsc_file, ','.join(build_depends_arch))
+        except Exception as e:
+            logger.error(str(e))
+            logger.error("Failed to parse dsc %s")
+            return all_depends
+
+        all_depends = set(build_depends)
+        if build_depends_indep:
+            all_depends = all_depends | set(build_depends_indep)
+        if build_depends_arch:
+            all_depends = all_depends | set(build_depends_arch)
+
+        for dep in all_depends:
+            if dep in all_debs:
+                ret_deps.append(dep)
+
+        if len(ret_deps) > 0:
+            logger.debug("STX-Depends of %s are %s:", dsc_file, ','.join(ret_deps))
+        return ret_deps
+
+
+def get_dsc_binary_package_names(dsc_files):
+        '''
+        Get all binary package names with the dsc files
+        dsc_files: package's dsc file
+        '''
+        all_subdebs = []
+        for dsc_file in dsc_files:
+            if not dsc_file.endswith('.dsc'):
+                logger.error("Invalid dsc %s", dsc_file)
+                continue
+
+            try:
+                with open(dsc_file, 'r') as fh:
+                    dsc = deb822.Dsc(fh)
+                    if 'Binary' in dsc.keys():
+                        subdebs = dsc['Binary'].replace(' ', '').split(',')
+                        all_subdebs.extend(subdebs)
+            except Exception as e:
+                logger.error(str(e))
+                logger.error("Failed to parse dsc %s", dsc_file)
+                continue
+        return set(all_subdebs)
+
+
+def create_dependency_graph(dscs, pkgs_pool):
+    deps_graph = {}
+    for dsc in dscs:
+        deps = get_build_depends(dsc, pkgs_pool)
+        if deps:
+            logger.debug("Graph-> %s:%s", dsc, ','.join(deps))
+            deps_graph[dsc] = deps
+    logger.debug("STX-Depends: length of depends graph %d", len(deps_graph))
+    return deps_graph
+
+
+def query_who_depends(pkgnames, deps_graph):
+    logger.debug("Subdebs-> %s", ','.join(pkgnames))
+    ddscs = []
+    for dsc, deps in deps_graph.items():
+        logger.debug("Subdebs-> %s:%s", dsc, ','.join(deps))
+        for subdeb in pkgnames:
+            if subdeb in deps:
+                ddscs.append(dsc)
+    return ddscs
+
+
+def scan_all_depends(layer_pkgdirs_dscs, build_pkgdirs_dscs):
+    '''
+    Try to find these packages whose 'build-depend' contains the packages in build_pkgdirs_dscs
+    this function only scan depth 1 instead of recursively
+    layer_pkgdirs_dscs: contains pkg_src_dir:dsc of all STX packages belong to the layer
+    build_pkgdirs_dscs: The target pkg_src_dir:dsc need to be built
+    '''
+    extra_build_pkgs = set()
+    all_dscs = [dsc for pkgdir,dsc in layer_pkgdirs_dscs.items()]
+    all_debs = get_dsc_binary_package_names(all_dscs)
+    logger.debug("STX subdebs:%s are used to filter the depends", ','.join(all_debs))
+    logger.debug("There are %d dscs to create dependency graph", len(all_dscs))
+    dependency_graph = create_dependency_graph(all_dscs, all_debs)
+
+    logger.debug("There are %d dscs in build_pkgdirs_dscs", len(build_pkgdirs_dscs))
+    for pkgdir, dsc in build_pkgdirs_dscs.items():
+        subdebs = get_dsc_binary_package_names([dsc])
+        pkg_name = discovery.package_dir_to_package_name(pkgdir, STX_DEFAULT_DISTRO)
+        depender_dscs = query_who_depends(subdebs, dependency_graph)
+        if len(depender_dscs) == 0:
+            logger.debug("There are no STX packages found which depends on %s, skip", pkg_name)
+            continue
+        logger.debug("STX-Depends:%s depends on the build package %s", ','.join(depender_dscs), pkg_name)
+        for dsc in depender_dscs:
+            dep_dir = get_pkg_dir_from_dsc(layer_pkgdirs_dscs, dsc)
+            if not dep_dir:
+                logger.error("Failed to find package path for %s", dsc)
+                logger.error("Skip this failure")
+                continue
+            logger.debug("STX-Depends add %s to extra build list", dep_dir)
+            extra_build_pkgs.add(dep_dir)
+    return extra_build_pkgs
 
 
 def get_debs_clue(btype):
@@ -378,6 +519,7 @@ class BuildController():
         self.build_types = []
         self.pkgs_digests = {}
         self.dscs_building = []
+        self.extend_deps = set()
         self.dscs_chroots = {}
         if not self.kits['repo_mgr']:
             rlogger = logging.getLogger('repo_manager')
@@ -487,6 +629,7 @@ class BuildController():
             self.lists['success_' + build_type] = []
             self.lists['fail_' + build_type] = []
             self.lists['build-needed_' + build_type] = []
+            self.lists['real_build_' + build_type] = []
             self.lists['success_depends_' + build_type] = []
             self.lists['fail_depends_' + build_type] = []
             self.lists['reuse_' + build_type] = []
@@ -929,88 +1072,88 @@ class BuildController():
             pkg_dir: path to the directory containing the package's debian folder
             is_reclaim: If True, this is reclaim the reused packages
             build_type: build type ... probably 'std' or 'rt'
-        Return: result list like:
-            ['dhcp-2.10.1.tis.dsc' 'dhcp-2.10.tar.xz' 'dhcp-2.10.tar.xz.orig']
+        Return:
+            status: DSC_BUILD, DSC_REUSE
+            dsc_file: path to dsc file
         """
+        status = 'DSC_BUILD'
         dsc_file = None
         skip_create_dsc = False
-        # Check whether there are changes on package's debian folder
-        new_checksum = self.kits['dsc_maker'][build_type].checksum(pkg_dir)
-        # If the sharing mode is enabled
-        if not reclaim and self.attrs['reuse']:
-            # 'reuse' should be handled for either no '-c' or '-c -all'
-            if self.attrs['avoid'] or (self.attrs['build_all'] and not self.attrs['avoid']):
-                logger.debug("Compare with the remote shared dsc cache for %s", build_type)
-                # Only match the subdir under STX REPO
-                pkg_stx_path = pkg_dir.replace(os.environ.get('MY_REPO'), '')
-                remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_stx_path)
-                logger.debug("Checking package=%s, shared_checksum=%s, local_checksum=%s", pkg_stx_path, shared_checksum, new_checksum)
-                if shared_checksum and shared_checksum == new_checksum:
-                    logger.debug("No updates on debian meta source compared with the remote shared")
-                    # True None: just continue in the external for loop
-                    skip_create_dsc = True
-                    '''
-                    Here the local dsc_cache also need to be set which prevents the subsequent
-                    build without 'reuse' rebuilding the package with same checksum again
-                    '''
-                    self.kits['dsc_cache'][build_type].set_package(pkg_dir, 'reuse:' + shared_checksum)
-                    return skip_create_dsc, None
-                else:
-                    logger.debug("The remote checksum is different to the local checksum, now follow the local way")
 
+        pkg_build_dir = os.path.join(BUILD_ROOT, build_type, pkg_name)
+        # only '-c' clean the package build directory
+        if not self.attrs['avoid']:
+            if os.path.exists(pkg_build_dir):
+                try:
+                    shutil.rmtree(pkg_build_dir)
+                except Exception as e:
+                    logger.error(str(e))
+                else:
+                    logger.debug("Successfully cleaned the old %s", pkg_build_dir)
+                    os.makedirs(pkg_build_dir)
+
+        # Create the dsc file unless build avoidance and dsc does exist
+        new_checksum = self.kits['dsc_maker'][build_type].checksum(pkg_dir)
         self.pkgs_digests[pkg_dir] = new_checksum
         if self.attrs['avoid'] and self.kits['dsc_cache'][build_type]:
             dsc_file, old_checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
             if dsc_file and old_checksum:
                 if old_checksum and old_checksum == new_checksum:
                     logger.info("No update on package meta of %s", pkg_name)
-                    '''
-                    The specifial value 'reuse' of dsc field shows that this package
-                    comes from the shared repo before and there are no changes, it
-                    continues to be used
-                    '''
-                    if not reclaim and dsc_file == 'reuse':
-                        logger.info("%s is a reused package which has no meta changes", pkg_name)
-                        skip_create_dsc = True
-                        return skip_create_dsc, None
+                    logger.info("The dsc file is %s", dsc_file)
 
                     if os.path.exists(dsc_file):
-                        logger.info("Skip creating dsc for %s again", pkg_name)
+                        logger.info("Skip creating dsc for %s again for it exists", pkg_name)
                         skip_create_dsc = True
-                        # True not None: just continue in the external for loop
-                        return skip_create_dsc, dsc_file
+                        status = 'DSC_NO_UPDATE'
                     else:
-                        logger.info("Found %s in dsc_cache, but does not exist, need to create", pkg_name)
+                        logger.info("The dsc file %s does not exist", dsc_file)
 
-        logger.debug("Be ready to create dsc for %s", pkg_dir)
-        pkg_build_dir = os.path.join(BUILD_ROOT, build_type, pkg_name)
-        if os.path.exists(pkg_build_dir):
+        if not skip_create_dsc:
             try:
-                shutil.rmtree(pkg_build_dir)
+                src_mirror_dir = os.path.join(os.environ.get('STX_MIRROR'), 'sources')
+                dsc_recipes = self.kits['dsc_maker'][build_type].package(pkg_dir, src_mirror_dir)
             except Exception as e:
                 logger.error(str(e))
+                # Exception when calling debrepack.package, should exit
+                return 'DSC_EXCEPTION', None
             else:
-                logger.debug("Successfully clean the old %s", pkg_build_dir)
-                os.makedirs(pkg_build_dir)
+                if not dsc_recipes:
+                    logger.error("Failed to create dsc for %s", pkg_name)
+                    # Fatal error when calling debrepack.package, should exit
+                    return 'DSC_ERROR', None
+                logger.debug("Successfully created dsc for %s", pkg_name)
+                pkg_checksum = self.pkgs_digests[pkg_dir]
+                dsc_path = os.path.join(pkg_build_dir, dsc_recipes[0])
+                self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_path + ':' + pkg_checksum)
+                dsc_file = os.path.join(pkg_build_dir, dsc_recipes[0])
 
-        try:
-            src_mirror_dir = os.path.join(os.environ.get('STX_MIRROR'), 'sources')
-            dsc_recipes = self.kits['dsc_maker'][build_type].package(pkg_dir, src_mirror_dir)
-        except Exception as e:
-            logger.error(str(e))
-            # False None: Fatal error, should exit
-            return skip_create_dsc, None
-        else:
-            if not dsc_recipes:
-                logger.error("Failed to create dsc for %s", pkg_name)
-                # False None: Fatal error, should exit
-                return skip_create_dsc, None
-            logger.debug("Successfully created dsc for %s", pkg_name)
-            pkg_checksum = self.pkgs_digests[pkg_dir]
-            dsc_path = os.path.join(pkg_build_dir, dsc_recipes[0])
-            self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_path + ':' + pkg_checksum)
-            # False not None: normal case
-            return skip_create_dsc, os.path.join(pkg_build_dir, dsc_recipes[0])
+
+        # If the sharing mode is enabled
+        if not reclaim and self.attrs['reuse']:
+            # 'reuse' should be handled for either no '-c' or '-c -all'
+            if self.attrs['avoid'] or (self.attrs['build_all'] and not self.attrs['avoid']):
+                logger.debug("Comparing with the remote shared dsc cache for %s", build_type)
+                # Only match the subdir under STX REPO
+                pkg_stx_path = pkg_dir.replace(os.environ.get('MY_REPO'), '')
+                remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_stx_path)
+                logger.debug("Checking package=%s, shared_checksum=%s, local_checksum=%s", pkg_stx_path, shared_checksum, new_checksum)
+                if shared_checksum and shared_checksum == new_checksum:
+                    logger.debug("Same checksum, %s will be reused from remote", pkg_name)
+                    # True None: just continue in the external for loop
+                    status = 'DSC_REUSE'
+                    '''
+                    Here the local dsc_cache also need to be set which prevents the subsequent
+                    build without 'reuse' rebuilding the package with same checksum again
+                    '''
+                    if dsc_file:
+                        self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_file + ':' + shared_checksum)
+                    else:
+                        logger.warning("dsc file is invalid and can not set dsc cache for %s", pkg_name)
+                else:
+                    logger.debug("Different source checksums, can not reuse the remote, continue to local build")
+
+        return status, dsc_file
 
     def get_stamp(self, pkg_dir, dsc_path, build_type, state):
         dsc_file, checksum = self.kits['dsc_cache'][build_type].get_package(pkg_dir)
@@ -1212,19 +1355,23 @@ class BuildController():
                         continue
                     # If the option 'build_depend' disabled, just exit
                     if not self.attrs['build_depend']:
-                        logger.error("The depended package %s is not in %s and has not been built", layer, pkg_name)
+                        logger.error("The depended package %s is not in %s and has not been built", pkg_name, layer)
                         return
                 # For the target packages
                 else:
                     if self.attrs['avoid']:
-                        if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
-                            logger.info("Stamp build_done found, package %s has been built, skipped", pkg_name)
-                            self.lists['success_' + build_type].append(pkg_dir)
-                            deps_resolver.pkg_accomplish(dsc_path)
-                            logger.debug("Avoid is enabled, dsc_path will be removed %s, current dscs list:%s", dsc_path, ','.join(dscs_list))
-                            if dsc_path in dscs_list:
-                                dscs_list.remove(dsc_path)
-                            continue
+                        # These packages in self.extend_deps must be rebuilt
+                        if pkg_dir not in self.extend_deps:
+                            if self.get_stamp(pkg_dir, dsc_path, build_type, 'build_done'):
+                                logger.info("Stamp build_done found, package %s has been built, skipped", pkg_name)
+                                self.lists['success_' + build_type].append(pkg_dir)
+                                deps_resolver.pkg_accomplish(dsc_path)
+                                logger.debug("Avoid is enabled, dsc_path will be removed %s, current dscs list:%s", dsc_path, ','.join(dscs_list))
+                                if dsc_path in dscs_list:
+                                    dscs_list.remove(dsc_path)
+                                continue
+                        else:
+                            logger.info("Since the depended package changes, %s will be rebuilt", pkg_name)
 
                 logger.info("Clean data(stamp and build output) to prepare to build %s", pkg_name)
                 # This package is decided to be built now
@@ -1306,7 +1453,7 @@ class BuildController():
                             logger.info("Successfully uploaded all the debs of %s to repository and created stamp", done_pkg_name)
                         deps_resolver.pkg_accomplish(done_dsc)
                         logger.debug('Notified dsc_depend that %s accomplished', done_pkg_name)
-                        if done_pkg_dir in target_pkgdir_dscs.keys():
+                        if done_pkg_dir in target_pkgdir_dscs.keys() or done_pkg_dir in self.extend_deps:
                             dscs_list.remove(done_dsc)
                             logger.info('Removed %s from remain packages after successfully build', done_pkg_name)
                             self.lists['success_' + build_type].append(done_pkg_dir)
@@ -1414,7 +1561,7 @@ class BuildController():
         packages = discovery.package_dirs_to_package_names(pkg_dirs)
         logger.debug(' '.join(['Building packages:',
                                ','.join(packages)]))
-        self.build_packages(layer_pkg_dirs, pkg_dirs, layer, build_type=build_type)
+        self.build_packages(layer_pkg_dirs, pkg_dirs, layer, word, build_type=build_type)
 
         logger.info(' '.join(['Finished building packages in',
                               'build_type', build_type,
@@ -1491,19 +1638,22 @@ class BuildController():
 
         return
 
-    def reclaim_reused_package(self, pkgname, pkgdir, layer_pkgdir_dscs, fdsc_file, build_type):
+    def reclaim_reused_package(self, pkgname, pkgdir, layer_pkgdir_dscs, build_dscs, no_build_dscs, fdsc_file, build_type):
         self.lists['reuse_' + build_type].remove(pkgdir)
         self.lists['reuse_pkgname_' + build_type].remove(pkgname)
-        skip_create, dsc_file = self.create_dsc(pkgname, pkgdir, reclaim=True, build_type=build_type)
+        status, dsc_file = self.create_dsc(pkgname, pkgdir, reclaim=True, build_type=build_type)
         if dsc_file and dsc_file.endswith('.dsc'):
-            layer_pkgdir_dscs[pkgdir.strip()] = dsc_file
-            fdsc_file.write(dsc_file + '\n')
-            if self.attrs['upload_source'] and self.kits['repo_mgr']:
-                self.upload_with_dsc(pkgname, dsc_file, REPO_SOURCE)
-            return True
-        return False
+            if status == 'DSC_BUILD' or status == 'DSC_NO_UPDATE':
+                if status == 'DSC_BUILD':
+                    build_dscs[pkgdir.strip()] = dsc_file
+                if status == 'DSC_NO_UPDATE':
+                    no_build_dscs[pkgdir.strip()] = dsc_file
+                fdsc_file.write(dsc_file + '\n')
+                if self.attrs['upload_source'] and self.kits['repo_mgr']:
+                    self.upload_with_dsc(pkgname, dsc_file, REPO_SOURCE)
+        return True
 
-    def build_packages(self, layer_pkg_dirs, pkg_dirs, layer, build_type=STX_DEFAULT_BUILD_TYPE):
+    def build_packages(self, layer_pkg_dirs, pkg_dirs, layer, word, build_type=STX_DEFAULT_BUILD_TYPE):
         # remove duplication
         pkg_dirs = list(set(pkg_dirs))
         logger.debug(' '.join(['build_packages: Building: ', str(pkg_dirs)]))
@@ -1525,34 +1675,69 @@ class BuildController():
         fdsc_file.truncate()
 
         # Now check and create the debian meta one by one
+        need_build = {}
+        no_need_build = {}
         for pkg_dir in layer_pkg_dirs:
             dsc_file = ""
             pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
             pkgs_dirs_map[pkg_name] = pkg_dir
-            skip_dsc, dsc_file = self.create_dsc(pkg_name, pkg_dir, reclaim=False, build_type=build_type)
-            if dsc_file:
+
+            status, dsc_file = self.create_dsc(pkg_name, pkg_dir, reclaim=False, build_type=build_type)
+            if status == 'DSC_BUILD' and dsc_file:
                 logger.debug("dsc_file = %s" % dsc_file)
+                need_build[pkg_dir.strip()] = dsc_file
                 layer_pkgdir_dscs[pkg_dir.strip()] = dsc_file
                 fdsc_file.write(dsc_file + '\n')
                 if self.attrs['upload_source'] and not skip_dsc and self.kits['repo_mgr']:
                     self.upload_with_dsc(pkg_name, dsc_file, REPO_SOURCE)
             else:
-                if skip_dsc:
-                    if self.attrs['reuse']:
-                        logger.info("%s will reuse the remote debs, skip to build", pkg_name)
-                    else:
-                        logger.info("%s has reused the shared debs, skip to build", pkg_name)
+                if status == 'DSC_REUSE':
+                    logger.info("%s will reuse the remote debs, skip to build", pkg_name)
                     self.lists['reuse_' + build_type].append(pkg_dir)
                     self.lists['reuse_pkgname_' + build_type].append(pkg_name)
+                    layer_pkgdir_dscs[pkg_dir.strip()] = dsc_file
+                    fdsc_file.write(dsc_file + '\n')
+                    if self.attrs['upload_source'] and self.kits['repo_mgr']:
+                        self.upload_with_dsc(pkgname, dsc_file, REPO_SOURCE)
                     continue
                 else:
-                    # Exit if fails to create dsc file
-                    if fdsc_file:
-                        fdsc_file.close()
-                    logger.error("Failed to create needed dsc file, exit")
-                    return
+                    if status == 'DSC_EXCEPTION' or status == 'DSC_ERROR':
+                        # Exit if fails to create dsc file
+                        if fdsc_file:
+                            fdsc_file.close()
+                        logger.error("Failed to create needed dsc file, exit")
+                        self.stop()
+                        sys.exit(1)
+                    else:
+                        if status == 'DSC_NO_UPDATE':
+                            logger.debug("Create_dsc return DSC_NO_UPDATE for %s", dsc_file)
+                            layer_pkgdir_dscs[pkg_dir.strip()] = dsc_file
+                            no_need_build[pkg_dir.strip()] = dsc_file
+                            fdsc_file.write(dsc_file + '\n')
+
+        # Find the dependency chain
+        if not word == 'selected':
+            if self.attrs['build_all'] or layer:
+                if self.attrs['avoid'] and self.kits['dsc_cache'][build_type]:
+                    logger.info("Start to find these packages which depend on the build packages")
+                    self.extend_deps = scan_all_depends(layer_pkgdir_dscs, need_build)
+                    if len(self.extend_deps) > 0:
+                        logger.info("Found %d packages which should be rebuilt:%s", len(self.extend_deps), ','.join(self.extend_deps))
+                    else:
+                        logger.info("There are no other packages to be rebuilt")
 
         if self.attrs['reuse'] and len(self.lists['reuse_pkgname_' + build_type]) > 0:
+            # Filter all that packages in dependency chain, these packages should not be reused
+            for rpkg_dir in self.extend_deps:
+                rpkg_name = discovery.package_dir_to_package_name(rpkg_dir, distro=self.attrs['distro'])
+                logger.debug("%s:%s needs to be removed from reused list", rpkg_name, rpkg_dir)
+                if rpkg_dir in self.lists['reuse_' + build_type]:
+                    self.lists['reuse_' + build_type].remove(rpkg_dir)
+                    self.lists['reuse_pkgname_' + build_type].remove(rpkg_name)
+                    logger.debug("%s is removed from reused list for dependency chain", rpkg_name)
+                else:
+                    logger.debug("%s is not in reuse list", rpkg_dir)
+
             logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
             stx_meta_dir = os.path.join(STX_META_NAME, STX_META_NAME + '-1.0')
             remote_debsentry = os.path.join(BUILD_ROOT, stx_meta_dir, build_type + '_debsentry.pkl')
@@ -1569,7 +1754,7 @@ class BuildController():
                     for this special case, the package will switch to locally build
                     '''
                     logger.warning("Failed to get subdebs from the remote cache, reclaim %s", pkgname)
-                    if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, fdsc_file, build_type):
+                    if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
                         logger.info("Successfully reclaimed %s when failed to get subdebs from remote cache", pkgname)
                         continue
                     else:
@@ -1597,7 +1782,7 @@ class BuildController():
                         logger.error(str(e))
                         logger.error("Exception occurrs when call repomgr.copy_pkgs");
                         # Reclaim reused packages after a broken copy_pkgs
-                        if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, fdsc_file, build_type):
+                        if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
                             logger.info("Successfully reclaimed %s after copy_pkgs broken", pkgname)
                         else:
                             logger.error("Failed to reclaime %s after copy_pkgs broken", pkgname)
@@ -1614,7 +1799,7 @@ class BuildController():
                         else:
                             # Reclaim reused packages after a failed copy_pkgs
                             logger.warning("Failed to copy all reused debs with repomgr.copy_pkgs")
-                            if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, fdsc_file, build_type):
+                            if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
                                 logger.info("Successfully reclaimed %s after copy_pkgs failure", pkgname)
                             else:
                                 logger.error("Failed to reclaime %s after copy_pkgs failure", pkgname)
@@ -1622,13 +1807,18 @@ class BuildController():
                                     fdsc_file.close()
                                 return
 
-        if fdsc_file:
-            fdsc_file.close()
         # Start to build
-        target_pkgdir_dscs = {}
-        for pkg in pkg_dirs:
+        target_pkgdir_dscs = need_build
+        for pdir, dsc in need_build.items():
+            self.lists['real_build_' + build_type].append(pdir)
+        for pkg in self.extend_deps:
             if pkg in layer_pkgdir_dscs.keys():
                 target_pkgdir_dscs[pkg] = layer_pkgdir_dscs[pkg]
+                self.lists['real_build_' + build_type].append(pkg)
+        target_pkgdir_dscs.update(no_need_build)
+
+        if fdsc_file:
+            fdsc_file.close()
 
         if target_pkgdir_dscs:
             self.run_build_loop(layer_pkgdir_dscs, target_pkgdir_dscs, layer, build_type=build_type)
@@ -1661,6 +1851,14 @@ class BuildController():
             if success_number > 0:
                 logger.info("Successfully built: %d", success_number)
                 for pkg_dir in sorted(success_list):
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
+                    logger.info(pkg_name)
+
+            real_build_list = list(set(self.lists['real_build_' + build_type]))
+            real_build_number = len(real_build_list)
+            if real_build_number > 0:
+                logger.info("Successfully built in pkgbuilder: %d", real_build_number)
+                for pkg_dir in sorted(real_build_list):
                     pkg_name = discovery.package_dir_to_package_name(pkg_dir, self.attrs['distro'])
                     logger.info(pkg_name)
 
