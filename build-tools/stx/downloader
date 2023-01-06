@@ -271,8 +271,14 @@ class DebDownloader(BaseDownloader):
             if ret:
                 return ret
         except Exception as e:
-            logger.debug("Fail to fetch binray %s_%s", _name, _version)
+            deb_name = _name + '_' + _version
+            logger.debug("Fail to fetch binary %s", deb_name)
             logger.debug(str(e))
+            '''
+            Sometimes the target deb is created in dl_dir, but actually it is
+            corrupted file. It should not be uploaded to binary repo.
+            '''
+            os.system('rm -f ' + os.path.join(self.dl_dir, deb_name + '*.deb'))
         return None
 
     def reports(self):
