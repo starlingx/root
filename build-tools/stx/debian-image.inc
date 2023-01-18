@@ -628,6 +628,7 @@ media-types
 memcached
 mime-support
 mksh
+mokutil
 mount
 multipath-tools
 mysql-common
