@@ -31,7 +31,7 @@ PREFIX_REMOTE = 'deb-remote-'
 PREFIX_MERGE = 'deb-merge-'
 SIGN_KEY = 'E82373F817C276756FA64756FAAD0555200D6582'
 SIGN_PASSWD = 'starlingx'
-DEFAULT_TIMEOUT_COUNT = 10
+DEFAULT_TIMEOUT_COUNT = 1
 STX_DIST = os.environ.get('STX_DIST')
 
 # Class used to manage aptly data base, it can:
@@ -115,22 +115,12 @@ class Deb_aptly():
         # Please do NOT add any parameters here beside "ignore_signatures=True", that may
         # overwrite previous settings and get strange results.
         task = self.aptly.mirrors.update(name=name, ignore_signatures=True)
-        # We can't use tasks.wait_for_task_by_id here, for the timeout is
-        # 60 seconds while no one knows how long it may take to accomplish
-        # the mirror update. So we need to manually os.sleep here.
-        # self.aptly.tasks.wait_for_task_by_id(task.id)
-        while 1:
-            # IDLE, RUNNING, SUCCEEDED, FAILED (What IDLE means?)
-            task_state = self.aptly.tasks.show(task.id).state
-            if task_state == 'RUNNING':
-                time.sleep(5)
-                self.logger.debug('Mirror %s updating: %s', name, self.aptly.tasks.show(task.id).state)
-                continue
-            if task_state == 'FAILED':
-                self.logger.warning('Mirror %s update failed: %s', name, self.aptly.tasks.show(task.id).state)
-                return False
-            if task_state == 'SUCCEEDED':
-                return True
+        task_state = self.__wait_for_task(task, 15)
+        if task_state == 'SUCCEEDED':
+            return True
+        else:
+            self.logger.warning('Mirror %s update failed: %s', name, task_state)
+            return False
 
     # Create a snapshot based on several others
     # name : string, the name of new build snapshot
@@ -199,9 +189,9 @@ class Deb_aptly():
         for publish in publish_list:
             if publish.prefix == name:
                 task = self.aptly.publish.drop(prefix=name, distribution=publish.distribution, force_delete=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop publication failed %s : %s' % (name, self.aptly.tasks.show(task.id).state))
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop publication failed %s : %s' % (name, task_state))
                     return False
         # Remove the backup snapshot if it exists
         snap_list = self.aptly.snapshots.list()
@@ -209,33 +199,33 @@ class Deb_aptly():
             if snap.name == 'backup-' + name:
                 backup_name = 'backup-' + name
                 task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, task_state))
                     return False
         # Rename the snapshot if it exists
         for snap in snap_list:
             if snap.name == name:
                 backup_name = 'backup-' + name
-                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(name, backup_name).id)
+                self.__wait_for_task(self.aptly.snapshots.update(name, backup_name))
 
         # crate a snapshot with package_refs. Duplicate package_refs is harmless.
         # Note: The key is "package_refs" instead of "source_snapshots", for function
         #       "create_from_packages", parameter "source_snapshots" almost has no means.
         task = None
         task = self.aptly.snapshots.create_from_packages(name, source_snapshots=source_snapshots, package_refs=package_refs)
-        self.aptly.tasks.wait_for_task_by_id(task.id)
-        if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+        task_state = self.__wait_for_task(task)
+        if task_state != 'SUCCEEDED':
             if backup_name:
-                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(backup_name, name).id)
-            self.logger.warning('merge_snapshot: Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
+                self.__wait_for_task(self.aptly.snapshots.update(backup_name, name))
+            self.logger.warning('merge_snapshot: Snapshot for %s creation failed: %s. ' % (name, task_state))
             return False
         # Remove the backup snapshot if it is created above
         if backup_name:
             task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Drop snapshot failed %s : %s' % (backup_name, task_state))
         return True
 
     # Create a snapshot based on "name" with same name
@@ -253,9 +243,9 @@ class Deb_aptly():
         for publish in publish_list:
             if publish.prefix == name:
                 task = self.aptly.publish.drop(prefix=name, distribution=publish.distribution, force_delete=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Remove publication failed %s : %s' % (name, self.aptly.tasks.show(task.id).state))
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Remove publication failed %s : %s' % (name, task_state))
         # Rename the snapshot if exists
         snap_list = self.aptly.snapshots.list()
 
@@ -264,8 +254,8 @@ class Deb_aptly():
         if exists:
             backup_name = 'backup-' + name
             if backup_exists:
-                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.delete(backup_name, force=True).id)
-            self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(name, backup_name).id)
+                self.__wait_for_task(self.aptly.snapshots.delete(backup_name, force=True))
+            self.__wait_for_task(self.aptly.snapshots.update(name, backup_name))
 
         # crate a snapshot
         task = None
@@ -273,36 +263,42 @@ class Deb_aptly():
             task = self.aptly.snapshots.create_from_repo(name, name)
         else:
             task = self.aptly.snapshots.create_from_mirror(name, name)
-        self.aptly.tasks.wait_for_task_by_id(task.id)
-        if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
+        task_state = self.__wait_for_task(task)
+        if task_state != 'SUCCEEDED':
             if backup_name:
-                self.aptly.tasks.wait_for_task_by_id(self.aptly.snapshots.update(backup_name, name).id)
-            self.logger.warning('create_snapshot: Snapshot for %s creation failed: %s. ' % (name, self.aptly.tasks.show(task.id).state))
+                self.__wait_for_task(self.aptly.snapshots.update(backup_name, name))
+            self.logger.warning('create_snapshot: Snapshot for %s creation failed: %s.' % (name, task_state))
             return False
         if backup_name:
             task = self.aptly.snapshots.delete(snapshotname=backup_name, force=True)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Remove snapshot failed %s : %s' % (backup_name, self.aptly.tasks.show(task.id).state))
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Remove snapshot failed %s : %s' % (backup_name, task_state))
         return True
 
-    # Wait a task for several minutes...
-    def __wait_slow_task(self, task, count=DEFAULT_TIMEOUT_COUNT):
-        '''Wait for a task for several minutes'''
-        if count not in range(1, 16):
-            self.logger.error('Requested wait of % minutes is greater than 15 minute max wait.' % count)
-            return 'Parameter error'
+    # Wait for an aptly task up to a maximum of "count" minutes.
+    # By dafault, wait for DEFAULT_TIMEOUT_COUNT minute(s).
+    # Return: SUCCEEDED, FAILED, TIMEOUTED, EINVAL
+    def __wait_for_task(self, task, count=DEFAULT_TIMEOUT_COUNT):
+        '''Wait for an aptly task for one or more minutes'''
+        if count not in range(1, 30):
+            self.logger.error('Requested wait of % minutes is greater than 30 minutes max wait.', count)
+            return 'EINVAL'
         while count > 0:
-            count -= 1;
+            count -= 1
             try:
                 # Function wait_for_task_by_id will return in 60 seconds, or timeout.
                 self.aptly.tasks.wait_for_task_by_id(task.id)
             except Exception as e:
-                self.logger.debug('%s' % e)
+                if count > 0:
+                    self.logger.debug('Aptly task is still running...')
+                else:
+                    self.logger.debug('%s' % e)
                 continue
             else:
-               return self.aptly.tasks.show(task.id).state
-        return 'Failed'
+                # return 'SUCCEEDED' or 'FAILED'
+                return self.aptly.tasks.show(task.id).state
+        return 'TIMEOUTED'
 
     # Publish a local repository directly, without snapshot or signature
     # If an old publish exists, drop it firstly and then create a new one.
@@ -319,16 +315,16 @@ class Deb_aptly():
         for publish in publish_list:
             if publish.prefix == publish_name:
                 task = self.aptly.publish.drop(prefix=publish_name, distribution=publish.distribution, force_delete=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop failed publication %s : %s', publish_name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop failed publication %s : %s', publish_name, task_state)
                     return None
         task = self.aptly.publish.publish(source_kind='local', sources=[{'Name': repo_name}],
                                           architectures=['amd64', 'source'], prefix=publish_name,
                                           distribution=None, sign_skip=True)
-        task_result = self.__wait_slow_task(task)
-        if task_result != 'SUCCEEDED':
-            self.logger.warning('Quick publish for %s create failed: %s' % (name, task_result))
+        task_state = self.__wait_for_task(task, 10)
+        if task_state != 'SUCCEEDED':
+            self.logger.warning('Quick publish for %s create failed: %s', publish_name, task_state)
             return None
         return publish_name + ' ' + 'bullseye'
 
@@ -341,9 +337,9 @@ class Deb_aptly():
         for publish in publish_list:
             if publish.prefix == name:
                 task = self.aptly.publish.drop(prefix=name, distribution=publish.distribution, force_delete=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop publish failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop publish failed %s : %s', name, task_state)
                     return None
 
         # is_remote: True => remote repo; False => local repo
@@ -378,9 +374,9 @@ class Deb_aptly():
                                           distribution=extra_param['distribution'],
                                           sign_gpgkey=SIGN_KEY, sign_passphrase=SIGN_PASSWD,
                                           origin=extra_param['origin'])
-        task_result = self.__wait_slow_task(task)
-        if task_result != 'SUCCEEDED':
-            self.logger.warning('Publication %s failed: %s' % (name, task_result))
+        task_state = self.__wait_for_task(task, 10)
+        if task_state != 'SUCCEEDED':
+            self.logger.warning('Publication %s failed: %s' % (name, task_state))
             return None
         publish_list = self.aptly.publish.list()
         for publish in publish_list:
@@ -446,29 +442,29 @@ class Deb_aptly():
         for publish in publish_list:
             if publish.prefix == name:
                 task = self.aptly.publish.drop(prefix=name, distribution=publish.distribution, force_delete=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
+                self.__wait_for_task(task)
 
         # find and remove related snapshot
         snap_list = self.aptly.snapshots.list()
         for snap in snap_list:
             if snap.name == name:
                 task = self.aptly.snapshots.delete(snapshotname=name, force=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop snapshot failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop snapshot failed %s : %s', name, task_state)
 
         # find and remove the remote(mirror)
         remote_list = self.aptly.mirrors.list()
         for remote in remote_list:
             if remote.name == name:
                 task = self.aptly.mirrors.drop(name=name, force=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop mirror failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop mirror failed %s : %s', name, task_state)
 
-        # Delete orphan files
+        # Delete orphan files, wait up to 5 minutes for the cleanup to complete
         task = self.aptly.db.cleanup()
-        self.aptly.tasks.wait_for_task_by_id(task.id)
+        self.__wait_for_task(task, 5)
 
         return True
 
@@ -566,9 +562,9 @@ class Deb_aptly():
 
         # Add uploaded file into local repository.
         task = self.aptly.repos.add_uploaded_file(repo_name, repo_name, remove_processed_files=True)
-        self.aptly.tasks.wait_for_task_by_id(task.id)
-        if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-            self.logger.warning('add_upload_file failed %s : %s : %s', list(pkg_files)[0], repo_name, self.aptly.tasks.show(task.id).state)
+        task_state = self.__wait_for_task(task)
+        if task_state != 'SUCCEEDED':
+            self.logger.warning('add_upload_file failed %s : %s : %s', list(pkg_files)[0], repo_name, task_state)
         return True
 
     # Delete a Debian package from a local repository.
@@ -595,9 +591,9 @@ class Deb_aptly():
             if (pkg_type == 'source' and pkg.key.split()[0] == 'Psource') or \
                 (pkg_type != 'source' and pkg.key.split()[0] != 'Psource'):
                 task = self.aptly.repos.delete_packages_by_key(local_repo, pkg.key)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Delete package failed %s : %s' % (pkg_name, self.aptly.tasks.show(task.id).state))
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Delete package failed %s : %s' % (pkg_name, task_state))
 
     def pkg_list(self, repo_list):
         '''list packages available from any of the listed repos, local or remote.'''
@@ -726,16 +722,16 @@ class Deb_aptly():
         # Remove duplicate packages from destination repository
         if del_keys:
             task = self.aptly.repos.delete_packages_by_key(dest, *del_keys)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Delete packages failed: %s\n%s' % (self.aptly.tasks.show(task.id).state, '\n'.join(del_keys)))
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Delete packages failed: %s\n%s' % (task_state, '\n'.join(del_keys)))
                 return False
         # Insert packages into destination repository
         if add_keys:
             task = self.aptly.repos.add_packages_by_key(dest, *add_keys)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Copy packages failed: %s\n%s' % (self.aptly.tasks.show(task.id).state, '\n'.join(add_keys)))
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Copy packages failed: %s\n%s' % (task_state, '\n'.join(add_keys)))
                 return False
         return True
 
@@ -779,9 +775,9 @@ class Deb_aptly():
 
         if self.__create_snapshot(name, True):
             ret = self.__publish_snap(name)
-            # Delete orphan files
+            # Delete orphan files, wait up to 5 minutes for the cleanup to complete
             task = self.aptly.db.cleanup()
-            self.aptly.tasks.wait_for_task_by_id(task.id)
+            self.__wait_for_task(task, 5)
             return ret
         return None
 
@@ -799,31 +795,31 @@ class Deb_aptly():
         for publish in publish_list:
             if publish.prefix == name:
                 task = self.aptly.publish.drop(prefix=name, distribution='bullseye', force_delete=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop publish failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop publish failed %s : %s', name, task_state)
 
         # find and remove related snapshot
         snap_list = self.aptly.snapshots.list()
         for snap in snap_list:
             if snap.name == name:
                 task = self.aptly.snapshots.delete(snapshotname=name, force=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop snapshot failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop snapshot failed %s : %s', name, task_state)
 
         # find and remove the remote(mirror)
         repo_list = self.aptly.repos.list()
         for repo in repo_list:
             if repo.name == name:
                 task = self.aptly.repos.delete(reponame=name, force=True)
-                self.aptly.tasks.wait_for_task_by_id(task.id)
-                if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                    self.logger.warning('Drop repo failed %s : %s', name, self.aptly.tasks.show(task.id).state)
+                task_state = self.__wait_for_task(task)
+                if task_state != 'SUCCEEDED':
+                    self.logger.warning('Drop repo failed %s : %s', name, task_state)
 
-        # Delete orphan files
+        # Delete orphan files, wait up to 5 minutes for the cleanup to complete
         task = self.aptly.db.cleanup()
-        self.aptly.tasks.wait_for_task_by_id(task.id)
+        self.__wait_for_task(task, 5)
 
         return None
 
@@ -837,34 +833,34 @@ class Deb_aptly():
         self.logger.info('%d publish', len(pub_list))
         for pub in pub_list:
             task = self.aptly.publish.drop(prefix=pub.prefix, distribution=pub.distribution, force_delete=True)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Drop publish failed %s : %s', pub.frepix, self.aptly.tasks.show(task.id).state)
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Drop publish failed %s : %s', pub.frepix, task_state)
         # clean snapshots
         snap_list = self.aptly.snapshots.list()
         self.logger.info('%d snapshot', len(snap_list))
         for snap in snap_list:
             task = self.aptly.snapshots.delete(snapshotname=snap.name, force=True)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Drop snapshot failed %s : %s', snap.name, self.aptly.tasks.show(task.id).state)
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Drop snapshot failed %s : %s', snap.name, task_state)
 
         # clean mirrors
         mirror_list = self.aptly.mirrors.list()
         self.logger.info('%d mirror', len(mirror_list))
         for mirror in mirror_list:
             task = self.aptly.mirrors.drop(name=mirror.name, force=True)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Drop mirror failed %s : %s', mirror.name, self.aptly.tasks.show(task.id).state)
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Drop mirror failed %s : %s', mirror.name, task_state)
         # clean local repos
         repo_list = self.aptly.repos.list()
         self.logger.info('%d repo', len(repo_list))
         for repo in repo_list:
             task = self.aptly.repos.delete(reponame=repo.name, force=True)
-            self.aptly.tasks.wait_for_task_by_id(task.id)
-            if self.aptly.tasks.show(task.id).state != 'SUCCEEDED':
-                self.logger.warning('Drop repo failed %s : %s', repo.name, self.aptly.tasks.show(task.id).state)
+            task_state = self.__wait_for_task(task)
+            if task_state != 'SUCCEEDED':
+                self.logger.warning('Drop repo failed %s : %s', repo.name, task_state)
         # clean file folders
         file_list = self.aptly.files.list()
         self.logger.info('%d file folder', len(file_list))
@@ -872,6 +868,6 @@ class Deb_aptly():
             self.aptly.files.delete(file)
         # clean tasks
         self.aptly.tasks.clear()
-        # Delete orphan files
+        # Delete orphan files, up to 5 minutes
         task = self.aptly.db.cleanup()
-        self.aptly.tasks.wait_for_task_by_id(task.id)
+        self.__wait_for_task(task, 5)
