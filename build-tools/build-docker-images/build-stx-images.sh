@@ -398,6 +398,10 @@ function build_image_loci {
     PROJECT_REPO=$(source ${image_build_file} && echo ${PROJECT_REPO})
     local PROJECT_REF
     PROJECT_REF=$(source ${image_build_file} && echo ${PROJECT_REF})
+    local PROJECT_UID
+    PROJECT_UID=$(source ${image_build_file} && echo ${PROJECT_UID})
+    local PROJECT_GID
+    PROJECT_GID=$(source ${image_build_file} && echo ${PROJECT_GID})
     local PIP_PACKAGES
     PIP_PACKAGES=$(source ${image_build_file} && echo ${PIP_PACKAGES})
     local DIST_PACKAGES
@@ -501,6 +505,14 @@ function build_image_loci {
 
     if [ -n "${PROJECT_REF}" ]; then
         BUILD_ARGS+=(--build-arg PROJECT_REF=${PROJECT_REF})
+    fi
+
+    if [ -n "${PROJECT_UID}" ]; then
+        BUILD_ARGS+=(--build-arg UID="${PROJECT_UID}")
+    fi
+
+    if [ -n "${PROJECT_GID}" ]; then
+        BUILD_ARGS+=(--build-arg GID="${PROJECT_GID}")
     fi
 
     if [ -n "${PIP_PACKAGES}" ]; then
