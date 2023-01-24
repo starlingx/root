@@ -226,6 +226,7 @@ unmount_iso
 # Fix for permission denied if not running as root
 chmod +w ${BUILDDIR}
 chmod -R +w ${BUILDDIR}/isolinux
+chmod -R +w ${BUILDDIR}/ostree_repo
 # Extract patch xml
 mkdir ${BUILDDIR}/patches
 
