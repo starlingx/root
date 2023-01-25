@@ -404,6 +404,8 @@ function build_image_loci {
     PROJECT_GID=$(source ${image_build_file} && echo ${PROJECT_GID})
     local PIP_PACKAGES
     PIP_PACKAGES=$(source ${image_build_file} && echo ${PIP_PACKAGES})
+    local UPGRADE_PIP_PACKAGES
+    UPGRADE_PIP_PACKAGES=$(source ${image_build_file} && echo ${UPGRADE_PIP_PACKAGES})
     local DIST_PACKAGES
     DIST_PACKAGES=$(source ${image_build_file} && echo ${DIST_PACKAGES})
     local PROFILES
@@ -517,6 +519,10 @@ function build_image_loci {
 
     if [ -n "${PIP_PACKAGES}" ]; then
         BUILD_ARGS+=(--build-arg PIP_PACKAGES="${PIP_PACKAGES}")
+    fi
+
+    if [ -n "${UPGRADE_PIP_PACKAGES}" ]; then
+        BUILD_ARGS+=(--build-arg UPGRADE_PIP_PACKAGES="${UPGRADE_PIP_PACKAGES}")
     fi
 
     if [ -n "${DIST_PACKAGES}" ]; then
