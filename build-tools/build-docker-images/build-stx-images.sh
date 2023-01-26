@@ -1115,6 +1115,12 @@ if ! (grep -q rh-python36-mod_wsgi ${WORKDIR}/loci/bindep.txt); then
     echo 'rh-python36-mod_wsgi        [platform:rpm !platform:suse (apache python3)]' >>  ${WORKDIR}/loci/bindep.txt
 fi
 
+# Replace outdated mysql-client dependency for placement project with default-mysql-client.
+# For context, refer to: https://review.opendev.org/c/starlingx/root/+/871705/
+sed -i 's'/\
+'mysql-client                         \[platform:dpkg placement\]'/\
+'default-mysql-client                 \[platform:dpkg placement\]'/ ${WORKDIR}/loci/bindep.txt
+
 # Build everything
 for image_build_file in "${IMAGE_BUILD_FILES[@]}" ; do
     # Failures are reported by the build functions
