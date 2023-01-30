@@ -351,7 +351,9 @@ class Parser():
 
         if "src_path" in self.meta_data and self.meta_data["src_path"] is not None:
             for root, _, files in os.walk(self.meta_data["src_path"]):
-                for name in files:
+                # Ignore .git files in the checksum calculation
+                filenames = filter(lambda f: not f.startswith('.git'), files)
+                for name in filenames:
                     files_list.append(os.path.join(root, name))
 
         if "src_files" in self.meta_data:
