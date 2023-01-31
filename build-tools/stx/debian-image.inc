@@ -1059,6 +1059,7 @@ tuned
 tzdata
 ucf
 udhcpc
+unzip
 util-linux
 uuid-runtime
 uwsgi-core
@@ -1079,5 +1080,6 @@ xfsprogs
 xml-core
 xmlsec1
 xxd
+zip
 zlib1g
 zlib1g-dev
