@@ -118,6 +118,7 @@ fontconfig-config
 fonts-dejavu-core
 fonts-font-awesome
 fonts-glyphicons-halflings
+fonts-lato
 fonts-materialdesignicons-webfont
 fonts-roboto-fontface
 freeipmi-common
@@ -859,6 +860,7 @@ python3-pycadf
 python3-pycodestyle
 python3-pycparser
 python3-pycryptodome
+python3-pyelftools
 python3-pyflakes
 python3-pyghmi
 python3-pygments
@@ -892,6 +894,7 @@ python3-rtslib-fb
 python3-ruamel.yaml
 python3-ruamel.yaml.clib
 python3-s3transfer
+python3-scapy
 python3-scipy
 python3-scrypt
 python3-secretstorage
@@ -1016,6 +1019,7 @@ smartmontools
 socat
 spectre-meltdown-checker
 sphinx-common
+sphinx-rtd-theme-common
 sqlite3
 sshpass
 ssl-cert
