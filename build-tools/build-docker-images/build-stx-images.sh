@@ -235,7 +235,7 @@ function get_loci {
 
 function patch_loci {
     echo "Patching ${WORKDIR}/loci/Dockerfile" >&2
-    ( cd "${WORKDIR}/loci" && git am $( \ls -1 $MY_SCRIPT_DIR/loci/patches/*.patch | sort ) ; )
+    ( cd "${WORKDIR}/loci" && git am $( \ls -1 $MY_SCRIPT_DIR/loci/patches/*.patch | sort ) ; ) || exit 1
 
     # clear wheels dir
     \rm -rf "${WORKDIR}/loci/stx-wheels/"* || exit 1
@@ -473,7 +473,11 @@ function build_image_loci {
             return 1
         fi
 
-        PROJECT_REPO=http://${HOSTNAME}:8088/${CLONE_DIR}
+        if [[ -n "$BUILDER_FILES_URL" ]] ; then
+            PROJECT_REPO="$BUILDER_FILES_URL/${CLONE_DIR}"
+        else
+            PROJECT_REPO="http://${HOSTNAME}:8088/${CLONE_DIR}"
+        fi
     fi
 
     local -a BUILD_ARGS=
