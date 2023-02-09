@@ -505,7 +505,8 @@ class BuildController():
             'reuse': False,
             'build_all': False,
             'reuse_export': True,
-            'dl_reused': False
+            'dl_reused': False,
+            'reuse_shared_repo': True
         }
         self.kits = {
             'dsc_cache': {},
@@ -537,6 +538,26 @@ class BuildController():
     def build_avoid(self, avoid):
         self.attrs['avoid'] = avoid
 
+    def reuse_shared_repo(self):
+        try:
+            ret = self.kits['repo_mgr'].remove_repo('deb-local-build')
+            if ret:
+                #recreate deb-local-build
+                if not self.kits['repo_mgr'].upload_pkg('deb-local-build', ''):
+                    logger.error("Failed to recreate deb-local-build")
+                    return False
+                packages = self.kits['repo_mgr'].list_pkgs(REUSE_MIRROR, quiet=True)
+                pkgs = list()
+                for pkg in packages:
+                    pkgs.append(pkg.split('_')[0])
+                if self.kits['repo_mgr'].copy_pkgs(REUSE_MIRROR, 'deb-local-build', ','.join(pkgs)):
+                    logger.info("Successfully copied %s to deb-local-build", REUSE_MIRROR)
+                    return True
+        except Exception as e:
+            logger.error(str(e))
+        logger.error("Failed to copy %s to deb-local-build", REUSE_MIRROR)
+        return False
+
     def get_reuse(self, build_types):
         if not self.attrs['reuse']:
             return True
@@ -561,6 +582,8 @@ class BuildController():
         try:
             logger.info("Creating reused mirror with the shared URL, please wait...")
             ret = self.kits['repo_mgr'].mirror(REUSE_MIRROR, **kwargs)
+            if ret and self.attrs['reuse_shared_repo']:
+                ret = self.reuse_shared_repo()
         except Exception as e:
             logger.error(str(e))
             logger.error("Failed to create reused mirror with %s", reuse_url)
@@ -1152,6 +1175,7 @@ class BuildController():
                         logger.warning("dsc file is invalid and can not set dsc cache for %s", pkg_name)
                 else:
                     logger.debug("Different source checksums, can not reuse the remote, continue to local build")
+                    status = 'DSC_BUILD'
 
         return status, dsc_file
 
@@ -1340,8 +1364,13 @@ class BuildController():
                 pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
                 logger.info("Depends resolver told to build %s", pkg_name)
                 # For layer builds, the package may has been built before in the layer with higher priority
-                if pkg_dir in self.lists['success_' + build_type]:
-                    logger.warning("Package %s has been built in this round, skip", pkg_name)
+                in_reuse_list = False
+                if self.attrs['reuse'] and self.lists['reuse_' + build_type]:
+                    if pkg_dir in self.lists['reuse_' + build_type]:
+                        in_reuse_list = True
+
+                if pkg_dir in self.lists['success_' + build_type] or in_reuse_list:
+                    logger.warning("Package %s has been built/reused in this round, skip", pkg_name)
                     deps_resolver.pkg_accomplish(dsc_path)
                     logger.debug("dsc_path will be removed %s, current dscs list:%s", dsc_path, ','.join(dscs_list))
                     if dsc_path in dscs_list:
@@ -1677,6 +1706,7 @@ class BuildController():
         # Now check and create the debian meta one by one
         need_build = {}
         no_need_build = {}
+        # layer_pkg_dirs contains all STX packages of this layer
         for pkg_dir in layer_pkg_dirs:
             dsc_file = ""
             pkg_name = discovery.package_dir_to_package_name(pkg_dir, distro=self.attrs['distro'])
@@ -1737,75 +1767,81 @@ class BuildController():
                     logger.debug("%s is removed from reused list for dependency chain", rpkg_name)
                 else:
                     logger.debug("%s is not in reuse list", rpkg_dir)
-
-            logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
+            # If 'reuse_shared_repo' is enabled, only need to replace the local debentry
+            # with the remote debentry in stx-meta
             stx_meta_dir = os.path.join(STX_META_NAME, STX_META_NAME + '-1.0')
             remote_debsentry = os.path.join(BUILD_ROOT, stx_meta_dir, build_type + '_debsentry.pkl')
-            for pkgname in self.lists['reuse_pkgname_' + build_type]:
-                logger.debug("First try to remove all subdebs from %s for %s", REPO_BUILD, pkgname)
-                self.remove_pkg_debs(pkgname, build_type)
-                logger.debug("Then try to copy all subdebs of %s from mirror to %s", pkgname, REPO_BUILD)
+            local_debsentry = get_debs_clue(build_type)
+            if not self.attrs['reuse_shared_repo']:
+                logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
+                for pkgname in self.lists['reuse_pkgname_' + build_type]:
+                    logger.debug("First try to remove all subdebs from %s for %s", REPO_BUILD, pkgname)
+                    self.remove_pkg_debs(pkgname, build_type)
+                    logger.debug("Then try to copy all subdebs of %s from mirror to %s", pkgname, REPO_BUILD)
 
-                logger.debug("Get the subdebs of %s with remote %s", pkgname, remote_debsentry)
-                debs_list = debsentry.get_subdebs(remote_debsentry, pkgname, logger)
-                if not debs_list:
-                    '''
-                    dsc cache says to reuse this package, but fails to find the subdebs in debentry cache
-                    for this special case, the package will switch to locally build
-                    '''
-                    logger.warning("Failed to get subdebs from the remote cache, reclaim %s", pkgname)
-                    if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
-                        logger.info("Successfully reclaimed %s when failed to get subdebs from remote cache", pkgname)
-                        continue
-                    else:
-                        logger.error("Failed to reclaime %s when failed to get subdebs from remote cache", pkgname)
-                        if fdsc_file:
-                            fdsc_file.close()
-                        return
-
-                debs_reused = None
-                for deb in debs_list:
-                    if not debs_reused:
-                        debs_reused = deb.split('_')[0]
-                    else:
-                        debs_reused = debs_reused + ',' + (deb.split('_')[0])
-
-                if debs_reused:
-                    logger.info("All subdebs of %s will be imported:%s", pkgname, debs_reused)
-                    try:
-                        logger.info("Calls copy_pkgs: mirror=%s local_repo=%s type=binary deploy=True overwrite=True",
-                                    REUSE_MIRROR, REPO_BUILD)
-                        ret = self.kits['repo_mgr'].copy_pkgs(REUSE_MIRROR, REPO_BUILD, debs_reused,
-                                                              pkg_type='binary',
-                                                              deploy=True, overwrite=True)
-                    except Exception as e:
-                        logger.error(str(e))
-                        logger.error("Exception occurrs when call repomgr.copy_pkgs");
-                        # Reclaim reused packages after a broken copy_pkgs
+                    logger.debug("Get the subdebs of %s with remote %s", pkgname, remote_debsentry)
+                    debs_list = debsentry.get_subdebs(remote_debsentry, pkgname, logger)
+                    if not debs_list:
+                        '''
+                        dsc cache says to reuse this package, but fails to find the subdebs in shared debentry
+                        for this special case, the package will switch to locally build
+                        '''
+                        logger.warning("Failed to get subdebs from the remote cache, reclaim %s", pkgname)
                         if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
-                            logger.info("Successfully reclaimed %s after copy_pkgs broken", pkgname)
+                            logger.info("Successfully reclaimed %s when failed to get subdebs from remote cache", pkgname)
+                            continue
                         else:
-                            logger.error("Failed to reclaime %s after copy_pkgs broken", pkgname)
+                            logger.error("Failed to reclaime %s when failed to get subdebs from remote cache", pkgname)
                             if fdsc_file:
                                 fdsc_file.close()
                             return
-                    else:
-                        if ret:
-                            logger.debug("Successfully call repomgr.copy_pkgs to import reused debs")
-                            # Now set the debentry cache
-                            debs_clue = get_debs_clue(build_type)
-                            debsentry.set_subdebs(debs_clue, pkgname, debs_list, logger)
-                            logger.debug("Successfully updated local %s_debsentry after copying reused debs done", build_type)
+
+                    debs_reused = None
+                    for deb in debs_list:
+                        if not debs_reused:
+                            debs_reused = deb.split('_')[0]
                         else:
-                            # Reclaim reused packages after a failed copy_pkgs
-                            logger.warning("Failed to copy all reused debs with repomgr.copy_pkgs")
+                            debs_reused = debs_reused + ',' + (deb.split('_')[0])
+
+                    if debs_reused:
+                        logger.info("All subdebs of %s will be imported:%s", pkgname, debs_reused)
+                        try:
+                            logger.info("Calls copy_pkgs: mirror=%s local_repo=%s type=binary deploy=True overwrite=True",
+                                        REUSE_MIRROR, REPO_BUILD)
+                            ret = self.kits['repo_mgr'].copy_pkgs(REUSE_MIRROR, REPO_BUILD, debs_reused,
+                                                                  pkg_type='binary',
+                                                                  deploy=True, overwrite=True)
+                        except Exception as e:
+                            logger.error(str(e))
+                            logger.error("Exception occurrs when call repomgr.copy_pkgs");
+                            # Reclaim reused packages after a broken copy_pkgs
                             if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
-                                logger.info("Successfully reclaimed %s after copy_pkgs failure", pkgname)
+                                logger.info("Successfully reclaimed %s after copy_pkgs broken", pkgname)
                             else:
-                                logger.error("Failed to reclaime %s after copy_pkgs failure", pkgname)
+                                logger.error("Failed to reclaime %s after copy_pkgs broken", pkgname)
                                 if fdsc_file:
                                     fdsc_file.close()
                                 return
+                        else:
+                            if ret:
+                                logger.debug("Successfully call repomgr.copy_pkgs to import reused debs")
+                                # Now set the debentry cache
+                                debs_clue = get_debs_clue(build_type)
+                                debsentry.set_subdebs(debs_clue, pkgname, debs_list, logger)
+                                logger.debug("Successfully updated local %s_debsentry after copying reused debs done", build_type)
+                            else:
+                                # Reclaim reused packages after a failed copy_pkgs
+                                logger.warning("Failed to copy all reused debs with repomgr.copy_pkgs")
+                                if self.reclaim_reused_package(pkgname, pkgs_dirs_map[pkgname], layer_pkgdir_dscs, need_build, no_need_build, fdsc_file, build_type):
+                                    logger.info("Successfully reclaimed %s after copy_pkgs failure", pkgname)
+                                else:
+                                    logger.error("Failed to reclaime %s after copy_pkgs failure", pkgname)
+                                    if fdsc_file:
+                                        fdsc_file.close()
+                                    return
+            # reuse_shared_repo directly is enabled, need not the above time consuming work
+            else:
+                os.system('cp -f ' + remote_debsentry + ' ' + local_debsentry)
 
         # Start to build
         target_pkgdir_dscs = need_build
