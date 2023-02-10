@@ -1,39 +1,27 @@
-From 644ac10c8877444c540aac36111e59c65c47ce59 Mon Sep 17 00:00:00 2001
+From 7462c9467cd0a1e98ced03517646a4e00f65ddc3 Mon Sep 17 00:00:00 2001
 From: Davlet Panech <davlet.panech@windriver.com>
 Date: Thu, 8 Sep 2022 21:04:55 +0000
-Subject: [PATCH 1/2] starlingx: wheels from filesystem + pkg repos
+Subject: [PATCH] starlingx: enable/disable package repos
 
-- Allow WHEELS to be a local file path, rather than URL
-- Dockerfile: new parameter DIST_REPOS that allows one to
-  enable/disable package repos when building
+Dockerfile: new parameter DIST_REPOS that allows one to
+enable/disable package repos when building
 
 Signed-off-by: Davlet Panech <davlet.panech@windriver.com>
 ---
- .gitignore                         |   1 +
- Dockerfile                         |   6 +-
- stx-scripts/cleanup.sh             |   6 ++
- stx-scripts/install.sh             |  14 ++++
+ Dockerfile                         |   5 +-
+ stx-scripts/install.sh             |  11 +++
  stx-scripts/setup-package-repos.sh | 126 +++++++++++++++++++++++++++++
  stx-wheels/.keep                   |   0
- 6 files changed, 152 insertions(+), 1 deletion(-)
- create mode 100644 .gitignore
- create mode 100755 stx-scripts/cleanup.sh
+ 4 files changed, 141 insertions(+), 1 deletion(-)
  create mode 100755 stx-scripts/install.sh
  create mode 100755 stx-scripts/setup-package-repos.sh
  create mode 100644 stx-wheels/.keep
 
-diff --git a/.gitignore b/.gitignore
-new file mode 100644
-index 0000000..4b5032a
---- /dev/null
-+++ b/.gitignore
-@@ -0,0 +1 @@
-+stx-wheels/[^.]*
 diff --git a/Dockerfile b/Dockerfile
-index 3a026a3..145d284 100644
+index 3a026a3..3baea6c 100644
 --- a/Dockerfile
 +++ b/Dockerfile
-@@ -32,4 +32,8 @@ ARG SPICE_REF=${SPICE_REF:-spice-html5-0.1.6}
+@@ -32,4 +32,7 @@ ARG SPICE_REF=${SPICE_REF:-spice-html5-0.1.6}
  COPY scripts /opt/loci/scripts
  ADD bindep.txt pydep.txt $EXTRA_BINDEP $EXTRA_PYDEP /opt/loci/
  
@@ -41,26 +29,13 @@ index 3a026a3..145d284 100644
 +#RUN /opt/loci/scripts/install.sh
 +ARG DIST_REPOS
 +COPY stx-scripts /opt/loci/stx-scripts
-+COPY stx-wheels  /opt/loci/stx-wheels
 +RUN /opt/loci/stx-scripts/install.sh
-diff --git a/stx-scripts/cleanup.sh b/stx-scripts/cleanup.sh
-new file mode 100755
-index 0000000..6ac890f
---- /dev/null
-+++ b/stx-scripts/cleanup.sh
-@@ -0,0 +1,6 @@
-+#!/bin/bash
-+
-+set -ex
-+
-+rm -rf /opt/loci/stx-wheels/*
-+
 diff --git a/stx-scripts/install.sh b/stx-scripts/install.sh
 new file mode 100755
-index 0000000..033bdb9
+index 0000000..da11b75
 --- /dev/null
 +++ b/stx-scripts/install.sh
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,11 @@
 +#!/bin/bash
 +
 +set -ex
@@ -72,9 +47,6 @@ index 0000000..033bdb9
 +
 +# run Loci installer
 +"$LOCI_DIR/scripts/install.sh" "$@"
-+
-+# delete wheel tarball etc
-+"$LOCI_DIR/stx-scripts/cleanup.sh"
 diff --git a/stx-scripts/setup-package-repos.sh b/stx-scripts/setup-package-repos.sh
 new file mode 100755
 index 0000000..dd43612
