@@ -112,6 +112,12 @@ function is_in {
     return 1
 }
 
+function starts_with {
+    local str="$1"
+    local prefix="$2"
+    [[ "${str#$prefix}" != "$str" ]]
+}
+
 function is_empty {
     test $# -eq 0
 }
@@ -121,20 +127,33 @@ function url_basename {
     echo "$1" | sed -r -e 's/[?#].*//' -e 's#.*/##'
 }
 
-# Usage: download $URL $OUTPUT_FILE
-function download_file {
-    local url="$1"
-    local out_file="$2"
-    if echo "$url" | grep -E -q -e '^https?:' -e '^ftp:' ; then
-        \rm -f "$out_file.tmp" || return 1
-        with_retries 5 wget -O "$out_file.tmp" "$url" || return 1
-        \mv -f "$out_file.tmp" "$out_file" || exit 1
+function local_path_to_url {
+    local path="$1"
+
+    local abs_path
+    abs_path="$(readlink -f "$path")" || exit 1
+
+    local repo_root
+    repo_root="$(readlink -e "$MY_REPO_ROOT_DIR")" || exit 1
+
+    local workspace_root
+    workspace_root="$(readlink -e "$MY_WORKSPACE")" || exit 1
+
+    local dflt_port
+    if starts_with "$abs_path" "$repo_root" ; then
+        dflt_port="8089"
+    elif starts_with "$abs_path" "$workspace" ; then
+        dflt_port="8088"
     else
-        local src_file
-        src_file="$(echo "$url" | sed -e 's#^file:/+##')"
-        \cp -a "$src_file" "$out_file" || return 1
+        echo "ERROR: $path: path must start with \$MY_REPO_ROOT_DIR or \$MY_WORKSPACE" >&2
+        exit 1
     fi
-    return 0
+
+    if [[ -n "$BUILDER_FILES_URL" ]] ; then
+        echo "${BUILDER_FILES_URL}${path}"
+    else
+        echo "http://${HOSTNAME}:${dflt_port}${path}"
+    fi
 }
 
 #
@@ -239,16 +258,6 @@ function patch_loci {
 
     # clear wheels dir
     \rm -rf "${WORKDIR}/loci/stx-wheels/"* || exit 1
-}
-
-function download_loci_wheels {
-    local url="$1"
-    out_file="${WORKDIR}/loci/stx-wheels/$(url_basename "$url")"
-    if [[ ! -f "$out_file" ]] ; then
-        echo "Downloading $url => $out_file" >&2
-        download_file "$url" "$out_file" || return 1
-    fi
-    return 0
 }
 
 function update_image_record {
@@ -473,11 +482,7 @@ function build_image_loci {
             return 1
         fi
 
-        if [[ -n "$BUILDER_FILES_URL" ]] ; then
-            PROJECT_REPO="$BUILDER_FILES_URL/${CLONE_DIR}"
-        else
-            PROJECT_REPO="http://${HOSTNAME}:8088/${CLONE_DIR}"
-        fi
+        PROJECT_REPO="$(local_path_to_url "${CLONE_DIR}")" || exit 1
     fi
 
     local -a BUILD_ARGS=
@@ -487,14 +492,10 @@ function build_image_loci {
 
     if [ "${PYTHON3}" == "no" ] ; then
         echo "Python2 service ${LABEL}"
-        download_loci_wheels "$WHEELS_PY2" || exit 1
-        #BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_PY2})
-        BUILD_ARGS+=(--build-arg WHEELS="/opt/loci/stx-wheels/$(url_basename "$WHEELS_PY2")")
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS_PY2})
     else
         echo "Python3 service ${LABEL}"
-        download_loci_wheels "$WHEELS" || exit 1
-        #BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
-        BUILD_ARGS+=(--build-arg WHEELS="/opt/loci/stx-wheels/$(url_basename "$WHEELS")")
+        BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
     fi
 
     if [ ! -z "$HTTP_PROXY" ]; then
@@ -981,12 +982,16 @@ fi
 for var in WHEELS WHEELS_PY2 ; do
     # skip empty vars
     [[ -n "${!var}" ]] || continue
-    # skip network urls
-    echo "${!var}" | grep -E -q -e '^https?:' -e '^ftp:' && continue
+    # http(s) urls are supported by Loci directly -- skip
+    # See https://github.com/openstack/loci/blob/efccd0a853879ac6af6066eda09792d0d3afe9c0/scripts/fetch_wheels.py#L170
+    echo "${!var}" | grep -E -q -e '^https?:' && continue
     # remove file:/ prefix if any
     declare "$var=$(echo "${!var}" | sed -r 's#^file:/+##')"
     # resolve it to an absolute path
     declare "$var=$(readlink -f "${!var}")" || exit 1
+    # convert it to a local URL
+    url="$(local_path_to_url "${!var}")" || exit 1
+    declare "$var=$url"
 done
 
 # Find the directives files
