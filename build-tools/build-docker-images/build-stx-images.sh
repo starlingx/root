@@ -7,7 +7,7 @@
 # This utility builds the StarlingX container images
 #
 
-MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
+MY_SCRIPT_DIR=$(dirname $(readlink -fv $0))
 
 source ${MY_SCRIPT_DIR}/../build-wheels/utils.sh
 
@@ -131,18 +131,18 @@ function local_path_to_url {
     local path="$1"
 
     local abs_path
-    abs_path="$(readlink -f "$path")" || exit 1
+    abs_path="$(readlink -fv "$path")" || exit 1
 
     local repo_root
-    repo_root="$(readlink -e "$MY_REPO_ROOT_DIR")" || exit 1
+    repo_root="$(readlink -ev "$MY_REPO_ROOT_DIR")" || exit 1
 
     local workspace_root
-    workspace_root="$(readlink -e "$MY_WORKSPACE")" || exit 1
+    workspace_root="$(readlink -ev "$MY_WORKSPACE")" || exit 1
 
     local dflt_port
     if starts_with "$abs_path" "$repo_root" ; then
         dflt_port="8089"
-    elif starts_with "$abs_path" "$workspace" ; then
+    elif starts_with "$abs_path" "$workspace_root" ; then
         dflt_port="8088"
     else
         echo "ERROR: $path: path must start with \$MY_REPO_ROOT_DIR or \$MY_WORKSPACE" >&2
@@ -988,7 +988,7 @@ for var in WHEELS WHEELS_PY2 ; do
     # remove file:/ prefix if any
     declare "$var=$(echo "${!var}" | sed -r 's#^file:/+##')"
     # resolve it to an absolute path
-    declare "$var=$(readlink -f "${!var}")" || exit 1
+    declare "$var=$(readlink -fv "${!var}")" || exit 1
     # convert it to a local URL
     url="$(local_path_to_url "${!var}")" || exit 1
     declare "$var=$url"
