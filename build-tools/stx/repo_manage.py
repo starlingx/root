@@ -512,7 +512,7 @@ class RepoMgr():
             return True
         else:
             self.logger.error('Create mirror failed %s : %s' % (repo_name, url))
-            return false
+            return False
 
     # List all repositories
     # Output: None
