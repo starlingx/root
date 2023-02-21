@@ -140,6 +140,7 @@ libslirp0
 libsoup2.4-1
 libspice-server1
 libssh-4
+libsss-sudo
 libteam-utils
 libunbound8
 liburing1
