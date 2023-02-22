@@ -366,6 +366,8 @@ class Parser():
                     files_list.append(src_file)
 
         for f in sorted(files_list):
+            if f.endswith(".pyc") or f.endswith(".pyo"):
+                continue
             with open(f, 'r', encoding="ISO-8859-1") as fd:
                 content += fd.read()
 
@@ -378,7 +380,7 @@ class Parser():
             if "SRC_DIR" in gitrevcount:
                 src_dir = os.path.expandvars(gitrevcount["SRC_DIR"])
                 if os.path.exists(src_dir):
-                    content += run_shell_cmd("cd %s; git log --oneline -10 ." % src_dir, self.logger)
+                    content += run_shell_cmd("cd %s; git log --oneline -10 --abbrev=10 ." % src_dir, self.logger)
                     content += run_shell_cmd("cd %s; git diff ." % src_dir, self.logger)
 
         return get_str_md5(content)
