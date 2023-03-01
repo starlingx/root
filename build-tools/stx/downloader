@@ -354,6 +354,9 @@ class DebDownloader(BaseDownloader):
                 logger.info("%s has already been uploaded to %s, skip", deb_path, REPO_BIN)
                 continue
             try:
+                debnames = deb.split('_')
+                del_ret = self.repomgr.delete_pkg(REPO_BIN, debnames[0], 'binary', None)
+                logger.debug("Only need uploading: Tried to delete the old %s, ret %d", debnames[0], del_ret)
                 upload_ret = self.repomgr.upload_pkg(REPO_BIN, deb_path, deploy=False)
             except Exception as e:
                 logger.error(str(e))
@@ -379,6 +382,8 @@ class DebDownloader(BaseDownloader):
                 deb_ver = debnames[1].split(":")[-1]
                 self.dl_success.append('_'.join([debnames[0], deb_ver]))
                 try:
+                    del_ret = self.repomgr.delete_pkg(REPO_BIN, debnames[0], 'binary', None)
+                    logger.debug("Tried to delete the old %s, ret %d", debnames[0], del_ret)
                     upload_ret = self.repomgr.upload_pkg(REPO_BIN, ret, deploy=False)
                 except Exception as e:
                     logger.error(str(e))
