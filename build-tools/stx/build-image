@@ -445,7 +445,7 @@ def sign_iso_dev(img_yaml):
         # default image name
         iso_name = 'starlingx-intel-x86-64-cd'
     # openssl dgst -sha256 -sign ${KEY_PATH} -binary -out ${DEPLOY_DIR}/${ISO_NOEXT}.sig $DEPLOY_DIR/starlingx-intel-x86-64-cd.iso
-    sign_cmd = f'openssl dgst -sha256 -sign {key_path} -binary -out {deploy_dir}/{iso_name}.sig {deploy_dir}/{iso_name}.iso'
+    sign_cmd = f'sudo openssl dgst -sha256 -sign {key_path} -binary -out {deploy_dir}/{iso_name}.sig {deploy_dir}/{iso_name}.iso'
     ret = subprocess.call(sign_cmd, shell=True)
     if ret == 0:
         logger.info("Image signed %s", os.path.join(deploy_dir, iso_name + '.iso'))
