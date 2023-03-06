@@ -595,6 +595,8 @@ if __name__ == "__main__":
                     break
     # stop latd
     stop_latd()
+
+    os.system('sudo chown -R ${USER}: ' + LAT_ROOT + '/deploy' )
     # Sign iso with developer key
     if ret == 0:
         sign_iso_dev(lat_yaml)
