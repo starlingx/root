@@ -457,7 +457,7 @@ function build_image_loci {
         echo "Creating bare clone of ${PROJECT_REPO} for ${LABEL} build..."
         if [ -n "${PROJECT_REF}" ]; then
             echo "PROJECT_REF specified is ${PROJECT_REF}..."
-            git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
+            git clone --no-local --bare ${PROJECT_REPO} ${CLONE_DIR} \
                 && cd ${PROJECT_REPO} \
                 && git push --force ${CLONE_DIR} HEAD:refs/heads/${PROJECT_REF} \
                 && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
@@ -466,7 +466,7 @@ function build_image_loci {
                 && git update-server-info \
                 && cd ${ORIGWD}
         else
-            git clone --bare ${PROJECT_REPO} ${CLONE_DIR} \
+            git clone --no-local --bare ${PROJECT_REPO} ${CLONE_DIR} \
                 && cd ${PROJECT_REPO} \
                 && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
                 && chmod a+x ${CLONE_DIR}/hooks/post-update \
