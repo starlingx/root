@@ -9,7 +9,7 @@
 
 MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
-source ${MY_SCRIPT_DIR}/../build-wheels/utils.sh
+source ${MY_SCRIPT_DIR}/../utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -38,6 +38,7 @@ LATEST_TAG=latest
 HOST=${HOSTNAME}
 USE_DOCKER_CACHE=no
 declare -i MAX_ATTEMPTS=1
+declare -i RETRY_DELAY=30
 
 function usage {
     cat >&2 <<EOF
@@ -63,7 +64,10 @@ Options:
     --registry:   Docker registry
     --clean:      Remove image(s) from local registry
     --hostname:   build repo host
-    --attempts:   Max attempts, in case of failure (default: 1)
+    --attempts <count>
+                  Max attempts, in case of failure (default: 1)
+    --retry-delay <seconds>
+                  Sleep this many seconds between retries (default: 30)
     --config-file:Specify a path to a config file which will specify additional arguments to be passed into the command
 
     --cache:      Allow docker to use cached filesystem layers when building
@@ -118,7 +122,7 @@ function get_args_from_file {
     done <"$1"
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -200,6 +204,10 @@ while true; do
             ;;
         --attempts)
             MAX_ATTEMPTS=$2
+            shift 2
+            ;;
+        --retry-delay)
+            RETRY_DELAY=$2
             shift 2
             ;;
         --config-file)
@@ -404,7 +412,7 @@ fi
 BUILD_ARGS+=(--tag ${IMAGE_NAME} ${BUILDDIR})
 
 # Build base image
-with_retries ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
+with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
 if [ $? -ne 0 ]; then
     echo "Failed running docker build command" >&2
     exit 1
@@ -413,7 +421,7 @@ fi
 if [ "${PUSH}" = "yes" ]; then
     # Push the image
     echo "Pushing image: ${IMAGE_NAME}"
-    docker push ${IMAGE_NAME}
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${IMAGE_NAME}
     if [ $? -ne 0 ]; then
         echo "Failed running docker push command" >&2
         exit 1
@@ -422,7 +430,7 @@ if [ "${PUSH}" = "yes" ]; then
     if [ "$TAG_LATEST" = "yes" ]; then
         docker tag ${IMAGE_NAME} ${IMAGE_NAME_LATEST}
         echo "Pushing image: ${IMAGE_NAME_LATEST}"
-        docker push ${IMAGE_NAME_LATEST}
+        with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${IMAGE_NAME_LATEST}
         if [ $? -ne 0 ]; then
             echo "Failed running docker push command on latest" >&2
             exit 1

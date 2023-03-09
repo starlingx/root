@@ -9,7 +9,7 @@
 
 MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
-source ${MY_SCRIPT_DIR}/../build-wheels/utils.sh
+source ${MY_SCRIPT_DIR}/../utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -35,6 +35,7 @@ declare -a DIST_PACKAGES
 declare -a MODULE_SRC
 declare -a EXTRA_FILES
 declare -i MAX_ATTEMPTS=1
+declare -i RETRY_DELAY=30
 
 
 function usage {
@@ -67,7 +68,8 @@ Options:
     --user:       Docker repo userid
     --registry:   Docker registry
     --clean:      Remove image(s) from local registry
-    --attempts:   Max attempts, in case of failure (default: 1)
+    --attempts <count>:         Max attempts, in case of failure (default: 1)
+    --retry-delay <seconds>:    Sleep between retries (default: 30)
     --update-id:  Update ID
 
 
@@ -95,7 +97,7 @@ function copy_files_to_workdir {
     for f in $*; do
         if [[ ${f} =~ ^(http|https|git): ]]; then
             pushd ${destdir}
-            with_retries ${MAX_ATTEMPTS} wget ${f}
+            with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} wget ${f}
             if [ $? -ne 0 ]; then
                 echo "Failed to download $f to ${destdir}" >&2
                 exit 1
@@ -188,7 +190,7 @@ function read_params_from_file {
     FILE_BASEDIR=$(dirname ${FILE})
 }
 
-OPTS=$(getopt -o h -l help,file:,from:,wheel:,module-src:,pkg:,customize:,extra:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,clean,attempts:,update-id: -- "$@")
+OPTS=$(getopt -o h -l help,file:,from:,wheel:,module-src:,pkg:,customize:,extra:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,clean,attempts:,retry-delay:,update-id: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -266,6 +268,10 @@ while true; do
             ;;
         --attempts)
             MAX_ATTEMPTS=$2
+            shift 2
+            ;;
+        --retry-delay)
+            RETRY_DELAY=$2
             shift 2
             ;;
         --update-id)
