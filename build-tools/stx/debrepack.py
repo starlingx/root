@@ -299,6 +299,28 @@ class Parser():
                 revision += int(run_shell_cmd(git_rev_list % self.pkginfo["debfolder"], self.logger))
             revision += int(run_shell_cmd(git_status % self.pkginfo["debfolder"], self.logger))
 
+        if "FILES_GITREVCOUNT" in revision_data:
+            if "src_files" not in self.meta_data:
+                self.logger.error("FILES_GITREVCOUNT is set, but no \"src_files\" in meta_data.yaml")
+                raise Exception(f"FILES_GITREVCOUNT is set, but no \"src_files\" in meta_data.yaml")
+
+            base_commits = revision_data["FILES_GITREVCOUNT"]
+            if len(self.meta_data["src_files"]) > len(base_commits):
+                self.logger.error(f"Not all \"src_files\" are set \"FILES_BASE_SRCREV\"")
+                raise Exception(f"Not all \"src_files\" are set \"FILES_BASE_SRCREV\"")
+
+            files_commits = dict()
+            for i in range(0, len(self.meta_data["src_files"])):
+                f = self.meta_data["src_files"][i]
+                if os.path.isfile(f):
+                    f = os.path.dirname(f)
+                if f not in files_commits:
+                    files_commits[f] = base_commits[i]
+
+            for f in files_commits:
+                revision += int(run_shell_cmd(git_rev_list_from % (f, files_commits[f]), self.logger))
+                revision += int(run_shell_cmd(git_status % f, self.logger))
+
         if "SRC_GITREVCOUNT" in revision_data:
             if "src_path" not in self.meta_data:
                 self.logger.error("SRC_GITREVCOUNT is set, but no \"src_path\" in meta_data.yaml")
