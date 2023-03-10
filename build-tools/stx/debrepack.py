@@ -273,6 +273,18 @@ class Parser():
 
         self.pkginfo["debfolder"] = os.path.join(local_debian)
 
+    def get_gitrevcount_srcdir(self, gitrevcount_obj):
+        src_dir = str(gitrevcount_obj.get("SRC_DIR", ""))
+        if src_dir:
+            src_dir = os.path.expandvars(src_dir)
+            if not src_dir.startswith('/'):
+                src_dir = os.path.join(self.pkginfo['pkgpath'], src_dir)
+            self.logger.info ("SRC_DIR = %s", src_dir)
+        else:
+            src_dir = self.pkginfo["pkgpath"]
+            self.logger.info("SRC_DIR = %s (guessed)", src_dir)
+        return src_dir
+
     def set_revision(self):
 
         revision = 0
@@ -335,13 +347,10 @@ class Parser():
 
         if "GITREVCOUNT" in revision_data:
             gitrevcount = revision_data["GITREVCOUNT"]
-            if "SRC_DIR" not in gitrevcount:
-                self.logger.error("Not set SRC_DIR in GITREVCOUNT")
-                raise Exception(f"Not set SRC_DIR in GITREVCOUNT")
+            src_dir = self.get_gitrevcount_srcdir(gitrevcount)
             if "BASE_SRCREV" not in gitrevcount:
                 self.logger.error("Not set BASE_SRCREV in GITREVCOUNT")
                 raise Exception(f"Not set BASE_SRCREV in GITREVCOUNT")
-            src_dir = os.path.expandvars(gitrevcount["SRC_DIR"])
             revision += int(run_shell_cmd(git_rev_list_from % (src_dir, gitrevcount["BASE_SRCREV"]), self.logger))
             revision += int(run_shell_cmd(git_status % src_dir, self.logger))
 
@@ -399,11 +408,10 @@ class Parser():
         revision_data = self.meta_data["revision"]
         if "GITREVCOUNT" in revision_data:
             gitrevcount = revision_data["GITREVCOUNT"]
-            if "SRC_DIR" in gitrevcount:
-                src_dir = os.path.expandvars(gitrevcount["SRC_DIR"])
-                if os.path.exists(src_dir):
-                    content += run_shell_cmd("cd %s; git log --oneline -10 --abbrev=10 ." % src_dir, self.logger)
-                    content += run_shell_cmd("cd %s; git diff ." % src_dir, self.logger)
+            src_dir = self.get_gitrevcount_srcdir(gitrevcount)
+            if os.path.exists(src_dir):
+                content += run_shell_cmd("cd %s; git log --oneline -10 --abbrev=10 ." % src_dir, self.logger)
+                content += run_shell_cmd("cd %s; git diff ." % src_dir, self.logger)
 
         return get_str_md5(content)
 
