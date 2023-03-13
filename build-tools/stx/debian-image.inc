@@ -67,7 +67,6 @@ firmware-siano
 flake8
 fonts-dejavu-core
 gcc-10
-gcc-9-base
 genisoimage
 gettext-base
 gnupg
