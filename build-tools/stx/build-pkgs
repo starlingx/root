@@ -971,20 +971,27 @@ class BuildController():
         if not os.path.exists(debs_dir):
             logger.error(' '.join(['Noneexistent directory', debs_dir]))
             return False
-        for root, dirs, files in os.walk(debs_dir):
-            if dirs:
-                pass
-            for r in files:
-                if r.endswith('.deb'):
-                    deb_file = os.path.join(root, r)
-                    if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file, deploy=False):
-                        logger.info("Successfully uploaded %s to %s", deb_file, REPO_BUILD)
-                        pkg_item = r.split('_')
-                        if pkg_item and len(pkg_item) > 1:
-                            sdebs.append('_'.join([pkg_item[0], pkg_item[1]]))
-                    else:
-                        logger.error("Failed to upload %s to %s", deb_file, REPO_BUILD)
-                        return False
+        try:
+            for root, dirs, files in os.walk(debs_dir):
+                if dirs:
+                    pass
+                for r in files:
+                    if r.endswith('.deb'):
+                        debname = r.split('_')[0]
+                        self.kits['repo_mgr'].delete_pkg(REPO_BUILD, debname, 'binary', None)
+                        logger.debug("Tried to delete the old %s from %s before uploading", debname, REPO_BUILD)
+                        deb_file = os.path.join(root, r)
+                        if self.kits['repo_mgr'].upload_pkg(REPO_BUILD, deb_file, deploy=False):
+                            logger.info("Successfully uploaded %s to %s", deb_file, REPO_BUILD)
+                            pkg_item = r.split('_')
+                            if pkg_item and len(pkg_item) > 1:
+                                sdebs.append('_'.join([pkg_item[0], pkg_item[1]]))
+                        else:
+                            logger.error("Failed to upload %s to %s", deb_file, REPO_BUILD)
+                            return False
+        except Exception as e:
+            logger.error("An exception occurred during uploading %s(%s)", package, str(e))
+            return False
 
         if sdebs:
             debsentry.set_subdebs(debs_clue, package, sdebs, logger)
