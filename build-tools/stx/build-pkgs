@@ -648,8 +648,6 @@ class BuildController():
         caches_dir = os.path.join(BUILD_ROOT, 'caches')
         os.makedirs(caches_dir, exist_ok=True)
 
-        self.lists['pkgs_not_found'] = []
-
         for build_type in build_types_to_init:
             self.lists['success_' + build_type] = []
             self.lists['fail_' + build_type] = []
@@ -1544,10 +1542,6 @@ class BuildController():
                     logger.error(' '.join([build_type, 'is not a valid build_type']))
                     return
 
-        if packages:
-            # We save all pkgs specified by the user and remove it as we find it.
-            self.lists['pkgs_not_found'] = packages
-
         if layers:
             total_layers = len(layers)
             logger.debug(' '.join(['Building ', str(total_layers), ' layers:',
@@ -1590,10 +1584,6 @@ class BuildController():
             pkg_dirs, pkgs_exist = discovery.filter_package_dirs_by_package_names(pkg_dirs, packages, distro=self.attrs['distro'])
             self.save_failed_pkgs(pkgs_exist, packages, build_type)
             layer_pkg_dirs = pkg_dirs
-            for pkg in self.lists['pkgs_not_found']:
-                if pkg in pkgs_exist.values():
-                    self.lists['pkgs_not_found'].remove(pkg)
-
 
         if not pkg_dirs:
             logger.debug(' '.join(['Found no buildable packages matching selection criteria in build_type',
@@ -1941,15 +1931,6 @@ class BuildController():
                 logger.info("For the failure reason, you can check with:")
                 logger.info("\'cat /localdisk/builder.log | grep ERROR\' or")
                 logger.info("\'cat ${MY_WORKSPACE}/<std or rt>/<Failed package>/*.build\'")
-
-        # self.lists['pkgs_not_found'] is set of packages specified by the user that has not been found
-        if len(self.lists['pkgs_not_found']) > 0:
-            ret_val = 1
-            logger.info("-------------------------------------------")
-            logger.error('The following packages were not found in the building process:')
-            for pkg in self.lists['pkgs_not_found']:
-                logger.error(pkg)
-
         return ret_val
 
 
