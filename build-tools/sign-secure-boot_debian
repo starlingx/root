@@ -31,7 +31,7 @@ if [ -z "${SIGNING_SERVER}" ]; then
 fi
 
 # Get shim deb version number.
-SHIM_DEB=$(ls /localdisk/loadbuild/${USER}/stx/std/shim/shim-unsigned_*_amd64.deb)
+SHIM_DEB=$(ls ${MY_WORKSPACE}/std/shim/shim-unsigned_*_amd64.deb)
 SHIM_DEB=${SHIM_DEB##*/}
 if [ -z "${SHIM_DEB}" ]; then
     echo "No shim-unsigned deb!"
@@ -44,7 +44,7 @@ if [ -z "${SHIM_VERSION}" ]; then
 fi
 
 # Get grub-efi deb version number.
-GRUB_EFI_DEB=$(ls /localdisk/loadbuild/${USER}/stx/std/grub-efi/grub-efi-amd64_*_amd64.deb)
+GRUB_EFI_DEB=$(ls ${MY_WORKSPACE}/std/grub-efi/grub-efi-amd64_*_amd64.deb)
 GRUB_EFI_DEB=${GRUB_EFI_DEB##*/}
 if [ -z "${GRUB_EFI_DEB}" ]; then
     echo "No grub-efi-amd64 deb!"
@@ -68,7 +68,7 @@ if [ -z "${UPLOAD_PATH}" ]; then
 fi
 
 echo "***(1) Start signing shim***"
-cd /localdisk/loadbuild/${USER}/stx/std/shim
+cd ${MY_WORKSPACE}/std/shim
 ls sign > /dev/null && echo "Removing old sign folder!" && sudo rm sign -rf
 mkdir sign
 cp shim-unsigned_${SHIM_VERSION}_amd64.deb ./sign \
@@ -112,7 +112,7 @@ repo_manage.py upload_pkg -r deb-local-build -p ./shim-unsigned_${SHIM_VERSION}_
 echo "***Finish signing shim***"
 
 echo "***(2) Start signing grub***"
-cd /localdisk/loadbuild/${USER}/stx/std/grub-efi
+cd ${MY_WORKSPACE}/std/grub-efi
 ls sign > /dev/null && echo "Removing old sign folder!" && sudo rm sign -rf
 mkdir sign
 cp grub-efi-amd64_${GRUB_EFI_VERSION}_amd64.deb ./sign \
@@ -146,11 +146,11 @@ echo "***Finish signing grub***"
 
 echo "***(3) Prepare gpg signing for lat genimage***"
 # The gpg signings are done when build-image. Here prepare the setting file for lat.
-YAML_FILE=/localdisk/designer/${USER}/stx/stx-tools/debian-mirror-tools/config/debian/common/base-bullseye.yaml
+YAML_FILE=${MY_REPO_ROOT_DIR}/stx-tools/debian-mirror-tools/config/debian/common/base-bullseye.yaml
 # Definition for signing part of rootfs-post-scripts, which is used to sign kernel std/rt images and LockDown.efi.
-ROOTFS_SIGNING_FILE=/localdisk/designer/${USER}/stx/cgcs-root/build-tools/sign_rootfs-post-scripts
+ROOTFS_SIGNING_FILE=${MY_REPO_ROOT_DIR}/cgcs-root/build-tools/sign_rootfs-post-scripts
 # Definition for initramfs-sign-script, which is used to sign initramfs and mini initrd.
-INITRAMFS_SIGNING_FILE=/localdisk/designer/${USER}/stx/cgcs-root/build-tools/sign_initramfs-sign-script
+INITRAMFS_SIGNING_FILE=${MY_REPO_ROOT_DIR}/cgcs-root/build-tools/sign_initramfs-sign-script
 
 # Enable secure boot when building for secure boot.
 sed -i "s/EFI_SECURE_BOOT: disable/EFI_SECURE_BOOT: enable/g" ${YAML_FILE}
