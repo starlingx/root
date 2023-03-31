@@ -444,14 +444,43 @@ def sign_iso_dev(img_yaml):
     else:
         # default image name
         iso_name = 'starlingx-intel-x86-64-cd'
-    # openssl dgst -sha256 -sign ${KEY_PATH} -binary -out ${DEPLOY_DIR}/${ISO_NOEXT}.sig $DEPLOY_DIR/starlingx-intel-x86-64-cd.iso
-    sign_cmd = f'sudo openssl dgst -sha256 -sign {key_path} -binary -out {deploy_dir}/{iso_name}.sig {deploy_dir}/{iso_name}.iso'
-    ret = subprocess.call(sign_cmd, shell=True)
-    if ret == 0:
-        logger.info("Image signed %s", os.path.join(deploy_dir, iso_name + '.iso'))
+
+    iso_file = f'{deploy_dir}/{iso_name}.iso'
+    sig_file = f'{deploy_dir}/{iso_name}.sig'
+
+    # call realpath to make sure it exists and there are no symlink loops
+    realpath_cmd = f'realpath -e {iso_file}'
+    subprocess.run(realpath_cmd, shell=True, check=True)
+
+    # if ISO file is a symlink, create the signature of the symlink's target
+    if os.path.islink (iso_file):
+        # get the iso_file's target -- we will create the .sig file next to it
+        iso_target = os.readlink (iso_file)
+        sig_target = re.sub (r'[.]iso$', '', iso_target) + '.sig'
+        if os.path.isabs(iso_target):
+            real_iso_file = iso_target
+            real_sig_file = sig_target
+        else:
+            real_iso_file = os.path.join (os.path.dirname (iso_file), iso_target)
+            real_sig_file = os.path.join (os.path.dirname (sig_file), sig_target)
     else:
+        real_iso_file = iso_file
+        real_sig_file = sig_file
+
+    # create the signature
+    sign_cmd = f'sudo openssl dgst -sha256 -sign {key_path} -binary -out {real_sig_file} {real_iso_file}'
+    logger.info ("running: %s", sign_cmd)
+    ret = subprocess.call(sign_cmd, shell=True)
+    if ret != 0:
         raise Exception("Error while signing the image")
 
+    # ISO is a symlink => create the matc hing .sig link
+    if os.path.islink (iso_file):
+        if os.path.exists (sig_file):
+            os.path.remove (sig_file)
+        os.symlink (sig_target, sig_file)
+
+    logger.info("Image signed %s", real_iso_file)
 
 if __name__ == "__main__":
 
@@ -466,6 +495,8 @@ if __name__ == "__main__":
     parser.add_argument('-k', '--keep', help="Keep the current environment " +
                         "(ostree, deploy), mainly used for patching",
                         default=False, action='store_true')
+    parser.add_argument('--no-sign', action='store_true',
+                        default=False, help="Don't sign ISO at the end")
     args = parser.parse_args()
     if args.rt:
         kernel_type = 'rt'
@@ -598,7 +629,7 @@ if __name__ == "__main__":
 
     os.system('sudo chown -R ${USER}: ' + LAT_ROOT + '/deploy' )
     # Sign iso with developer key
-    if ret == 0:
+    if ret == 0 and not args.no_sign:
         sign_iso_dev(lat_yaml)
 
     sys.exit(ret)
