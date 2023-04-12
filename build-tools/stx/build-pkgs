@@ -17,6 +17,7 @@
 import apt
 import apt_pkg
 import argparse
+import copy
 from debian import deb822
 import debrepack
 import debsentry
@@ -1540,7 +1541,7 @@ class BuildController():
 
         if packages:
             # We save all pkgs specified by the user and remove it as we find it.
-            self.lists['pkgs_not_found'] = packages
+            self.lists['pkgs_not_found'] = copy.deepcopy(packages)
 
         if build_types:
             for build_type in build_types:
