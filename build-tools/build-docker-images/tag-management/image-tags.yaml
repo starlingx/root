@@ -66,9 +66,9 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/50919b751a4da8b8dd6377900f4de1ba65eaabc9
     tag: stx.8.0-v1.0.0
   - name: docker.io/starlingx/stx-fm-subagent
-    src_build_tag: master-debian-stable-20220906T060002Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/90a317189ab13f832fa396f7bda0c8c643718ec7
-    tag: stx.8.0-v1.0.0
+    src_build_tag: master-debian-stable-20230412T060000Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/8a6171fce0abdc84fc1488bb78b40a5046fdc4ef
+    tag: stx.9.0-v1.0.1
   - name: docker.io/starlingx/stx-fm-trap-subagent
     src_build_tag: master-debian-stable-20220906T060002Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/20148e20031a558fb83eeb01f3d2fc393a6f170c
