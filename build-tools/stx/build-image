@@ -46,7 +46,7 @@ kernel_type = 'std'
 stx_std_kernel = 'linux-image-5.10.0-6-amd64-unsigned'
 stx_rt_kernel =  'linux-rt-image-5.10.0-6-rt-amd64-unsigned'
 WAIT_TIME_BEFORE_CHECKING_LOG = 2
-DEFAULT_TIME_WAIT_LOG = 15
+DEFAULT_TIME_WAIT_LOG = 30
 
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
