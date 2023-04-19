@@ -284,6 +284,9 @@ class Deb_aptly():
         if count not in range(1, 30):
             self.logger.error('Requested wait of % minutes is greater than 30 minutes max wait.', count)
             return 'EINVAL'
+        timeout_factor = os.environ.get('REPOMGR_REQ_TIMEOUT_FACTOR')
+        if timeout_factor and timeout_factor.isdigit() and int(timeout_factor) != 0:
+            count *= int(timeout_factor)
         while count > 0:
             count -= 1
             try:
@@ -291,13 +294,16 @@ class Deb_aptly():
                 self.aptly.tasks.wait_for_task_by_id(task.id)
             except Exception as e:
                 if count > 0:
-                    self.logger.debug('Aptly task is still running...')
+                    self.logger.debug('Aptly task %d(%s) is still running' % (task.id, task.name))
                 else:
                     self.logger.debug('%s' % e)
                 continue
             else:
                 # return 'SUCCEEDED' or 'FAILED'
                 return self.aptly.tasks.show(task.id).state
+        self.logger.warn('Aptly task %d(%s) timeouts.' % (task.id, task.name))
+        self.logger.info('Environment variable REPOMGR_REQ_TIMEOUT_FACTOR can be used to increase timeout value.')
+        self.logger.info('For example, set it to "5" can increase the timeout value by 5 times.')
         return 'TIMEOUTED'
 
     # Publish a local repository directly, without snapshot or signature
