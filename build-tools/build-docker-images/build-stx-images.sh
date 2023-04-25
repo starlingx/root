@@ -41,7 +41,7 @@ export USE_DOCKER_CACHE=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
-DEFAULT_SPICE_REPO=https://github.com/freedesktop/spice-html5.git
+DEFAULT_SPICE_REPO="https://gitlab.freedesktop.org/spice/spice-html5"
 declare -a ONLY
 declare -a SKIP
 declare -i MAX_ATTEMPTS=1
