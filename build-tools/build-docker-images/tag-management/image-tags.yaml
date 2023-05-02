@@ -52,10 +52,10 @@ images:
     src_ref: https://opendev.org/starlingx/root/commit/a6ce379cb5efd5f0d3ddba3a8f87d07b687227cb
     tag: stx.9.0-v1.5.10
   - name: docker.io/starlingx/stx-vault-manager
-    src_build_tag: master-debian-stable-20230124T070000Z.0
-    src_ref: https://opendev.org/starlingx/vault-armada-app/commit/26c3a03c76f1d03d3be3f2442bb77f388fcff2de
+    src_build_tag: master-debian-stable-20230427T060000Z.0
+    src_ref: https://opendev.org/starlingx/vault-armada-app/commit/c9032e2e4ce4be2ef3e5d643633a0a45a7cb651f
     # Tag based on kubectl package version used in image
-    tag: stx.8.0-v1.24.4
+    tag: stx.9.0-v1.24.4
   - name: docker.io/starlingx/portieris
     src_build_tag: master-centos-stable-20200726T013628Z.0
     src_ref: https://opendev.org/starlingx/portieris-armada-app/commit/a6123ffebb77f23d5182576be17e69d62fd8d701
