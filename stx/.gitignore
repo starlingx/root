@@ -52,4 +52,5 @@ installer-prebuilt
 /upstream
 /utilities
 /vault-armada-app
+/virt
 /zuul-jobs
