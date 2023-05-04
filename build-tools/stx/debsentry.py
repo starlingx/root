@@ -17,6 +17,22 @@ import os
 import pickle
 
 
+def get_pkg_by_deb(clue, debname, logger):
+    try:
+        with open(clue, 'rb') as fclue:
+            try:
+                debs = pickle.load(fclue)
+                for pkgname, subdebs in debs.items():
+                    if debname in subdebs:
+                        return pkgname
+            except (EOFError, ValueError, AttributeError, ImportError, IndexError, pickle.UnpicklingError) as e:
+                logger.error(str(e))
+                logger.warn(f"debs_entry:failed to load {clue}, return None")
+    except IOError:
+        logger.warn(f"debs_entry:{clue} does not exist")
+    return None
+
+
 def get_subdebs(clue, package, logger):
     try:
         with open(clue, 'rb') as fclue:
