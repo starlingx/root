@@ -20,6 +20,8 @@
 declare RUNCMD=
 declare -a REPUSH
 
+source $(dirname "${BASH_SOURCE[0]}")/../docker_reg_utils.sh || exit 1
+
 function usage {
     cat >&2 <<EOF
 Usage:
@@ -62,27 +64,6 @@ for fname in sys.argv[1:]:
 ' ${@}
 }
 
-function get_tags_from_docker_hub {
-    local url=$1
-
-    curl -k -sSL -X GET ${url} | python -c '
-import sys, json
-y=json.loads(sys.stdin.read())
-if y and y.get("next"):
-    print("next=%s" % y.get("next"))
-if y and y.get("results"):
-    for res in y.get("results"):
-        if res.get("name"):
-            print("tag=%s" % res.get("name"))
-' | while IFS='=' read key value; do
-        if [ "${key}" = "next" ]; then
-            get_tags_from_docker_hub ${value}
-        else
-            echo "${key}=${value}"
-        fi
-    done
-}
-
 function retag_and_push_image {
     local name=$1
     local src_tag=$2
@@ -96,31 +77,9 @@ function retag_and_push_image {
 
     if is_in $(basename $label) ${REPUSH[@]}; then
         echo "Skipping existence check for ${name}"
-    else
-        if [ "${docker_registry}" = "docker.io" ]; then
-            get_tags_from_docker_hub https://registry.hub.docker.com/v2/repositories/${image}/tags \
-                | grep -q "^tag=${new_tag}$"
-            if [ $? -eq 0 ]; then
-                # Already exists
-                echo "Image tag exists: ${name}:${new_tag}"
-                return 0
-            fi
-        else
-            curl -k -sSL -X GET https://${docker_registry}/v2/${image}/tags/list \
-                | python -c '
-import sys, json, re
-y=json.loads(sys.stdin.read())
-RC=1
-if y and sys.argv[1] in [img for img in y.get("tags")]:
-    RC=0
-sys.exit(RC)
-' ${new_tag}
-            if [ $? -eq 0 ]; then
-                # Already exists
-                echo "Image tag exists: ${name}:${new_tag}"
-                return 0
-            fi
-        fi
+    elif docker_reg_tag_exists "$name:$new_tag" ; then
+        echo "Image tag exists: ${name}:${new_tag}"
+        return 0
     fi
 
     ${RUNCMD} docker image pull ${name}:${src_tag}
