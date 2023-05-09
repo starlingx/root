@@ -7,6 +7,7 @@
 *~
 installer-prebuilt
 /ansible-playbooks
+/app-harbor
 /app-kubevirt/
 /app-istio
 /app-oran-o2
