@@ -27,9 +27,9 @@ images:
     # Version determined by running 'git describe --tags' in clone of upstream repo
     tag: stx.4.0-v0.11.0-109-gc48c502
   - name: docker.io/starlingx/stx-oidc-client
-    src_build_tag: master-debian-stable-20221005T131433Z.0
-    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/07414fd91ccfc2d10aeeb7e2fcd4aba65a8a5d04
-    tag: stx.8.0-v1.0.5
+    src_build_tag: master-debian-stable-20230416T060000Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/f0e5cd3f8131a1363555366c1812fb7ac76f60b3
+    tag: stx.9.0-v1.0.6
   - name: docker.io/starlingx/dex
     src_build_tag: master-centos-stable-20200204T162546Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/5d6701bdf214e77f460f2e3dd2b6f7d3186830c8
