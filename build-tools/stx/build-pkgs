@@ -457,6 +457,56 @@ def get_package_jobs(pkg_dir, distro=STX_DEFAULT_DISTRO):
     return int(jobs)
 
 
+def get_never_reuse_pkgs():
+    never_reuse_pkgs = set()
+    lst_dir = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
+                           'stx-tools/debian-mirror-tools/config/debian/common')
+    never_reuse_lst = os.path.join(lst_dir, 'never_reuse.lst')
+    try:
+        with open(never_reuse_lst, 'r') as npkgs:
+            lines = list(line for line in (p.strip() for p in npkgs) if line)
+    except Exception as e:
+        logger.warning(str(e))
+        return never_reuse_pkgs
+    else:
+        for pkg in lines:
+            pkg = pkg.strip()
+            if pkg.startswith('#'):
+                continue
+            never_reuse_pkgs.add(pkg)
+    return never_reuse_pkgs
+
+
+def move_debs_to_build_dir(dl_bin_debs_dir):
+    try:
+        for root, dirs, files in os.walk(dl_bin_debs_dir):
+            if dirs:
+                pass
+            for r in files:
+                if r.endswith('.deb'):
+                    pkg_item = r.split('_')
+                    sdeb = '_'.join([pkg_item[0], pkg_item[1]])
+                    pname = ''
+                    for btype in ['std', 'rt']:
+                        debs_clue = get_debs_clue(btype)
+                        deb_file = os.path.join(root, r)
+                        pname = debsentry.get_pkg_by_deb(debs_clue, sdeb, logger)
+                        if pname:
+                            pkg_build_dir = os.path.join(BUILD_ROOT, btype, pname)
+                            os.makedirs(pkg_build_dir, exist_ok=True)
+                            os.system('sudo rm -f %s/*.build' % (pkg_build_dir))
+                            shutil.move(deb_file, os.path.join(pkg_build_dir, r))
+                            logger.debug("Reuse: %s is moved to build directory", sdeb)
+                            break
+                    if not pname:
+                        logger.warning("Failed to get the package name for %s", sdeb)
+    except Exception as e:
+        logger.error("An exception occurred during moving reused debs into build directory")
+        logger.error(str(e))
+        return False
+    return True
+
+
 class repoSnapshots():
     """
     The repository snapshots pool to manage the apply/release
@@ -504,6 +554,7 @@ class BuildController():
             'upload_source': False,
             'poll_build_status': True,
             'reuse': False,
+            'reuse_max': False,
             'build_all': False,
             'reuse_export': True,
             'dl_reused': False,
@@ -650,6 +701,9 @@ class BuildController():
         os.makedirs(caches_dir, exist_ok=True)
 
         self.lists['pkgs_not_found'] = []
+        self.lists['never_reuse_pkgs'] = []
+        if self.attrs['reuse'] and not self.attrs['reuse_max']:
+            self.lists['never_reuse_pkgs'] = get_never_reuse_pkgs()
 
         for build_type in build_types_to_init:
             self.lists['success_' + build_type] = []
@@ -736,10 +790,17 @@ class BuildController():
     def download_reused_debs(self, distribution):
         if not self.attrs['dl_reused']:
             return True
-        reuse_dl_dir = os.path.join(BUILD_ROOT, 'reused_debs')
-        os.makedirs(reuse_dl_dir, exist_ok=True)
-        apt_src_file = os.path.join(BUILD_ROOT, 'aptsrc')
+
         try:
+            reuse_dl_dir = os.path.join(BUILD_ROOT, 'reused_debs')
+            if os.path.exists(reuse_dl_dir):
+                shutil.rmtree(reuse_dl_dir)
+            if os.path.exists(reuse_dl_dir):
+                logger.error("Failed to clean the old download directory")
+                logger.error("Please check and make sure it is removed")
+                return False
+            os.makedirs(reuse_dl_dir, exist_ok=True)
+            apt_src_file = os.path.join(BUILD_ROOT, 'aptsrc')
             with open(apt_src_file, 'w') as f:
                 reuse_url = os.environ.get('STX_SHARED_REPO')
                 apt_item = ' '.join(['deb [trusted=yes]', reuse_url, distribution, 'main\n'])
@@ -771,10 +832,13 @@ class BuildController():
                 return False
 
             if len(fetch_ret['deb-failed']) == 0:
-                logger.info("Successfully downloaded all reused debs to %s", reuse_dl_dir + '/downloads/binary')
+                dl_bin_debs_dir=os.path.join(reuse_dl_dir, 'downloads/binary')
+                logger.info("Successfully downloaded all reused debs to %s", dl_bin_debs_dir)
+                move_debs_to_build_dir(dl_bin_debs_dir)
                 return True
             else:
-                logger.error("Failed to download reused debs: %s", ','.join(fetch_ret['deb-failed']))
+                for failed_deb in fetch_ret['deb-failed']:
+                    logger.error("Failed to download reused debs: %s", ','.join(fetch_ret['deb-failed']))
         return False
 
     def set_reuse(self, cache_dir):
@@ -1164,28 +1228,35 @@ class BuildController():
 
         # If the sharing mode is enabled
         if not reclaim and self.attrs['reuse']:
-            # 'reuse' should be handled for either no '-c' or '-c -all'
-            if self.attrs['avoid'] or (self.attrs['build_all'] and not self.attrs['avoid']):
-                logger.debug("Comparing with the remote shared dsc cache for %s", build_type)
-                # Only match the subdir under STX REPO
-                pkg_stx_path = pkg_dir.replace(os.environ.get('MY_REPO'), '')
-                remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_stx_path)
-                logger.debug("Checking package=%s, shared_checksum=%s, local_checksum=%s", pkg_stx_path, shared_checksum, new_checksum)
-                if shared_checksum and shared_checksum == new_checksum:
-                    logger.debug("Same checksum, %s will be reused from remote", pkg_name)
-                    # True None: just continue in the external for loop
-                    status = 'DSC_REUSE'
-                    '''
-                    Here the local dsc_cache also need to be set which prevents the subsequent
-                    build without 'reuse' rebuilding the package with same checksum again
-                    '''
-                    if dsc_file:
-                        self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_file + ':' + shared_checksum)
-                    else:
-                        logger.warning("dsc file is invalid and can not set dsc cache for %s", pkg_name)
+            if pkg_name in self.lists['never_reuse_pkgs']:
+                if status == 'DSC_NO_UPDATE':
+                    logger.info("%s is forbidden to reuse, but no need to build locally again", pkg_name)
                 else:
-                    logger.debug("Different source checksums, can not reuse the remote, continue to local build")
+                    logger.info("%s is forbidden to reuse and will be build locally later", pkg_name)
                     status = 'DSC_BUILD'
+            else:
+                # 'reuse' should be handled for either no '-c' or '-c -all'
+                if self.attrs['avoid'] or (self.attrs['build_all'] and not self.attrs['avoid']):
+                    logger.debug("Comparing with the remote shared dsc cache for %s", build_type)
+                    # Only match the subdir under STX REPO
+                    pkg_stx_path = pkg_dir.replace(os.environ.get('MY_REPO'), '')
+                    remote_dsc, shared_checksum = self.kits['dsc_rcache'][build_type].get_package_re(pkg_stx_path)
+                    logger.debug("Checking package=%s, shared_checksum=%s, local_checksum=%s", pkg_stx_path, shared_checksum, new_checksum)
+                    if shared_checksum and shared_checksum == new_checksum:
+                        logger.debug("Same checksum, %s will be reused from remote", pkg_name)
+                        # True None: just continue in the external for loop
+                        status = 'DSC_REUSE'
+                        '''
+                        Here the local dsc_cache also need to be set which prevents the subsequent
+                        build without 'reuse' rebuilding the package with same checksum again
+                        '''
+                        if dsc_file:
+                            self.kits['dsc_cache'][build_type].set_package(pkg_dir, dsc_file + ':' + shared_checksum)
+                        else:
+                            logger.warning("dsc file is invalid and can not set dsc cache for %s", pkg_name)
+                    else:
+                        logger.debug("Different source checksums, can not reuse the remote, continue to local build")
+                        status = 'DSC_BUILD'
 
         return status, dsc_file
 
@@ -1732,8 +1803,16 @@ class BuildController():
             status, dsc_file = self.create_dsc(pkg_name, pkg_dir, reclaim=False, build_type=build_type)
             if status == 'DSC_BUILD' and dsc_file:
                 logger.debug("dsc_file = %s" % dsc_file)
-                need_build[pkg_dir.strip()] = dsc_file
-                layer_pkgdir_dscs[pkg_dir.strip()] = dsc_file
+                # need_build will be passed to scan_all_depends() to get these depended packages
+                # Not checking 'build_done' stamp for package in need_build will cause the case
+                # the target package does not rebuild, but all its depended packages are forced
+                # to be rebuilt. Put the checking for 'build_done' stamp here to fix this issue
+                pkg_dir = pkg_dir.strip()
+                if not self.get_stamp(pkg_dir, dsc_file, build_type, 'build_done'):
+                    need_build[pkg_dir] = dsc_file
+                else:
+                    no_need_build[pkg_dir] = dsc_file
+                layer_pkgdir_dscs[pkg_dir] = dsc_file
                 fdsc_file.write(dsc_file + '\n')
                 if self.attrs['upload_source'] and not skip_dsc and self.kits['repo_mgr']:
                     self.upload_with_dsc(pkg_name, dsc_file, REPO_SOURCE)
@@ -1758,8 +1837,11 @@ class BuildController():
                     else:
                         if status == 'DSC_NO_UPDATE':
                             logger.debug("Create_dsc return DSC_NO_UPDATE for %s", dsc_file)
-                            layer_pkgdir_dscs[pkg_dir.strip()] = dsc_file
-                            no_need_build[pkg_dir.strip()] = dsc_file
+                            layer_pkgdir_dscs[pkg_dir] = dsc_file
+                            if not self.get_stamp(pkg_dir, dsc_file, build_type, 'build_done'):
+                                need_build[pkg_dir] = dsc_file
+                            else:
+                                no_need_build[pkg_dir] = dsc_file
                             fdsc_file.write(dsc_file + '\n')
 
         # Find the dependency chain
@@ -1868,6 +1950,10 @@ class BuildController():
             if pkg in layer_pkgdir_dscs.keys():
                 target_pkgdir_dscs[pkg] = layer_pkgdir_dscs[pkg]
                 self.lists['real_build_' + build_type].append(pkg)
+        # no_need_build is returned by create_dsc, it just means
+        # that there is not any changes on dsc file but the build
+        # stamp of the 2nd phase may not exist, if it does not, it
+        # still needs to be built
         target_pkgdir_dscs.update(no_need_build)
 
         if fdsc_file:
@@ -1985,8 +2071,12 @@ if __name__ == "__main__":
                         action='store_true')
     parser.add_argument('-t', '--test', help="Run package tests during build",
                         action='store_true')
-    parser.add_argument('--reuse', help="Reuse the debs from STX_SHARED_REPO", action='store_true')
+
+    reuse_types = parser.add_mutually_exclusive_group()
+    reuse_types.add_argument('--reuse', help="Reuse the debs from STX_SHARED_REPO(no signed debs)", action='store_true')
+    reuse_types.add_argument('--reuse_maximum', help="Reuse all debs from STX_SHARED_REPO", action='store_true')
     parser.add_argument('--dl_reused', help="Download reused debs to build directory", action='store_true', default=False)
+
     parser.add_argument('--refresh_chroots', help="Force to fresh chroots before build", action='store_true')
     parser.add_argument('--parallel', help="The number of parallel build tasks", type=int, default=DEFAULT_PARALLEL_TASKS)
     parser.add_argument('--poll_interval', help="The interval to poll the build status", type=int, default=DEFAULT_POLL_INTERVAL)
@@ -2007,7 +2097,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.reuse:
+    if args.reuse or args.reuse_maximum:
         if args.clean and args.packages:
             logger.error("Reuse mode can not be used for the clean build of specific packages.");
             sys.exit(1)
@@ -2057,13 +2147,15 @@ if __name__ == "__main__":
     if args.max_make_jobs:
         build_controller.attrs['max_make_jobs'] = args.max_make_jobs
 
-    if args.reuse:
+    if args.reuse or args.reuse_maximum:
         build_controller.attrs['reuse'] = True
+        if args.reuse_maximum:
+            build_controller.attrs['reuse_max'] = True
         if args.dl_reused:
             build_controller.attrs['dl_reused'] = True
     else:
         if args.dl_reused:
-            logger.error("option 'dl_reused' only valid if '--reuse' is enabled, quit")
+            logger.error("option 'dl_reused' only valid if '--reuse|--reuse_maximum' is enabled, quit")
             sys.exit(1)
     if args.packages:
         packages = args.packages.strip().split(',')

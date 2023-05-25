@@ -106,29 +106,40 @@ class AptFetch():
             raise Exception('apt cache init failed.')
 
     # Download a binary package into downloaded folder
-    def fetch_deb(self, pkg_name, pkg_version=''):
+    def fetch_deb(self, pkg_name, pkg_version):
         '''Download a binary package'''
-        if not pkg_name:
-            raise Exception('Binary package name empty')
+        ret = ''
+        if not pkg_name or not pkg_version:
+            return ret
 
+        self.logger.info("Current downloading:%s:%s", pkg_name, pkg_version)
         destdir = os.path.join(self.workdir, 'downloads', 'binary')
         self.aptlock.acquire()
-        pkg = self.aptcache.get(pkg_name)
-        if not pkg:
-            self.aptlock.release()
-            raise Exception('Binary package "%s" was not found' % pkg_name)
-        default_candidate = pkg.candidate
-        if pkg_version:
+
+        try:
+            pkg = self.aptcache[pkg_name]
+            if not pkg:
+                self.aptlock.release()
+                self.logger.error("Failed to find binary package %s", pkg_name)
+                return ret
+            default_candidate = pkg.candidate
+            self.logger.debug("The default candidate is %s", default_candidate.version)
             candidate = pkg.versions.get(pkg_version)
             if not candidate:
-                if default_candidate:
+                if ':' in default_candidate.version:
                     epoch, ver = default_candidate.version.split(':')
                     if epoch.isdigit() and ver == pkg_version:
                         self.logger.debug('epoch %s will be skipped for %s_%s', epoch, pkg_name, ver)
                         candidate = default_candidate
-                else:
+                if not candidate:
                     self.aptlock.release()
-                    raise Exception('Binary package "%s %s" was not found.' % (pkg_name, pkg_version))
+                    self.logger.error("Failed to found the matched version %s for %s", pkg_version, pkg_name)
+                    return ret
+        except Exception as e:
+            self.aptlock.release()
+            self.logger.error("Exception during candidate searching:%s", str(e))
+            return ret
+
         uri = candidate.uri
         filename = candidate.filename
         self.aptlock.release()
@@ -212,7 +223,10 @@ class AptFetch():
                 else:
                     pkg_version = pkg_ver.split()[1]
                 obj = threads.submit(self.fetch_deb, pkg_name, pkg_version)
-                obj_list.append(obj)
+                if not obj:
+                    self.logger.error("Failed to download %s:%s", pkg_name, pkg_version)
+                else:
+                    obj_list.append(obj)
             # Download source packages
             for pkg_ver in dsc_set:
                 pkg_name = pkg_ver.split()[0]
