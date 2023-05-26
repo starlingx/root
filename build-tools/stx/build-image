@@ -46,7 +46,8 @@ kernel_type = 'std'
 stx_std_kernel = 'linux-image-5.10.0-6-amd64-unsigned'
 stx_rt_kernel =  'linux-rt-image-5.10.0-6-rt-amd64-unsigned'
 WAIT_TIME_BEFORE_CHECKING_LOG = 2
-DEFAULT_TIME_WAIT_LOG = 30
+# The max timeout value to wait LAT to output the build log
+MAX_WAIT_LAT_TIME = 300
 
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
@@ -413,6 +414,24 @@ def stop_latd():
     logger.info("Failed to stop latd, you may have to login pkgbuilder to kill")
 
 
+def is_latd_running():
+    running = False
+    cmd = 'latc status'
+    try:
+        status = subprocess.check_output(cmd, shell=True).decode()
+    except Exception as e:
+        logger.error(str(e))
+    else:
+        if status:
+            if 'lat_status: idle' in status:
+                logger.debug("latd is idle")
+            else:
+                if 'lat_status: busy' in status:
+                    logger.debug("latd is running")
+                    running = True
+    return running
+
+
 def user_signal_handler(signum, frame):
     stop_latd()
     sys.exit(1)
@@ -593,20 +612,23 @@ if __name__ == "__main__":
     os.system('sudo cp ' + CERT_PATH + ' ' + LAT_ROOT + '/CERTS/')
 
     os.system(' '.join(['latc --file=' + lat_yaml, 'build']))
-    # Sleep here to wait for the log file created and feeded by latd
-    # It should be noted that latd does not output to log from its start
-    time.sleep(WAIT_TIME_BEFORE_CHECKING_LOG)
     lat_log = os.path.join(LAT_ROOT, "log/log.appsdk")
-    time_to_wait = DEFAULT_TIME_WAIT_LOG
+    time.sleep(WAIT_TIME_BEFORE_CHECKING_LOG)
     time_counter = 0
+    latd_run = False
     while not os.path.exists(lat_log):
+        latd_run = is_latd_running()
+        if not latd_run or time_counter >= MAX_WAIT_LAT_TIME:
+            break
         time.sleep(1)
         time_counter += 1
-        if time_counter > time_to_wait:
-            break
     if not os.path.exists(lat_log):
-        logger.info('The wait for %s has timed out, please wait a moment,' % lat_log)
-        logger.info('then run: tail -f %s to check the process.' % lat_log)
+        if time_counter >= MAX_WAIT_LAT_TIME:
+            logger.error('The wait for %s has timed out' % lat_log)
+            logger.error('There is issue with latd, please check')
+        else:
+            if not latd_run:
+                logger.error('latd is not running, please check')
         sys.exit(ret)
     else:
         log_printer = subprocess.Popen("tail -f " + lat_log,
