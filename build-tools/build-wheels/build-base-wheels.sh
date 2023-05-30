@@ -10,7 +10,7 @@
 
 MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
-source ${MY_SCRIPT_DIR}/utils.sh
+source ${MY_SCRIPT_DIR}/../utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -30,6 +30,7 @@ NO_PROXY=""
 USE_DOCKER_CACHE=no
 : ${PYTHON3:=python3}
 declare -i MAX_ATTEMPTS=1
+declare -i RETRY_DELAY=30
 
 function usage {
     cat >&2 <<EOF
@@ -45,7 +46,10 @@ Options:
     --https_proxy:    Set https proxy <URL>:<PORT>, urls splitted by ","
     --no_proxy:       Set bypass list for proxy <URL>, urls splitted by ","
     --stream:         Build stream, stable or dev (default: stable)
-    --attempts:       Max attempts, in case of failure (default: 1)
+    --attempts <count>
+                      Max attempts, in case of failure (default: 1)
+    --retry-delay <seconds>
+                     Sleep this many seconds between retries (default: 30)
 
     --cache:          Allow docker to use filesystem cache when building
                         CAUTION: this option may ignore locally-generated
@@ -55,7 +59,7 @@ Options:
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts:,cache -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts:,retry-delay:,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -108,6 +112,10 @@ while true; do
             ;;
         --attempts)
             MAX_ATTEMPTS=$2
+            shift 2
+            ;;
+        --retry-delay)
+            RETRY_DELAY=$2
             shift 2
             ;;
         --cache)
@@ -238,7 +246,7 @@ if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
     docker images --format '{{.Repository}}:{{.Tag}}' ${MASTER_WHEELS_IMAGE} | grep -q "^${MASTER_WHEELS_IMAGE}$"
     MASTER_WHEELS_PRESENT=$?
 
-    docker pull ${MASTER_WHEELS_IMAGE}
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker pull ${MASTER_WHEELS_IMAGE}
     if [ $? -ne 0 ]; then
         echo "Failed to pull ${MASTER_WHEELS_IMAGE}" >&2
         exit 1
@@ -378,7 +386,7 @@ BUILD_ARGS+=(-t ${BUILD_IMAGE_NAME})
 BUILD_ARGS+=(-f ${DOCKER_BUILD_PATH}/${OS}/Dockerfile ${DOCKER_BUILD_PATH})
 
 # Build image
-with_retries ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
+with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
 if [ $? -ne 0 ]; then
     echo "Failed to create build image in docker" >&2
     exit 1
@@ -407,13 +415,13 @@ rm -f ${BUILD_OUTPUT_PATH_PY2}/failed.lst
 
 notice "building python3 wheels"
 log_prefix "[python3] " \
-    with_retries ${MAX_ATTEMPTS} \
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} \
         docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH}:/wheels ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
 BUILD_STATUS=$?
 
 notice "building python2 wheels"
 log_prefix "[python2] " \
-    with_retries ${MAX_ATTEMPTS} \
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} \
         docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH_PY2}:/wheels --env PYTHON=python2 ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
 BUILD_STATUS_PY2=$?
 

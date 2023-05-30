@@ -9,8 +9,6 @@
 
 MY_SCRIPT_DIR=$(dirname $(readlink -fv $0))
 
-source ${MY_SCRIPT_DIR}/../build-wheels/utils.sh
-
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     echo "Environment not setup for builds" >&2
@@ -45,6 +43,7 @@ DEFAULT_SPICE_REPO="https://gitlab.freedesktop.org/spice/spice-html5"
 declare -a ONLY
 declare -a SKIP
 declare -i MAX_ATTEMPTS=1
+declare -i RETRY_DELAY=30
 
 declare -a RESULTS_BUILT
 declare -a RESULTS_PUSHED
@@ -89,7 +88,10 @@ Options:
     --skip <image> : Skip building the specified image(s). Multiple images
                      can be specified with a comma-separated list, or with
                      multiple --skip arguments.
-    --attempts:      Max attempts, in case of failure (default: 1)
+    --attempts <count>
+                     How many times to try a failed build command (default: 1)
+    --retry-delay <seconds>
+                     Sleep this many seconds between retries (default: 30)
 
     --cache:         Allow docker to use filesystem cache when building
                        CAUTION: this option may ignore locally-generated
@@ -180,11 +182,13 @@ function get_git {
     if [ ! -d ${WORKDIR}/${git_name} ]; then
         cd ${WORKDIR}
 
-        git clone --recursive ${git_repo}
+        with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} $SHELL -c "rm -rf ${git_name}.clone_tmp && git clone --recursive ${git_repo} ${git_name}.clone_tmp"
         if [ $? -ne 0 ]; then
+            rm -rf ${git_name}.clone_tmp
             echo "Failed to clone ${git_repo}. Aborting..." >&2
             return 1
         fi
+        mv ${git_name}.clone_tmp ${git_name}
 
         cd $git_name
         git checkout ${git_ref}
@@ -206,7 +210,7 @@ function get_git {
     else
         cd ${WORKDIR}/${git_name}
 
-        git fetch
+        with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} git fetch
         if [ $? -ne 0 ]; then
             echo "Failed to fetch '${git_name}'. Aborting..." >&2
             return 1
@@ -347,7 +351,7 @@ function post_build {
         local push_tag="${DOCKER_REGISTRY}${DOCKER_USER}/${LABEL}:${IMAGE_TAG_VERSIONED}"
 
         docker tag ${build_image_name} ${push_tag}
-        with_retries ${MAX_ATTEMPTS} docker push ${push_tag}
+        with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${push_tag}
         if [[ $? -ne 0 ]] ; then
             echo "Failed to push ${push_tag} ... Aborting"
             RESULTS_PUSH_FAILED+=(${LABEL})
@@ -361,7 +365,7 @@ function post_build {
         if [ "$TAG_LATEST" = "yes" ]; then
             local latest_tag="${DOCKER_REGISTRY}${DOCKER_USER}/${LABEL}:${IMAGE_TAG_LATEST}"
             docker tag ${push_tag} ${latest_tag}
-            with_retries ${MAX_ATTEMPTS} docker push ${latest_tag}
+            with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${latest_tag}
             if [[ $? -ne 0 ]] ; then
                 echo "Failed to push ${latest_tag} ... Aborting"
                 RESULTS_PUSH_FAILED+=(${LABEL})
@@ -457,7 +461,8 @@ function build_image_loci {
         echo "Creating bare clone of ${PROJECT_REPO} for ${LABEL} build..."
         if [ -n "${PROJECT_REF}" ]; then
             echo "PROJECT_REF specified is ${PROJECT_REF}..."
-            git clone --no-local --bare ${PROJECT_REPO} ${CLONE_DIR} \
+            with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} $SHELL -c "rm -rf ${CLONE_DIR}.clone_tmp && git clone --no-local --bare ${PROJECT_REPO} ${CLONE_DIR}.clone_tmp" \
+                && mv ${CLONE_DIR}.clone_tmp ${CLONE_DIR} \
                 && cd ${PROJECT_REPO} \
                 && git push --force ${CLONE_DIR} HEAD:refs/heads/${PROJECT_REF} \
                 && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
@@ -466,7 +471,8 @@ function build_image_loci {
                 && git update-server-info \
                 && cd ${ORIGWD}
         else
-            git clone --no-local --bare ${PROJECT_REPO} ${CLONE_DIR} \
+            with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} $SHELL -c "rm -rf ${CLONE_DIR}.clone_tmp && git clone --no-local --bare ${PROJECT_REPO} ${CLONE_DIR}.clone_tmp" \
+                && mv ${CLONE_DIR}.clone_tmp ${CLONE_DIR} \
                 && cd ${PROJECT_REPO} \
                 && mv ${CLONE_DIR}/hooks/post-update.sample ${CLONE_DIR}/hooks/post-update \
                 && chmod a+x ${CLONE_DIR}/hooks/post-update \
@@ -476,6 +482,7 @@ function build_image_loci {
         fi
 
         if [ $? -ne 0 ]; then
+            rm -rf ${CLONE_DIR}.clone_tmp
             echo "Failed to clone ${PROJECT_REPO}... Aborting ${LABEL} build"
             RESULTS_FAILED+=(${LABEL})
             cd ${ORIGWD}
@@ -571,7 +578,7 @@ function build_image_loci {
 
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci \
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci \
         "${BUILD_ARGS[@]}" \
         --tag ${build_image_name}  2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -704,7 +711,7 @@ function build_image_docker {
     fi
 
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
-    with_retries ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -775,7 +782,7 @@ function build_image_script {
     cp $(dirname ${image_build_file})/${SCRIPT} ${SCRIPT}
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $HTTP_PROXY $HTTPS_PROXY $NO_PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} ${COMMAND} ${SCRIPT} ${ARGS} ${build_image_name} $HTTP_PROXY $HTTPS_PROXY $NO_PROXY 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -817,7 +824,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o hN -l help,os:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,no-pull-base -- "$@")
+OPTS=$(getopt -o hN -l help,os:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -921,6 +928,10 @@ while true; do
             ;;
         --attempts)
             MAX_ATTEMPTS=$2
+            shift 2
+            ;;
+        --retry-delay)
+            RETRY_DELAY=$2
             shift 2
             ;;
         -N|--no-pull-base)
@@ -1105,7 +1116,7 @@ BASE_IMAGE_PRESENT=$?
 
 # Pull the image anyway, to ensure it's up to date
 if [[ "$PULL_BASE" == "yes" ]] ; then
-    docker pull ${BASE}
+    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker pull ${BASE} || exit 1
 fi
 
 # Download loci, if needed.

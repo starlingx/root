@@ -9,7 +9,7 @@
 
 MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
-source ${MY_SCRIPT_DIR}/utils.sh
+source ${MY_SCRIPT_DIR}/../utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -30,6 +30,7 @@ CLEAN=no
 KEEP_IMAGE=no
 DOCKER_USER=${USER}
 declare -i MAX_ATTEMPTS=1
+declare -i RETRY_DELAY=30
 PYTHON2=no
 USE_DOCKER_CACHE=no
 EXTRA_WHEELS_DIR=
@@ -64,28 +65,29 @@ Usage:
 $(basename $0)
 
 Options:
-    --os:         Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
-    --os-version: Specify OS version
-    --stream:     Build stream, stable or dev (default: stable)
-    --push:       Push to docker repo
-    --http_proxy: Set http proxy <URL>:<PORT>, urls splitted by ","
+    --os:          Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-version:  Specify OS version
+    --stream:      Build stream, stable or dev (default: stable)
+    --push:        Push to docker repo
+    --http_proxy:  Set http proxy <URL>:<PORT>, urls splitted by ","
     --https_proxy: Set https proxy <URL>:<PORT>, urls splitted by ","
-    --no_proxy:   Set bypass list for proxy <URL>, urls splitted by ","
-    --user:       Docker repo userid
-    --version:    Version for pushed image (if used with --push)
-    --attempts:   Max attempts, in case of failure (default: 1)
-    --python2:    Build a python2 tarball
+    --no_proxy:    Set bypass list for proxy <URL>, urls splitted by ","
+    --user:        Docker repo userid
+    --version:     Version for pushed image (if used with --push)
+    --attempts:    Max attempts, in case of failure (default: 1)
+    --retry-delay: Sleep this many seconds between retries (default: 30)
+    --python2:     Build a python2 tarball
     --extra-wheels-dir: Directory containing additional .whl files
-    --keep-image: Don't delete wheel builder image at the end
+    --keep-image:  Don't delete wheel builder image at the end
 
-    --cache:      Allow docker to use filesystem cache when building
-                    CAUTION: this option may ignore locally-generated
-                             packages and is meant for debugging the build
-                             scripts.
+    --cache:       Allow docker to use filesystem cache when building
+                     CAUTION: this option may ignore locally-generated
+                              packages and is meant for debugging the build
+                              scripts.
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,python2,extra-wheels-dir:,keep-image,cache -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,retry-delay:,python2,extra-wheels-dir:,keep-image,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -146,6 +148,10 @@ while true; do
             ;;
         --attempts)
             MAX_ATTEMPTS=$2
+            shift 2
+            ;;
+        --retry-delay)
+            RETRY_DELAY=$2
             shift 2
             ;;
         --python2)
@@ -238,7 +244,7 @@ if [[ "$USE_DOCKER_CACHE" == "yes" ]] ; then
     BUILD_BASE_WL_ARGS+=(--cache)
 fi
 
-${MY_SCRIPT_DIR}/build-base-wheels.sh ${BUILD_BASE_WL_ARGS[@]} --attempts ${MAX_ATTEMPTS}
+${MY_SCRIPT_DIR}/build-base-wheels.sh ${BUILD_BASE_WL_ARGS[@]} --attempts "${MAX_ATTEMPTS}" --retry-delay "${RETRY_DELAY}"
 if [ $? -ne 0 ]; then
     echo "Failure running build-base-wheels.sh" >&2
     exit 1
