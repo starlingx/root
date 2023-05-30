@@ -10,6 +10,7 @@ installer-prebuilt
 /app-harbor
 /app-kubevirt/
 /app-istio
+/app-node-feature-discovery
 /app-oran-o2
 /app-security-profiles-operator
 /app-sriov-fec-operator
