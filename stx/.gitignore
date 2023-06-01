@@ -8,8 +8,9 @@
 installer-prebuilt
 /ansible-playbooks
 /app-harbor
-/app-kubevirt/
 /app-istio
+/app-kubernetes-power-manager
+/app-kubevirt/
 /app-node-feature-discovery
 /app-oran-o2
 /app-security-profiles-operator
