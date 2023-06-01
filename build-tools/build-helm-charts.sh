@@ -39,7 +39,7 @@ $(basename $0) [--os <os>] [-a, --app <app-name>]
                [-p, --patch-dependency <patch-dependency>] [ --verbose ]
 Options:
     --os:
-            Specify base OS (eg. centos)
+            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
 
     -a, --app NAME:
             Specify the application name
@@ -679,7 +679,7 @@ function get_app_version {
 }
 
 # TODO(awang): remove the deprecated image-file option
-OPTS=$(getopt -o h,a:,A:,B:,r:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,rpm:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
+OPTS=$(getopt -o h,a:,A:,B:,r:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,rpm:,package:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
