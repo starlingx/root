@@ -13,6 +13,7 @@ installer-prebuilt
 /app-kubevirt/
 /app-node-feature-discovery
 /app-oran-o2
+/app-power-metrics
 /app-security-profiles-operator
 /app-sriov-fec-operator
 /app-sts-silicom/
