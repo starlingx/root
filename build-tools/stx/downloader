@@ -249,11 +249,11 @@ class DebDownloader(BaseDownloader):
             (dl_url, alt_dl_url) = utils.get_download_url(url, CENGN_STRATEGY)
             if alt_dl_url:
                 try:
-                    utils.run_shell_cmd(["curl", "-k", "-f", dl_url, "-o", tmp_file], logger)
+                    utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
                 except:
-                    utils.run_shell_cmd(["curl", "-k", "-f", alt_dl_url, "-o", tmp_file], logger)
+                    utils.run_shell_cmd(["curl", "-k", "-L", "-f", alt_dl_url, "-o", tmp_file], logger)
             else:
-                utils.run_shell_cmd(["curl", "-k", "-f", dl_url, "-o", tmp_file], logger)
+                utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
             utils.run_shell_cmd(["mv", tmp_file, ret], logger)
             return ret
 
