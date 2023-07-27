@@ -602,9 +602,9 @@ if __name__ == "__main__":
         logger.error("Failed to add packages into image YAML config")
         sys.exit(ret)
 
+    os.system('sudo rm -rf ' + LAT_ROOT + '/workdir')
+    os.system('sudo rm -rf ' + LAT_ROOT + '/sub_workdir')
     if not args.keep:
-        os.system('sudo rm -rf ' + LAT_ROOT + '/workdir')
-        os.system('sudo rm -rf ' + LAT_ROOT + '/sub_workdir')
         os.system('sudo rm -rf ' + LAT_ROOT + '/deploy')
 
     # Prepare the boot cert
