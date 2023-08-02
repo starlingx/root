@@ -542,7 +542,14 @@ class Parser():
                 run_shell_cmd('patch -p1 < %s' % patch, self.logger)
             else:
                 if format_type == "quilt":
-                    run_shell_cmd('cp -r %s %s' % (patch, patches_folder), self.logger)
+                    subdir = os.path.dirname(patch_file)
+                    if subdir:
+                        abspath = os.path.join(patches_folder, subdir)
+                        if not os.path.isdir(abspath):
+                            run_shell_cmd('mkdir -p %s' % abspath, self.logger)
+                    else:
+                        abspath = patches_folder
+                    run_shell_cmd('cp -r %s %s' % (patch, abspath), self.logger)
                     with open(series_file, 'a') as f:
                         f.write(patch_file + "\n")
                     f.close()
