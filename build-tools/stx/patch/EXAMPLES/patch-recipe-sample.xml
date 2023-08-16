@@ -1,0 +1,36 @@
+<patch_recipe>
+    <!-- Sample patch recipe -->
+    <patch_id>sample_patch</patch_id>
+    <sw_version>1.0.0</sw_version>
+    <patch_version>0001</patch_version>
+    <component>starlingx</component>
+    <summary>sample patch test</summary>
+    <description>Reboot required patch</description>
+    <install_instructions>Sample instructions</install_instructions>
+    <warnings>Sample warning</warnings>
+    <!-- Reboot required Y/N -->
+    <reboot_required>Y</reboot_required>
+    <unremovable>N</unremovable>
+    <status>DEV</status>
+    <requires>
+        <!--
+        <id>PATCH_XYZ_01</id>
+        <id>PATCH_XYZ_02</id>
+        -->
+    </requires>
+    <semantics></semantics>
+    <!-- Pre and Post install hook scripts are optional -->
+    <pre_install>scripts/pre-install.sh</pre_install>
+    <post_install>scripts/post-install.sh</post_install>
+    <!-- Packages to be included -->
+    <stx_packages>
+        <!-- Starlingx packages -->
+        <package>sysvinv</package>
+        <package>linux</package>
+        <package>linux-rt</package>
+    </stx_packages>
+    <binary_packages>
+        <!-- 3rd party downloaded packages -->
+        <package>curl</package>
+    </binary_packages>
+</patch_recipe>
