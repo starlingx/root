@@ -84,6 +84,7 @@ ipmitool
 iptables-persistent
 ipxe-qemu
 iscsiuio
+iotop
 isomd5sum
 kbd
 less
