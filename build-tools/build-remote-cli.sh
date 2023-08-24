@@ -15,8 +15,8 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-PLATFORM_IMAGE="docker.io/starlingx/stx-platformclients:master-centos-stable-latest"
-APPLICATION_IMAGE="docker.io/starlingx/stx-openstackclients:master-centos-stable-latest"
+PLATFORM_IMAGE=
+APPLICATION_IMAGE=
 OUTPUT_FILE="stx-remote-cli"
 VERSION="1.0"
 
@@ -32,18 +32,16 @@ function usage {
     echo "$(basename $0) [--version <version>] [-o, --output <output_file>] [-t. --tag <image_tag>]"
     echo "               [--application-image <image>] [--platform-image <image>] [-h]"
     echo "Options:"
-    echo "  -h                              show help options"
+    echo "  -h,--help                       show help options"
     echo "  --version <version>             specify remote CLI version"
     echo "                                  (default value is 1.0)"
     echo "  -o,  --output <output_file>     specify tarball output name"
     echo "                                  (default value is stx-remote-cli)"
-    echo " --platform-image <image>         specify platform docker image tag."
-    echo "                                  (default value is docker.io/starlingx/stx-platformclients:master-centos-stable-latest)"
-    echo " --application-image <image>      specify application docker image."
-    echo "                                  (default value is docker.io/starlingx/stx-openstackclients:master-centos-stable-latest)"
+    echo " --platform-image <image>         override platform docker image"
+    echo " --application-image <image>      override application docker image"
 }
 
-OPTS=$(getopt -o h,o:,t: -l version:,output:,tag:,platform-image:,application-image: -- "$@")
+OPTS=$(getopt -o h,o:,t: -l help,version:,output:,tag:,platform-image:,application-image: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -57,7 +55,7 @@ while true; do
             shift
             break
             ;;
-        -h)
+        -h|--help)
             usage
             exit 1
             ;;
@@ -85,8 +83,8 @@ while true; do
     esac
 done
 
+# Clean the previous build
 if [ -d ${BUILD_OUTPUT_PATH} ]; then
-    # Clean the previous build
     rm -rf ${BUILD_OUTPUT_PATH}
     if [ $? -ne 0 ]; then
         echo "Failed to cleanup workspace ${BUILD_OUTPUT_PATH}" >&2
