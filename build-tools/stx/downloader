@@ -115,7 +115,7 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
     """
     Return all binary packages listed in base-bullseye.lst, os-std.lst,os-rt.lst
     """
-    bin_list = []
+    layer_binaries = {}
     stx_config = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
                               'stx-tools/debian-mirror-tools/config/debian')
 
@@ -128,6 +128,8 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
         layers = ALL_LAYERS
 
     for layer in layers:
+        if layer not in layer_binaries:
+            layer_binaries[layer] = []
         search_dir = os.path.join(stx_config, layer)
         all_build_types = discovery.get_layer_build_types(distro=distro, layer=layer)
         if not all_build_types:
@@ -145,16 +147,27 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
             pattern=''.join(['os-',build_type,'.lst'])
             for root, dirs, files in os.walk(search_dir):
                 for f in fnmatch.filter(files, pattern):
-                    bin_list.append(os.path.join(root, f))
+                    layer_binaries[layer].append(os.path.join(root, f))
+        logger.info(
+            f"Binary lists for layer `{layer}`: "
+            f"{layer_binaries[layer]}"
+        )
 
     search_dir = os.path.join(stx_config, 'common')
     pattern='base-*.lst'
+
+    if "common" not in layer_binaries:
+        layer_binaries["common"] = []
+
     for root, dirs, files in os.walk(search_dir):
         for f in fnmatch.filter(files, pattern):
-            bin_list.append(os.path.join(root, f))
+            layer_binaries["common"].append(os.path.join(root, f))
 
-    logger.info("bin_list=%s" % bin_list)
-    return bin_list
+    logger.info(
+        f"Binary lists for layer `common`: "
+        f"{layer_binaries['common']}"
+    )
+    return layer_binaries
 
 
 class BaseDownloader():
@@ -215,27 +228,35 @@ class BaseDownloader():
 
 
 class DebDownloader(BaseDownloader):
-    def __init__(self, arch, _dl_dir, force, _bin_lists):
+    def __init__(self, arch, _dl_dir, force, _layer_binaries):
         super(DebDownloader, self).__init__(arch, _dl_dir, force)
         self.need_download = []
         self.downloaded = []
         self.need_upload = []
-        self.bin_lists = _bin_lists
+        self.layer_binaries = _layer_binaries
         self.apt_cache = apt.cache.Cache()
+
+    def _get_layer_binaries_repository(self, layer: str):
+        repo = REPO_BIN
+        if layer != "common":
+            repo = f"{REPO_BIN}-{layer.lower()}"
+        return repo
 
     def create_binary_repo(self):
         if not self.repomgr:
             logger.error("The repo manager is not created")
             return False
 
-        try:
-            self.repomgr.upload_pkg(REPO_BIN, None)
-        except Exception as e:
-            logger.error(str(e))
-            logger.error("Failed to create repository %s", REPO_BIN)
-            return False
+        for layer in self.layer_binaries:
+            repo = self._get_layer_binaries_repository(layer)
+            try:
+                self.repomgr.upload_pkg(repo, None)
+            except Exception as e:
+                logger.error(str(e))
+                logger.error("Failed to create repository %s", repo)
+                return False
 
-        logger.info("Successfully created repository %s", REPO_BIN)
+            logger.info("Successfully created repository %s", repo)
         return True
 
     def download(self, _name, _version, url=None):
@@ -282,21 +303,24 @@ class DebDownloader(BaseDownloader):
         return None
 
     def reports(self):
-        try:
-            self.repomgr.deploy_repo(REPO_BIN)
-        except Exception as e:
-            logger.error(str(e))
-            logger.error("Failed to publish repository %s", REPO_BIN)
-            return
+        for layer in self.layer_binaries:
+            repo = self._get_layer_binaries_repository(layer)
+            try:
+                self.repomgr.deploy_repo(repo)
+            except Exception as e:
+                logger.error(str(e))
+                logger.error("Failed to publish repository %s", repo)
+                return
 
-        if len(self.bin_lists):
-            logger.info("All binary lists are:")
-            for blist in self.bin_lists:
-                logger.info(blist)
+            if self.layer_binaries[layer]:
+                logger.info(f"[{layer}] Binary list:")
+                for bin_list in self.layer_binaries[layer]:
+                    logger.info(bin_list)
+
         logger.info("Show result for binary download:")
         return super(DebDownloader, self).reports()
 
-    def download_list(self, list_file):
+    def download_list(self, repo, list_file):
         if not os.path.exists(list_file):
             return
 
@@ -343,7 +367,7 @@ class DebDownloader(BaseDownloader):
                     # should be defined in the package list file with ':'
                     self.need_download.append([pkg_name + '_' + pkg_name_array[1], url])
 
-        previously_uploaded = self.repomgr.list_pkgs(REPO_BIN)
+        previously_uploaded = self.repomgr.list_pkgs(repo)
         logger.info(' '.join(['previously_uploaded', str(previously_uploaded)]))
         for debs in self.need_upload:
             deb = debs[0]
@@ -351,22 +375,22 @@ class DebDownloader(BaseDownloader):
             deb_path = os.path.join(stx_bin_mirror, deb)
             #  Search the package with the "eopch" in aptly repo
             if previously_uploaded and deb_fver in previously_uploaded:
-                logger.info("%s has already been uploaded to %s, skip", deb_path, REPO_BIN)
+                logger.info("%s has already been uploaded to %s, skip", deb_path, repo)
                 continue
             try:
                 debnames = deb.split('_')
-                del_ret = self.repomgr.delete_pkg(REPO_BIN, debnames[0], 'binary', None)
+                del_ret = self.repomgr.delete_pkg(repo, debnames[0], 'binary', None)
                 logger.debug("Only need uploading: Tried to delete the old %s, ret %d", debnames[0], del_ret)
-                upload_ret = self.repomgr.upload_pkg(REPO_BIN, deb_path, deploy=False)
+                upload_ret = self.repomgr.upload_pkg(repo, deb_path, deploy=False)
             except Exception as e:
                 logger.error(str(e))
-                logger.error("Exception on uploading %s to %s", deb_path, REPO_BIN)
+                logger.error("Exception on uploading %s to %s", deb_path, repo)
                 sys.exit(1)
             else:
                 if upload_ret:
-                    logger.debug("%s is uploaded to %s", deb_path, REPO_BIN)
+                    logger.debug("%s is uploaded to %s", deb_path, repo)
                 else:
-                    logger.error("Failed to upload %s to %s", deb_path, REPO_BIN)
+                    logger.error("Failed to upload %s to %s", deb_path, repo)
                     break
 
         self.need_upload.clear()
@@ -382,18 +406,18 @@ class DebDownloader(BaseDownloader):
                 deb_ver = debnames[1].split(":")[-1]
                 self.dl_success.append('_'.join([debnames[0], deb_ver]))
                 try:
-                    del_ret = self.repomgr.delete_pkg(REPO_BIN, debnames[0], 'binary', None)
+                    del_ret = self.repomgr.delete_pkg(repo, debnames[0], 'binary', None)
                     logger.debug("Tried to delete the old %s, ret %d", debnames[0], del_ret)
-                    upload_ret = self.repomgr.upload_pkg(REPO_BIN, ret, deploy=False)
+                    upload_ret = self.repomgr.upload_pkg(repo, ret, deploy=False)
                 except Exception as e:
                     logger.error(str(e))
-                    logger.error("Exception on uploading %s to %s", deb_path, REPO_BIN)
+                    logger.error("Exception on uploading %s to %s", deb_path, repo)
                     sys.exit(1)
                 else:
                     if upload_ret:
-                        logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', REPO_BIN]))
+                        logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', repo]))
                     else:
-                        logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', REPO_BIN]))
+                        logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', repo]))
                         break
             else:
                 self.dl_failed.append(deb)
@@ -406,10 +430,16 @@ class DebDownloader(BaseDownloader):
                                      + <layer>/os-rt.lst
         """
         super(DebDownloader, self).clean()
-        if len(self.bin_lists):
-            for bin_list in self.bin_lists:
-                self.download_list(bin_list)
-        else:
+
+        empty = True
+        for layer in self.layer_binaries:
+            repo = self._get_layer_binaries_repository(layer)
+            if self.layer_binaries[layer]:
+                for bin_list in self.layer_binaries[layer]:
+                    empty = False
+                    self.download_list(repo, bin_list)
+
+        if empty:
             logger.error("There are no lists of binary packages found")
             sys.exit(1)
 
