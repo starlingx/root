@@ -1094,7 +1094,7 @@ class BuildController():
         logger.info("Successfully uploaded source %s to repository %s", dsc, repo_name)
         return True
 
-    def req_add_task(self, pkg_dir, dsc, build_type, snapshot_index):
+    def req_add_task(self, pkg_dir, dsc, build_type, snapshot_index, layer):
         status = 'fail'
         chroot = None
         # For serial build and parallel build, the pkg_jobs should have different value
@@ -1111,6 +1111,7 @@ class BuildController():
         req_params['run_tests'] = self.attrs['run_tests']
         req_params['jobs'] = str(pkg_jobs)
         req_params['snapshot_idx'] = snapshot_index
+        req_params['layer'] = layer
 
         try:
             resp = requests.post(BUILDER_URL + 'addtask', json=req_params)
@@ -1491,7 +1492,7 @@ class BuildController():
                 self.publish_repo(REPO_BUILD, snapshot_idx)
                 # Requires the remote pkgbuilder to add build task
                 logger.info("To Require to add build task for %s with snapshot %s", pkg_name, snapshot_idx)
-                (status, chroot) = self.req_add_task(pkg_dir, dsc_path, build_type, snapshot_idx)
+                (status, chroot) = self.req_add_task(pkg_dir, dsc_path, build_type, snapshot_idx, layer)
                 if 'fail' in status:
                     if chroot and 'ServerError' in chroot:
                         self.req_stop_task()

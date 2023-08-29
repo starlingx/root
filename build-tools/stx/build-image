@@ -41,6 +41,11 @@ DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
 PKG_LIST_DIR = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), DEB_CONFIG_DIR)
 CERT_FILE = 'cgcs-root/public-keys/TiBoot.crt'
 CERT_PATH = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), CERT_FILE)
+IMAGE_LAYERS_FILE = 'cgcs-root/build-tools/stx/image-layers.conf'
+IMAGE_LAYERS_PATH = os.path.join(
+    os.environ.get('MY_REPO_ROOT_DIR'),
+    IMAGE_LAYERS_FILE
+)
 img_pkgs = []
 kernel_type = 'std'
 stx_std_kernel = 'linux-image-5.10.0-6-amd64-unsigned'
@@ -49,15 +54,20 @@ WAIT_TIME_BEFORE_CHECKING_LOG = 2
 # The max timeout value to wait LAT to output the build log
 MAX_WAIT_LAT_TIME = 300
 
+pkg_version_mapping = {}
+binary_repositories = []
+
 logger = logging.getLogger('build-image')
 utils.set_logger(logger)
 
 
 def merge_local_repos(repomgr):
     logger.debug('Calls repo manager to create/udpate the snapshot %s which is merged from local repositories', REPO_ALL)
-    # REPO_BUILD is higher priority than REPO_BINARY for repomgr to select package
+    # The build repository (deb-local-build) has a higher priority than
+    # the binary repositories (deb-local-binary-*) for `repomgr` to
+    # select packages.
     try:
-        pubname = repomgr.merge(REPO_ALL, ','.join([REPO_BUILD, REPO_BINARY]))
+        pubname = repomgr.merge(REPO_ALL, ','.join([REPO_BUILD, *binary_repositories]))
     except Exception as e:
         logger.error(str(e))
         logger.error('Exception when repo_manager creates/updates snapshot %s', REPO_ALL)
@@ -316,7 +326,7 @@ def check_base_os_binaries(repomgr):
                                'does not exist']))
         return False
 
-    results = verify_pkgs_in_repo(repomgr, REPO_BINARY, base_bins_list)
+    results = verify_pkgs_in_repo(repomgr, binary_repositories, base_bins_list)
     if results:
         logger.error("====OS binaries checking fail:")
         for deb in results:
@@ -336,7 +346,7 @@ def check_stx_binaries(repomgr, btype='std'):
         # Assume no such list here means ok
         return True
 
-    results = verify_pkgs_in_repo(repomgr, REPO_BINARY, stx_bins_list)
+    results = verify_pkgs_in_repo(repomgr, binary_repositories, stx_bins_list)
     if results:
         logger.error("====STX binaries checking fail:")
         for deb in results:
@@ -355,7 +365,7 @@ def check_stx_patched(repomgr, btype='std'):
                                 'does not exist']))
         return False
 
-    results = verify_pkgs_in_repo(repomgr, REPO_BUILD, stx_patched_list)
+    results = verify_pkgs_in_repo(repomgr, [REPO_BUILD], stx_patched_list)
     if results:
         logger.error("====STX patched packages checking fail:")
         for deb in results:
@@ -366,7 +376,16 @@ def check_stx_patched(repomgr, btype='std'):
     return True
 
 
-def verify_pkgs_in_repo(repomgr, repo_name, pkg_list_path):
+def verify_pkgs_in_repo(repomgr, repo_names, pkg_list_path):
+    """Verify if packages exist in one (or more) repositories.
+
+    :param repomgr: A RepoMgr instance.
+    :param repo_names: The list of repositories to query.
+    :param pkg_list_path: The path to the file listing the packages to be
+                          checked.
+    :returns: list -- The list of packages that could not be found.
+    """
+
     failed_pkgs = []
     with open(pkg_list_path, 'r') as flist:
         lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
@@ -376,23 +395,45 @@ def verify_pkgs_in_repo(repomgr, repo_name, pkg_list_path):
                 continue
             pname_parts = pkg.split()
             name = pname_parts[0]
-            if len(pname_parts) > 1:
-                version = pname_parts[1]
-                pkg_name = ''.join([name, '_', version])
-                if repomgr.search_pkg(repo_name, name, version):
-                    img_pkgs.append(''.join([name, '=', version]))
-                    logger.debug(''.join(['Found package:name=', name,
-                                          ' version=', version]))
+
+            found = False
+            for i, repo_name in enumerate(repo_names):
+                if len(pname_parts) > 1:
+                    version = pname_parts[1]
+                    pkg_name = ''.join([name, '_', version])
+                    if repomgr.search_pkg(repo_name, name, version):
+                        found = True
+                        if repo_name != REPO_BUILD:
+                            if name not in pkg_version_mapping:
+                                pkg_version_mapping[name] = [version]
+                            else:
+                                if version not in pkg_version_mapping[name]:
+                                    failed_pkgs.append(pkg_name)
+                                    logger.error(
+                                        f"Multiple versions found for `{name}`: "
+                                        f"{pkg_version_mapping[name]}"
+                                    )
+
+                        img_pkgs.append(''.join([name, '=', version]))
+                        logger.debug(''.join(['Found package:name=', name,
+                                              ' version=', version]))
+
+                    # If after processing the last repository the package was
+                    # still not found, mark it as missing.
+                    if not found and i == len(repo_names) - 1:
+                        logger.debug(' '.join([pkg_name,
+                                     'is missing in local binary repo']))
+                        failed_pkgs.append(pkg_name)
                 else:
-                    logger.debug(' '.join([pkg_name,
-                                 'is missing in local binary repo']))
-                    failed_pkgs.append(pkg_name)
-            else:
-                if repomgr.search_pkg(repo_name, name, None, True):
-                    img_pkgs.append(name)
-                    logger.debug(''.join(['Found package with name:', name]))
-                else:
-                    failed_pkgs.append(name)
+                    if repomgr.search_pkg(repo_name, name, None, True):
+                        found = True
+                        img_pkgs.append(name)
+                        logger.debug(''.join(['Found package with name:', name]))
+
+                    # If after processing the last repository the package was
+                    # still not found, mark it as missing.
+                    if not found and i == len(repo_names) - 1:
+                        failed_pkgs.append(name)
 
         return failed_pkgs
 
@@ -501,9 +542,51 @@ def sign_iso_dev(img_yaml):
 
     logger.info("Image signed %s", real_iso_file)
 
+
+def get_binary_repositories(config: str):
+    # The binary repository of the `common` layer is always present.
+    repositories = [REPO_BINARY]
+
+    layers = []
+
+    logger.info(f"Processing config file `{config}`...")
+    try:
+        with open(config, "r") as f:
+            layers = f.readlines()
+    except IOError as e:
+        logger.error(f"Unable to process config file `{config}`.")
+        logger.error(str(e))
+        sys.exit(1)
+
+    for layer in layers:
+        # Ignore if it's comment or white space.
+        if not layer.strip() or layer.startswith("#"):
+            continue
+
+        # Check if it's a valid layer.
+        layer = layer.strip().lower()
+        if layer in ALL_LAYERS:
+            repository = f"{REPO_BINARY}-{layer}"
+            repositories.append(repository)
+            logger.info(
+                f"Added binary repository for layer `{layer}`: {repository}"
+            )
+        else:
+            logger.error(
+                f"Unable to add binary repository for layer `{layer}`. "
+                f"The layer must be one of {ALL_LAYERS}."
+            )
+            sys.exit(1)
+    logger.info("Processing complete.")
+    return repositories
+
+
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="build-image helper")
+    parser = argparse.ArgumentParser(
+        description="build-image helper",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     kernel_types = parser.add_mutually_exclusive_group()
     kernel_types.add_argument('--std', help="build standard image",
                               action='store_true')
@@ -516,6 +599,15 @@ if __name__ == "__main__":
                         default=False, action='store_true')
     parser.add_argument('--no-sign', action='store_true',
                         default=False, help="Don't sign ISO at the end")
+    parser.add_argument(
+        '--image-layers-file',
+        help=(
+            "The absolute path of the configuration file that lists the "
+            "the layers that contribute binaries to the ISO"
+        ),
+        type=str,
+        default=IMAGE_LAYERS_PATH
+    )
     args = parser.parse_args()
     if args.rt:
         kernel_type = 'rt'
@@ -529,8 +621,29 @@ if __name__ == "__main__":
     repo_manager = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
                                        '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
                                        rmg_logger)
+
+    # Upload build repository (deb-local-build) to `aptly`
+    # and create a repository URL for it.
     repo_manager.upload_pkg(REPO_BUILD, None)
-    repo_manager.upload_pkg(REPO_BINARY, None)
+    build_repository_url = "deb {}{} bullseye main".format(
+        os.environ.get("REPOMGR_DEPLOY_URL"),
+        REPO_BUILD
+    )
+
+    # Get binary repositories that contribute binaries to the ISO.
+    binary_repositories = get_binary_repositories(args.image_layers_file)
+    binary_repositories_urls = []
+
+    # Upload binary repositories (deb-local-binary-*) to `aptly`
+    # and create repository URLs for them.
+    for binary_repository in binary_repositories:
+        repo_manager.upload_pkg(binary_repository, None)
+        binary_repositories_urls.append(
+            "deb {}{} bullseye main".format(
+                os.environ.get("REPOMGR_DEPLOY_URL"),
+                binary_repository
+            )
+        )
 
     logger.info("\n")
     logger.info("=====Build Image start ......")
@@ -577,15 +690,14 @@ if __name__ == "__main__":
         if update_debootstrap_mirror(lat_initramfs_yaml):
             logger.debug("Debootstrap switches to mirror %s in %s", REPO_ALL, lat_initramfs_yaml)
 
-    binary_repo_url = ''.join(['deb ',
-                               os.environ.get('REPOMGR_DEPLOY_URL'),
-                               REPO_BINARY, ' bullseye main'])
-    build_repo_url = ''.join(['deb ',
-                              os.environ.get('REPOMGR_DEPLOY_URL'),
-                              REPO_BUILD, ' bullseye main'])
-
     for yaml_file in (lat_yaml, lat_initramfs_yaml):
-        if not feed_lat_src_repos(yaml_file, [binary_repo_url, build_repo_url]):
+        if not feed_lat_src_repos(
+            yaml_file,
+            [
+                *binary_repositories_urls,
+                build_repository_url
+            ]
+        ):
             logger.error(' '.join(['Failed to set local repos to', yaml_file]))
             sys.exit(1)
         else:
