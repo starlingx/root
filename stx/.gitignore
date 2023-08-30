@@ -9,6 +9,7 @@ installer-prebuilt
 /ansible-playbooks
 /app-dell-storage
 /app-harbor
+/app-intel-ethernet-operator
 /app-intel-device-plugins
 /app-istio
 /app-kubernetes-power-manager
