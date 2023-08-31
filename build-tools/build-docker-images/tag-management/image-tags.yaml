@@ -147,3 +147,11 @@ images:
     src_ref: https://opendev.org/starlingx/app-kubernetes-power-manager/commit/02fca75f5cd6fda48c04131022b862bfd98ef8b2
     tag: stx.9.0-v2.3.0
     # Tag based on upstream package version
+  - name: docker.io/starlingx/cadvisor
+    src_build_tag: master-debian-stable-20230901T121249Z.0
+    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/c1633607e5c009c242a53b68433c3ae8f42c13db
+    tag: stx.9.0-v0.47.2
+  - name: docker.io/starlingx/telegraf
+    src_build_tag: master-debian-stable-20230901T121249Z.0
+    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/c1633607e5c009c242a53b68433c3ae8f42c13db
+    tag: stx.9.0-v1.27.3
