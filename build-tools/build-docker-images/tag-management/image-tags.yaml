@@ -70,9 +70,9 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/8a6171fce0abdc84fc1488bb78b40a5046fdc4ef
     tag: stx.9.0-v1.0.1
   - name: docker.io/starlingx/stx-fm-trap-subagent
-    src_build_tag: master-debian-stable-20230412T060000Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/20148e20031a558fb83eeb01f3d2fc393a6f170c
-    tag: stx.9.0-v1.0.1
+    src_build_tag: master-debian-stable-20230905T060000Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b9f45f28c48b9ca111ffa0dda89c09333eee6f8c
+    tag: stx.9.0-v1.0.2
   - name: docker.io/starlingx/notificationservice-base
     src_build_tag: master-debian-stable-20230329T060000Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/4e21f7115b77dee461b816718686816597fdb13b
