@@ -653,6 +653,7 @@ class RepoMgr():
     # Output: True if all works.
     def upload_pkg(self, repo_name, package, deploy=True):
         '''Upload a Debian package into a specified repository.'''
+        self.logger.info("upload_pkg: %s to %s", package, repo_name)
         local_list = self.repo.list_local(quiet=True)
         if repo_name not in local_list:
             self.logger.info('upload_pkg: repository %s does not exist, creating it.' % repo_name)
