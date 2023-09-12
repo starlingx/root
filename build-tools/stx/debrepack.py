@@ -35,8 +35,17 @@ DIST = os.environ.get('STX_DIST')
 
 # The CENGN_STRATEGY and CENGNURL references is retained for backward
 # compatability with pre-existing build environments.
-CENGN_BASE = os.path.join(os.environ.get('CENGNURL'), "debian")
+CENGN_BASE = None
+CENGNURL = os.environ.get('CENGNURL')
 CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
+if CENGNURL is not None:
+    CENGN_BASE = os.path.join(CENGNURL, "debian")
+STX_MIRROR_BASE = None
+STX_MIRROR_URL = os.environ.get('STX_MIRROR_URL')
+if STX_MIRROR_URL is not None: 
+    STX_MIRROR_BASE = os.path.join(STX_MIRROR_URL, "debian")
+if STX_MIRROR_BASE is None:
+    STX_MIRROR_BASE = CENGN_BASE
 STX_MIRROR_BASE = os.path.join(os.environ.get('STX_MIRROR_URL'), "debian")
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
 if STX_MIRROR_BASE is None:
