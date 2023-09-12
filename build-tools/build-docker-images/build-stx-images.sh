@@ -655,6 +655,7 @@ function build_image_docker {
         get_git "${DOCKER_REPO}" "${DOCKER_REF}" "${DOCKER_PATCHES}"
         if [ $? -ne 0 ]; then
             echo "Failed to clone or update ${DOCKER_REPO}. Aborting..." >&2
+            RESULTS_FAILED+=(${LABEL})
             cd ${ORIGWD}
             return 1
         fi
@@ -775,6 +776,7 @@ function build_image_script {
     get_git "${SOURCE_REPO}" "${SOURCE_REF}" "${SOURCE_PATCHES}"
     if [ $? -ne 0 ]; then
         echo "Failed to clone or update ${SOURCE_REPO}. Aborting..." >&2
+        RESULTS_FAILED+=(${LABEL})
         cd ${ORIGWD}
         return 1
     fi
