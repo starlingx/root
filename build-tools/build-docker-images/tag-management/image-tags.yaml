@@ -155,3 +155,7 @@ images:
     src_build_tag: master-debian-stable-20230901T121249Z.0
     src_ref: https://opendev.org/starlingx/app-power-metrics/commit/c1633607e5c009c242a53b68433c3ae8f42c13db
     tag: stx.9.0-v1.27.3
+  - name: docker.io/starlingx/uft
+    src_build_tag: master-debian-stable-20230917T060059Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-ethernet-operator/commit/fe8b267b30035bb59bf751e961ad37107e91e3d3
+    tag: stx.9.0-v22.07
