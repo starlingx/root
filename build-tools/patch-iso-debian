@@ -232,7 +232,7 @@ chmod +w ${BUILDDIR}
 chmod -R +w ${BUILDDIR}/isolinux
 chmod -R +w ${BUILDDIR}/ostree_repo
 # Create the directory where metadata will be stored
-mkdir ${BUILDDIR}/patches
+mkdir -p ${BUILDDIR}/patches
 chmod -R +w ${BUILDDIR}/patches
 
 echo "Updating ostree_repo..."
