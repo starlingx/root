@@ -18,6 +18,15 @@ COPY apt/debian.sources.list /etc/apt/sources.list.d/debian.list.disabled
 COPY apt/stx.sources.list /etc/apt/sources.list.d/stx.list.disabled
 COPY apt/stx.preferences /etc/apt/preferences.d/stx
 
+# Install layer-specific binary repositories.
+# Note: They are all supposed to be disabled by default, but can be optionally
+#       enabled if it is necessary to build an image that requires
+#       dependencies that are in repositories not listed in `stx.sources.list`.
+COPY apt/*.layer.sources.list /etc/apt/sources.list.d/
+RUN for layer in /etc/apt/sources.list.d/*.layer.sources.list; do \
+      mv "${layer}" "$(echo "${layer}" | sed s/.layer.sources.list/.list.disabled/)"; \
+    done
+
 # repo templates:
 #   /etc/apt/sources.list.d/
 #     debian.list.disabled         - vanilla debian repos
