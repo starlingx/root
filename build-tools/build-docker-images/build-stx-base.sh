@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -10,6 +10,7 @@
 MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
 source ${MY_SCRIPT_DIR}/../utils.sh
+source ${MY_SCRIPT_DIR}/../git-utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -356,6 +357,7 @@ else
             -e "s!@DEBIAN_DISTRIBUTION@!${DEBIAN_DISTRIBUTION}!g" \
             -e "s!@REPOMGR_DEPLOY_URL@!${REPOMGR_DEPLOY_URL}!g" \
             -e "s!@REPOMGR_ORIGIN@!${REPOMGR_ORIGIN}!g" \
+            -e "s!@LAYER@!${LAYER}!g" \
             "$@"
     }
 
@@ -364,6 +366,22 @@ else
 
     # debian.sources.list
     replace_vars "${SRC_DOCKER_DIR}/apt/debian.sources.list.in" >"${BUILDDIR}/apt/debian.sources.list"
+
+    # <layer>.sources.list
+    # These can be optionally used if it is necessary to build an image that
+    # requires dependencies that are in repositories not listed in
+    # `stx.sources.list`.
+    layer_cfg_name="${OS}_build_layer.cfg"
+    layer_cfgs=($(find ${GIT_LIST} -maxdepth 1 -name ${layer_cfg_name}))
+    LAYERS=($(
+      for layer_cfg in "${layer_cfgs[@]}"; do
+        echo $(cat "${layer_cfg}")
+      done | sort --unique
+    ))
+
+    for LAYER in "${LAYERS[@]}"; do
+        replace_vars "${SRC_DOCKER_DIR}/apt/layer.sources.list.in" >"${BUILDDIR}/apt/${LAYER}.layer.sources.list"
+    done
 
     # stx.sources: if user provided any --repo's use them instead of the template
     if [[ "${#REPO_LIST[@]}" -gt 0 ]] ; then
