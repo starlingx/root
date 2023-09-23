@@ -383,18 +383,19 @@ for subgit in $SUBGITS; do
     remote_branch=$(git_repo_remote_branch)
     if [ "${remote_branch}" == "" ]; then
         remote_branch=$(git_remote_branch)
-        if [ "${remote_branch}" == "" ]; then
-            echo_stderr "ERROR: failed to determine remote branch in ${subgit}"
-            exit 1
-        fi
+    fi
+
+    extra_args=""
+    if [ "${remote_branch}" != "" ]; then
+        extra_args="-t ${remote}/${remote_branch}"
     fi
 
     # check if destination branch already exists
     branch_check=$(git branch -a --list $branch)
     if [ -z "$branch_check" ]; then
         echo "Creating branch $branch in $subgit"
-        echo "   git checkout -t ${remote}/${remote_branch} -b $branch"
-        git checkout -t ${remote}/${remote_branch} -b $branch
+        echo "   git checkout ${extra_args} -b $branch"
+        git checkout ${extra_args} -b $branch
         if [ $? != 0 ] ; then
             echo_stderr "ERROR: failed to create branch '$branch' in ${subgit}"
             exit 1
