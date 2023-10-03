@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="patch_recipe">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="patch_id" type="xs:string"/>
+        <xs:element name="sw_version" type="xs:string"/>
+        <xs:element name="patch_version" type="xs:string"/>
+        <xs:element name="component" type="xs:string"/>
+        <xs:element name="summary" type="xs:string"/>
+        <xs:element name="description" type="xs:string"/>
+        <xs:element name="install_instructions" type="xs:string"/>
+        <xs:element name="warnings" type="xs:string"/>
+        <xs:element name="reboot_required" type="xs:string"/>
+        <xs:element name="unremovable" type="xs:string"/>
+        <xs:element name="status" type="xs:string"/>
+        <xs:element name="requires">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="id" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="semantics" type="xs:string"/>
+        <xs:element name="pre_install" type="xs:string"/>
+        <xs:element name="post_install" type="xs:string"/>
+        <xs:element name="stx_packages">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="package" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="binary_packages">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="package" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:all>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
