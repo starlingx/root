@@ -267,6 +267,8 @@ class DebDownloader(BaseDownloader):
                 return None
 
             package.candidate = candidate
+            deb_name = _name + '_' + _version
+            logger.info ('Downloading %s from %s', deb_name, package.candidate.uri)
             ret = package.candidate.fetch_binary(self.dl_dir)
             if ret:
                 return ret
