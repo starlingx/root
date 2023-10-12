@@ -292,6 +292,7 @@ sssd-tools
 startpar
 strace
 strongswan
+strongswan-swanctl
 sudo-ldap
 syslinux-utils
 syslog-ng
