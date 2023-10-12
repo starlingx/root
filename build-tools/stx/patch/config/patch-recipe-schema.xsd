@@ -3,9 +3,7 @@
   <xs:element name="patch_recipe">
     <xs:complexType>
       <xs:all>
-        <xs:element name="patch_id" type="xs:string"/>
         <xs:element name="sw_version" type="xs:string"/>
-        <xs:element name="patch_version" type="xs:string"/>
         <xs:element name="component" type="xs:string"/>
         <xs:element name="summary" type="xs:string"/>
         <xs:element name="description" type="xs:string"/>

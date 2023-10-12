@@ -1,8 +1,6 @@
 <patch_recipe>
     <!-- Sample patch recipe -->
-    <patch_id>sample_patch</patch_id>
     <sw_version>1.0.0</sw_version>
-    <patch_version>0001</patch_version>
     <component>starlingx</component>
     <summary>sample patch test</summary>
     <description>In Service patch</description>

@@ -24,9 +24,8 @@ INPUT_XML_SCHEMA = 'config/patch-recipe-schema.xsd'
 
 # Metadata components
 PATCH_ROOT_TAG = 'patch'
-PATCH_ID = 'patch_id'
+PATCH_ID = 'id'
 SW_VERSION = 'sw_version'
-PATCH_VERSION = 'patch_version'
 COMPONENT = 'component'
 STATUS = 'status'
 SUMMARY = 'summary'
@@ -101,7 +100,6 @@ class PatchMetadata(object):
         top_tag = ET.Element(PATCH_ROOT_TAG)
         self.__add_text_tag_to_xml(top_tag, PATCH_ID, self.patch_id)
         self.__add_text_tag_to_xml(top_tag, SW_VERSION, self.sw_version)
-        self.__add_text_tag_to_xml(top_tag, PATCH_VERSION, self.patch_version)
         self.__add_text_tag_to_xml(top_tag, COMPONENT, self.component)
         self.__add_text_tag_to_xml(top_tag, SUMMARY, self.summary)
         self.__add_text_tag_to_xml(top_tag, DESCRIPTION, self.description)
@@ -143,9 +141,8 @@ class PatchMetadata(object):
         return tag_content
 
     def parse_metadata(self, patch_recipe):
-        self.patch_id = patch_recipe[PATCH_ID]
+        self.patch_id = f"{patch_recipe[COMPONENT]}-{patch_recipe[SW_VERSION]}"
         self.sw_version = patch_recipe[SW_VERSION]
-        self.patch_version = patch_recipe[PATCH_VERSION]
         self.component = patch_recipe[COMPONENT]
         self.summary = patch_recipe[SUMMARY]
         self.description = patch_recipe[DESCRIPTION]

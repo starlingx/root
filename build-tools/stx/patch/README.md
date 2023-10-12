@@ -13,12 +13,8 @@ The patch builder requires the following tags in the input xml (or patch recipe)
 
 ```xml
 <patch_recipe>
-    <!-- Patch ID: Patch file name and it is used by the run-time -->
-    <patch_id>sample_patch</patch_id>
     <!-- Software Version -->
     <sw_version>1.0.0</sw_version>
-    <!-- Patch version -->
-    <patch_version>0001</patch_version>
     <!-- Component -->
     <component>starlingx</component>
     <!-- Summary: Short text to give a summary about the patch -->
