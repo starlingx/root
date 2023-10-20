@@ -719,6 +719,8 @@ class Circular_break():
     def __depth_t(self, node, dependencies, circular_chain):
         # Search the dependency tree. Once a circular dependency detected, raise exception.
         if node in circular_chain:
+            for p in circular_chain:
+                self.logger.error("Circular dependency member: %s." % str(p))
             while node is not circular_chain[0]:
                 circular_chain.remove(circular_chain[0])
             raise Exception('CIRCULAR DEPENDENCY DETECTED.')
