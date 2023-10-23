@@ -206,3 +206,29 @@ def get_download_url(url, strategy):
         raise Exception(f'Invalid value "{strategy}" of CENGN_STRATEGY')
 
     return (rt_url, alt_rt_url)
+
+def deb_file_name_to_dict(deb_file):
+    ver_array = []
+    arch = None
+    pkg_epoch = None
+    pkg_ver = None
+    deb_array = deb_file.split("_")
+    pkg_name = deb_array[0]
+    if len(deb_array) >= 3:
+        arch = deb_array[2].split(".")[0]
+    if len(deb_array) >= 2:
+        ver_array = deb_array[1].split(":")
+    if len(ver_array) >= 2:
+        pkg_ver = ver_array[-1]
+        pkg_epoch = ver_array[0]
+    elif len(ver_array) == 1:
+        pkg_ver = ver_array[0]
+        pkg_epoch = None
+    pkg_dict = {'name':pkg_name, 'ver':pkg_ver, 'epoch':pkg_epoch, 'arch':arch, 'url':None}
+    return pkg_dict
+    
+def deb_url_name_to_dict(deb_url):
+    deb_file = os.path.basename(dub_url)
+    pkg_dict = deb_file_name_to_dict(deb_file)
+    pkg_dict['url'] = deb_url
+    return pkg_dict

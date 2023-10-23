@@ -259,7 +259,7 @@ class DebDownloader(BaseDownloader):
             logger.info("Successfully created repository %s", repo)
         return True
 
-    def download(self, _name, _version, url=None):
+    def download(self, _name, _version, url=None, retries=3):
         if url != None:
             # The "+" in url is converted to "%2B", so convert
             # it back to "+" in save file.
@@ -268,13 +268,30 @@ class DebDownloader(BaseDownloader):
             tmp_file = ".".join([ret, "tmp"])
             utils.run_shell_cmd(["rm", "-rf", tmp_file], logger)
             (dl_url, alt_dl_url) = utils.get_download_url(url, CENGN_STRATEGY)
-            if alt_dl_url:
-                try:
-                    utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
-                except:
-                    utils.run_shell_cmd(["curl", "-k", "-L", "-f", alt_dl_url, "-o", tmp_file], logger)
-            else:
-                utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
+            for i in range(1,retries+1):
+                if alt_dl_url:
+                    try:
+                        utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
+                    except:
+                        if i < retries:
+                            try:
+                                utils.run_shell_cmd(["curl", "-k", "-L", "-f", alt_dl_url, "-o", tmp_file], logger)
+                                break
+                            except Exception as e:
+                                logger.error(str(e))
+                        else:
+                            utils.run_shell_cmd(["curl", "-k", "-L", "-f", alt_dl_url, "-o", tmp_file], logger)
+                            break
+                else:
+                    if i < retries:
+                        try:
+                            utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
+                            break
+                        except Exception as e:
+                            logger.error(str(e))
+                    else:
+                        utils.run_shell_cmd(["curl", "-k", "-L", "-f", dl_url, "-o", tmp_file], logger)
+                        break
             utils.run_shell_cmd(["mv", tmp_file, ret], logger)
             return ret
 
@@ -285,6 +302,8 @@ class DebDownloader(BaseDownloader):
                 logger.error(' '.join(['Fail to download', _name,
                              'with wrong version', _version, '?']))
                 logger.error('May need to update the package list file')
+                logger.error('package: %s', str(package))
+                logger.error('package.versions: %s', str(package.versions))
                 return None
 
             package.candidate = candidate
@@ -304,6 +323,7 @@ class DebDownloader(BaseDownloader):
             os.system('rm -f ' + os.path.join(self.dl_dir, deb_name + '*.deb'))
         return None
 
+
     def reports(self):
         for layer in self.layer_binaries:
             repo = self._get_layer_binaries_repository(layer)
@@ -322,44 +342,98 @@ class DebDownloader(BaseDownloader):
         logger.info("Show result for binary download:")
         return super(DebDownloader, self).reports()
 
-    def download_list(self, repo, list_file):
-        if not os.path.exists(list_file):
-            return
-
-        self.downloaded = get_downloaded(self.dl_dir, 'binary')
-        with open(list_file) as flist:
-            lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
-            for pkg in lines:
-                pkg = pkg.strip()
-                if pkg.startswith('#'):
+    def download_list_files(self, repo, list_files):
+        pkg_data=[]
+        if len(list_files):
+            for list_file in list_files:
+                if not os.path.exists(list_file):
                     continue
-                pkg_name_array = pkg.split()
-                pkg_name = pkg_name_array[0]
-                if len(pkg_name_array) == 1:
-                    logger.error("The package version of %s should be defined", pkg_name)
-                    logger.error("Please update the list file %s", list_file)
-                    sys.exit(1)
-                # strip epoch
-                pkg_ver = pkg_name_array[1].split(":")[-1]
-                if len(pkg_name_array) == 3:
-                    url = pkg_name_array[2]
-                    # Get arch from filename
-                    arch = pathlib.Path(url).stem.split("_")[-1]
+                with open(list_file) as flist:
+                    lines = list(line for line in (lpkg.strip() for lpkg in flist) if line)
+                    for pkg in lines:
+                        pkg = pkg.strip()
+                        if pkg.startswith('#'):
+                            continue
+                        pkg_name_array = pkg.split()
+                        pkg_name = pkg_name_array[0]
+                        if len(pkg_name_array) == 1:
+                            logger.error("The package version of %s should be defined in file %s", pkg_name, list_file)
+                            logger.error("Please update the list file %s", list_file)
+                            sys.exit(1)
+
+                        # strip epoch
+                        ver_array = pkg_name_array[1].split(":")
+                        if len(ver_array) == 1:
+                            pkg_ver = ver_array[0]
+                            pkg_epoch = None
+                        else:
+                            pkg_ver = ver_array[-1]
+                            pkg_epoch = ver_array[0]
+
+                        if len(pkg_name_array) == 3:
+                            url = pkg_name_array[2]
+                            url_dict = utils.deb_file_name_to_dict(os.path.basename(url).replace("%2B", "+"))
+                            logger.debug("dkg_data: name=%s, ver=%s, url=%s, url_dict=%s, file=%s", pkg_name, pkg_ver, url,url,  str(url_dict), list_file)
+                            if url_dict['ver'] and url_dict['ver'] != pkg_ver:
+                                logger.warning("Package version mismatch for package %s, $s vs %s, in file %s", pkg_name, pkg_ver, url_dict['ver'], list_file)
+                                pkg_ver = url_dict['ver']
+                            if url_dict['epoch'] and url_dict['epoch'] != pkg_epoch:
+                                logger.warning("Package epoch mismatch for package %s, $s vs %s, in file %s", pkg_name, pkg_epoch, url_dict['epoch'], list_file)
+                                pkg_epoch = url_dict['epoch']
+                                
+                            # Get arch from filename
+                            arch = pathlib.Path(url).stem.split("_")[-1]
+                        else:
+                            url = None
+                            try:
+                                package = self.apt_cache[pkg_name]
+                            except Exception as e:
+                                logger.error(str(e))
+                                sys.exit(1)
+                            arch = package.candidate.architecture
+
+                        pkg_dict={'name':pkg_name, 'ver':pkg_ver, 'epoch':pkg_epoch, 'arch':arch, 'url':url, 'repo':repo}
+                        pkg_data.append(pkg_dict)
+
+        self.download_list(repo, pkg_data)
+
+
+    def download_list(self, repo, pkg_data):
+        logger.info(' '.join(['pkg_data:', str(pkg_data)]))
+
+        # List of packages already downloaded
+        self.downloaded = get_downloaded(self.dl_dir, 'binary')
+        logger.info(' '.join(['previously downloaded:', str(self.downloaded)]))
+
+        # list of package already uploaded to ANY repo
+        previously_uploaded = self.repomgr.list_pkgs(repo)
+        logger.info(' '.join(['previously uploaded to repo', repo, ':', str(previously_uploaded)]))
+
+        pkg_data_map = {}
+        if pkg_data:
+            for pkg_dict in pkg_data:
+                pkg_name = pkg_dict['name']
+                pkg_ver = pkg_dict['ver']
+                pkg_epoch = pkg_dict['epoch']
+                arch = pkg_dict['arch']
+                url = pkg_dict['url']
+                repo = pkg_dict['repo']
+                if pkg_name not in pkg_data_map:
+                    pkg_data_map[pkg_name] = []
+                pkg_data_map[pkg_name].append(pkg_dict)
+                pkg_name_ver = '_'.join([pkg_name, pkg_ver])
+                if pkg_epoch:
+                    pkg_name_epoch_ver = '_'.join([pkg_name, ':'.join([pkg_epoch, pkg_ver])])
                 else:
-                    url = None
-                    try:
-                        package = self.apt_cache[pkg_name]
-                    except Exception as e:
-                        logger.error(str(e))
-                        sys.exit(1)
-                    arch = package.candidate.architecture
-                pname_arch = '_'.join([pkg_name, pkg_ver, arch]) + '.deb'
-                pname_epoch_arch = '_'.join([pkg_name, pkg_name_array[1], arch]) + '.deb'
-                self.dl_need.append(pkg_name + '_' + pkg_ver)
+                    pkg_name_epoch_ver = pkg_name_ver
+
+                pname_arch = '_'.join([pkg_name_ver, arch]) + '.deb'
+                pname_epoch_arch = '_'.join([pkg_name_epoch_ver, arch]) + '.deb'
+
+                self.dl_need.append(pkg_name_ver)
 
                 if self.downloaded and pname_arch in self.downloaded:
-                    logger.debug(''.join([pkg_name, '_', pkg_ver,
-                                         ' has been downloaded, skip']))
+                    logger.debug(''.join([pname_epoch_arch, ' has been downloaded, skip']))
                     self.dl_success.append(pkg_name + '_' + pkg_ver)
                     self.need_upload.append([pname_arch, pname_epoch_arch])
                 else:
@@ -367,22 +441,75 @@ class DebDownloader(BaseDownloader):
                     # fetch the package with 'apt' module, there is not 'epoch'
                     # in the dowloaded package name. This also requires the 'epoch'
                     # should be defined in the package list file with ':'
-                    self.need_download.append([pkg_name + '_' + pkg_name_array[1], url])
+                    self.need_download.append([pname_arch, pkg_name_epoch_ver, url])
 
-        previously_uploaded = self.repomgr.list_pkgs(repo)
-        logger.info(' '.join(['previously_uploaded', str(previously_uploaded)]))
+        # Download packages
+        for debs in self.need_download:
+            pname_arch = debs[0]
+            pname_epoch_arch = debs[1]
+            url = debs[2]
+            logger.debug(' '.join(['package', pname_epoch_arch, 'needs to be downloaded']))
+            debnames = pname_epoch_arch.split('_')
+            deb_name = debnames[0]
+
+            ret = self.download(debnames[0], debnames[1], url)
+            if ret:
+                deb_ver = debnames[1].split(":")[-1]
+                deb_ver_epoch = '_'.join([debnames[0], debnames[1]])
+                logger.info(' '.join([deb_ver_epoch, ' download ok']))
+                # strip epoch
+                self.dl_success.append('_'.join([debnames[0], deb_ver]))
+                self.need_upload.append([pname_arch, pname_epoch_arch])
+                if previously_uploaded and deb_ver_epoch in previously_uploaded:
+                    try:
+                        del_ret = self.repomgr.delete_pkg(repo, deb_name, 'binary', deb_ver)
+                        logger.debug("deleted the old %s from repo %s, ret %d", deb_name, repo, del_ret)
+                    except Exception as e:
+                        logger.error(str(e))
+                        logger.error("Exception on deleting %s from %s", deb_name, repo)
+            else:
+                self.dl_failed.append(pname_epoch_arch)
+
+        self.need_download.clear()
+
+        logger.info(' '.join(['need_upload', str(self.need_upload)]))
+
+        # Delete previously uploaded packages that are no longer needed
+        for prev_upload in previously_uploaded:
+            prev_upload_dict = utils.deb_file_name_to_dict(prev_upload)
+            del_name = prev_upload_dict['name']
+            delete_me = True 
+            # Verify the package is no londer needed    
+            if pkg_data_map and del_name in pkg_data_map:
+                for needed_dict in pkg_data_map[del_name]:
+                    if  prev_upload_dict['ver']   == needed_dict['ver'] and \
+                        prev_upload_dict['epoch'] == needed_dict['epoch'] and \
+                        prev_upload_dict['arch']  == needed_dict['arch']:
+                        # We still need this one
+                        delete_me = False
+                        continue
+            if delete_me:
+                del_ver = prev_upload_dict['ver']
+                logger.debug("Deleting pkg %s_%s freom %s", del_name, del_ver, repo)
+                try:
+                    del_ret = self.repomgr.delete_pkg(repo, del_name, 'binary', del_ver)
+                except Exception as e:
+                    logger.error(str(e))
+                    logger.error("Exception on deleting %s from %s", '_'.join([del_name, del_ver]), repo)
+
+        # Upload needed packages
         for debs in self.need_upload:
-            deb = debs[0]
-            deb_fver = debs[1]
-            deb_path = os.path.join(stx_bin_mirror, deb)
-            #  Search the package with the "eopch" in aptly repo
-            if previously_uploaded and deb_fver in previously_uploaded:
+            deb_ver = debs[0]
+            deb_ver_epoch = debs[1]
+            deb_path = os.path.join(stx_bin_mirror, deb_ver)
+            #  Search the package with the "epoch" in aptly repo
+            if previously_uploaded and deb_ver_epoch in previously_uploaded:
                 logger.info("%s has already been uploaded to %s, skip", deb_path, repo)
                 continue
+
+            deb_needed_dict = utils.deb_file_name_to_dict(deb_ver)
+            logger.debug("Uploading pkg %s", deb_path)
             try:
-                debnames = deb.split('_')
-                del_ret = self.repomgr.delete_pkg(repo, debnames[0], 'binary', None)
-                logger.debug("Only need uploading: Tried to delete the old %s, ret %d", debnames[0], del_ret)
                 upload_ret = self.repomgr.upload_pkg(repo, deb_path, deploy=False)
             except Exception as e:
                 logger.error(str(e))
@@ -396,34 +523,7 @@ class DebDownloader(BaseDownloader):
                     break
 
         self.need_upload.clear()
-        for debs in self.need_download:
-            deb = debs[0]
-            url = debs[1]
-            logger.debug(' '.join(['package', deb, 'needs to be downloaded']))
-            debnames = deb.split('_')
-            ret = self.download(debnames[0], debnames[1], url)
-            if ret:
-                logger.info(''.join([debnames[0], '_', debnames[1], ' download ok']))
-                # strip epoch
-                deb_ver = debnames[1].split(":")[-1]
-                self.dl_success.append('_'.join([debnames[0], deb_ver]))
-                try:
-                    del_ret = self.repomgr.delete_pkg(repo, debnames[0], 'binary', None)
-                    logger.debug("Tried to delete the old %s, ret %d", debnames[0], del_ret)
-                    upload_ret = self.repomgr.upload_pkg(repo, ret, deploy=False)
-                except Exception as e:
-                    logger.error(str(e))
-                    logger.error("Exception on uploading %s to %s", deb_path, repo)
-                    sys.exit(1)
-                else:
-                    if upload_ret:
-                        logger.info(''.join([debnames[0], '_', debnames[1], ' is uploaded to ', repo]))
-                    else:
-                        logger.error(''.join([debnames[0], '_', debnames[1], ' fail to upload to ', repo]))
-                        break
-            else:
-                self.dl_failed.append(deb)
-        self.need_download.clear()
+
 
     def start(self):
         """Here define:
@@ -435,15 +535,17 @@ class DebDownloader(BaseDownloader):
 
         empty = True
         for layer in self.layer_binaries:
-            repo = self._get_layer_binaries_repository(layer)
             if self.layer_binaries[layer]:
                 for bin_list in self.layer_binaries[layer]:
                     empty = False
-                    self.download_list(repo, bin_list)
-
         if empty:
             logger.error("There are no lists of binary packages found")
             sys.exit(1)
+
+        for layer in self.layer_binaries:
+            repo = self._get_layer_binaries_repository(layer)
+            if self.layer_binaries[layer]:
+                self.download_list_files(repo, self.layer_binaries[layer])
 
 
 class SrcDownloader(BaseDownloader):
