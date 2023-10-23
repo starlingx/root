@@ -1,0 +1,1 @@
+deb [trusted=yes] @REPOMGR_DEPLOY_URL@/deb-local-binary-@LAYER@ @DEBIAN_DISTRIBUTION@ main
