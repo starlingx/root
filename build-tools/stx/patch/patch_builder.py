@@ -85,6 +85,7 @@ class PatchBuilder(object):
 
         pre_install = self.metadata.pre_install
         post_install = self.metadata.post_install
+        deploy_precheck = self.metadata.deploy_precheck
         # pre/post install scripts
         if pre_install:
             logger.debug(f"Copying pre-install script: {pre_install}")
@@ -93,6 +94,10 @@ class PatchBuilder(object):
         if post_install:
             logger.debug(f"Copying post-install script: {post_install}")
             self.copy_script(post_install)
+
+        if deploy_precheck:
+            logger.debug(f"Copying pre-check deploy script: {deploy_precheck}")
+            self.copy_script(deploy_precheck)
 
         if not pre_install and not post_install and self.metadata.reboot_required == 'N':
             logger.warn("In service patch without restart scripts provided")
@@ -128,6 +133,9 @@ class PatchBuilder(object):
 
         if self.metadata.post_install:
             filelist.append(self.metadata.post_install)
+
+        if self.metadata.deploy_precheck:
+            filelist.append(self.metadata.deploy_precheck)
 
         # Generate the local signature file
         logger.debug(f"Generating signature for patch files {filelist}")

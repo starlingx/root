@@ -20,6 +20,7 @@
     <!-- Pre and Post install hook scripts are optional -->
     <pre_install>scripts/pre-install.sh</pre_install>
     <post_install>scripts/post-install.sh</post_install>
+    <deploy_precheck>scripts/deploy-precheck.sh</deploy_precheck>
     <!-- Packages to be included -->
     <stx_packages>
         <!-- Starlingx packages -->

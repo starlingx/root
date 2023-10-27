@@ -35,6 +35,7 @@ WARNINGS = 'warnings'
 REBOOT_REQUIRED = 'reboot_required'
 PRE_INSTALL = 'pre_install'
 POST_INSTALL = 'post_install'
+DEPLOY_PRECHECK = 'deploy_precheck'
 UNREMOVABLE = 'unremovable'
 REQUIRES = 'requires'
 REQUIRES_PATCH_ID = 'req_patch_id'
@@ -96,6 +97,7 @@ class PatchMetadata(object):
         # strip path from pre_install and post_install scripts
         self.pre_install = self.pre_install.split('/')[-1]
         self.post_install = self.post_install.split('/')[-1]
+        self.deploy_precheck = self.deploy_precheck.split('/')[-1]
 
         top_tag = ET.Element(PATCH_ROOT_TAG)
         self.__add_text_tag_to_xml(top_tag, PATCH_ID, self.patch_id)
@@ -125,6 +127,7 @@ class PatchMetadata(object):
 
         self.__add_text_tag_to_xml(top_tag, PRE_INSTALL, self.pre_install)
         self.__add_text_tag_to_xml(top_tag, POST_INSTALL, self.post_install)
+        self.__add_text_tag_to_xml(top_tag, DEPLOY_PRECHECK, self.deploy_precheck)
 
         packages_tag = ET.SubElement(top_tag, PACKAGES)
         for package in sorted(self.debs):
@@ -155,6 +158,7 @@ class PatchMetadata(object):
         self.reboot_required = patch_recipe[REBOOT_REQUIRED]
         self.pre_install = self.check_script_path(patch_recipe[PRE_INSTALL])
         self.post_install = self.check_script_path(patch_recipe[POST_INSTALL])
+        self.deploy_precheck = self.check_script_path(patch_recipe[DEPLOY_PRECHECK])
         self.unremovable = patch_recipe[UNREMOVABLE]
         self.status = patch_recipe[STATUS]
         if 'id' in patch_recipe[REQUIRES]:
