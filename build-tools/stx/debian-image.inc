@@ -184,7 +184,6 @@ puppet-module-asciiduck-sssd
 puppet-module-barbican
 puppet-module-duritong-sysctl
 puppet-module-puppetlabs-mount-core
-puppet-module-saz-memcached
 puppet-module-voxpupuli-collectd
 puppet-module-vswitch
 pv
