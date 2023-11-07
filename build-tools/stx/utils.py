@@ -21,7 +21,16 @@ import subprocess
 import urllib.parse
 import urllib.request
 
-CENGN_BASE = os.path.join(os.environ.get('CENGNURL'), "debian")
+# The CENGNURL reference is retained for backward compatability 
+# with pre-existing build environmnets.
+CENGNURL = os.environ.get('CENGNURL')
+if CENGNURL:
+    CENGN_BASE = os.path.join(CENGNURL, "debian")
+STX_MIRROR_URL = os.environ.get('STX_MIRROR_URL')
+if STX_MIRROR_URL:
+    STX_MIRROR_BASE = os.path.join(STX_MIRROR_URL, "debian")
+if not STX_MIRROR_BASE:
+    STX_MIRROR_BASE=CENGN_BASE
 
 log_levels = {
     'debug': logging.DEBUG,
@@ -165,7 +174,7 @@ def run_shell_cmd(cmd, logger):
     return outs.strip()
 
 
-def url_to_cengn(url):
+def url_to_stx_mirror(url):
 
     url_change = urllib.parse.urlparse(url)
     url_path = pathlib.Path(url_change.path)
@@ -175,23 +184,23 @@ def url_to_cengn(url):
         path = url_path
 
     # FIXME: the ":" in a path is converted to "%25", after
-    # uploading to CENGN, the "%25" in the path is converted
+    # uploading to STX_MIRROR, the "%25" in the path is converted
     # to "%2525".
-    return os.path.join(CENGN_BASE, path).replace("%25", "%2525")
+    return os.path.join(STX_MIRROR_BASE, path).replace("%25", "%2525")
 
 
 def get_download_url(url, strategy):
 
     alt_rt_url = None
-    cengn_url = url_to_cengn(url)
-    if strategy == "cengn":
-        rt_url = cengn_url
+    stx_mirror_url = url_to_stx_mirror(url)
+    if strategy == "stx_mirror":
+        rt_url = stx_mirror_url
     elif strategy == "upstream":
-        rt_url = url
-    elif strategy == "cengn_first":
+        rt_url = urstx_mirror
+    elif strategy == "stx_mirror_first":
         try:
-            urllib.request.urlopen(cengn_url)
-            rt_url = cengn_url
+            urllib.request.urlopen(stx_mirror_url)
+            rt_url = stx_mirror_url
             alt_rt_url = url
         except:
             rt_url = url
@@ -199,11 +208,11 @@ def get_download_url(url, strategy):
         try:
             urllib.request.urlopen(url)
             rt_url = url
-            alt_rt_url = cengn_url
+            alt_rt_url = stx_mirror_url
         except:
-            rt_url = cengn_url
+            rt_url = stx_mirror_url
     else:
-        raise Exception(f'Invalid value "{strategy}" of CENGN_STRATEGY')
+        raise Exception(f'Invalid value "{strategy}" of STX_MIRROR_STRATEGY')
 
     return (rt_url, alt_rt_url)
 

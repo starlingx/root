@@ -32,8 +32,22 @@ import yaml
 
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
 DIST = os.environ.get('STX_DIST')
+
+# The CENGN_STRATEGY and CENGNURL references is retained for backward
+# compatability with pre-existing build environments.
 CENGN_BASE = os.path.join(os.environ.get('CENGNURL'), "debian")
 CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
+STX_MIRROR_BASE = os.path.join(os.environ.get('STX_MIRROR_URL'), "debian")
+STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
+if STX_MIRROR_BASE is None:
+    STX_MIRROR_BASE = CENGN_BASE
+if STX_MIRROR_STRATEGY is None:
+    STX_MIRROR_STRATEGY = CENGN_STRATEGY
+    if STX_MIRROR_STRATEGY == "cengn":
+        STX_MIRROR_STRATEGY = "stx_mirror"
+    if STX_MIRROR_STRATEGY == "cengn_first":
+        STX_MIRROR_STRATEGY = "stx_mirror_first"
+
 BTYPE = "@KERNEL_TYPE@"
 
 
@@ -167,10 +181,10 @@ class Parser():
         if not self.logger.handlers:
             utils.set_logger(self.logger, log_level=log_level)
 
-        self.strategy = "cengn_first"
-        if CENGN_STRATEGY is not None:
-            self.strategy = CENGN_STRATEGY
-            # dry run to check the value of CENGN_STRATEGY
+        self.strategy = "stx_mirror_first"
+        if STX_MIRROR_STRATEGY is not None:
+            self.strategy = STX_MIRROR_STRATEGY
+            # dry run to check the value of STX_MIRROR_STRATEGY
             get_download_url("https://testurl/tarball.tgz", self.strategy)[0]
 
         if not os.path.isdir(basedir):

@@ -45,7 +45,16 @@ ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
+# The CENGN_STRATEGY reference is retained for backward compatability 
+# with pre-existing build environments.
 CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
+STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
+if not STX_MIRROR_STRATEGY:
+    STX_MIRROR_STRATEGY = CENGN_STRATEGY
+if STX_MIRROR_STRATEGY == "cengn":
+    STX_MIRROR_STRATEGY = "stx_mirror"
+elif STX_MIRROR_STRATEGY == "cengn_first":
+    STX_MIRROR_STRATEGY = "stx_mirror_first"
 
 def get_downloaded(dl_dir, dl_type):
     """
@@ -267,7 +276,7 @@ class DebDownloader(BaseDownloader):
             ret = os.path.join(self.dl_dir, dl_file)
             tmp_file = ".".join([ret, "tmp"])
             utils.run_shell_cmd(["rm", "-rf", tmp_file], logger)
-            (dl_url, alt_dl_url) = utils.get_download_url(url, CENGN_STRATEGY)
+            (dl_url, alt_dl_url) = utils.get_download_url(url, STX_MIRROR_STRATEGY)
             for i in range(1,retries+1):
                 if alt_dl_url:
                     try:
@@ -373,7 +382,7 @@ class DebDownloader(BaseDownloader):
                         if len(pkg_name_array) == 3:
                             url = pkg_name_array[2]
                             url_dict = utils.deb_file_name_to_dict(os.path.basename(url).replace("%2B", "+"))
-                            logger.debug("dkg_data: name=%s, ver=%s, url=%s, url_dict=%s, file=%s", pkg_name, pkg_ver, url,url,  str(url_dict), list_file)
+                            logger.debug("dkg_data: name=%s, ver=%s, url=%s, url_dict=%s, file=%s", pkg_name, pkg_ver, url, str(url_dict), list_file)
                             if url_dict['ver'] and url_dict['ver'] != pkg_ver:
                                 logger.warning("Package version mismatch for package %s, $s vs %s, in file %s", pkg_name, pkg_ver, url_dict['ver'], list_file)
                                 pkg_ver = url_dict['ver']
