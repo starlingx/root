@@ -130,9 +130,9 @@ images:
     src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/8efc754e23a1b1acb54f06376b14da463b651d6d
     tag: stx.9.0-v2.7.1
   - name: docker.io/starlingx/stx-fm-rest-api
-    src_build_tag: master-debian-stable-20221102T060000Z.0
+    src_build_tag: master-debian-stable-20231123T070059Z.0
     src_ref: https://opendev.org/starlingx/fault/commit/8596fc8fc5b36028a9a409e6594b3f0bb9ee9cfa
-    tag: stx.8.0-v1.0.0
+    tag: stx.9.0-v1.0.0
   - name: docker.io/starlingx/stx-keystone-api-proxy
     src_build_tag: master-debian-stable-20221122T070000Z.0
     src_ref: https://opendev.org/starlingx/distcloud/commit/3c6cac496022eceea6f32f63406c59536bc08d5e
