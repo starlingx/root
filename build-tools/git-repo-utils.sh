@@ -24,6 +24,9 @@ source ${GIT_REPO_UTILS_DIR}/repo-utils.sh
 source ${GIT_REPO_UTILS_DIR}/git-utils.sh
 source ${GIT_REPO_UTILS_DIR}/url_utils.sh
 
+git_remote_fp="git_repo_remote"
+
+
 #
 # git_repo_rel_dir [<dir>]:
 #      Return the relative directory of a git within a repo.

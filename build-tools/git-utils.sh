@@ -15,6 +15,10 @@ GIT_UTILS_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}" )" )"
 
 source ${GIT_UTILS_DIR}/utils.sh
 
+# pseudo function pointer for git_remote (fallback) or git_repo_remote (preferred)
+if [ -z git_remote_fp ]; then
+     git_remote_fp="git_remote"
+fi
 
 git_ctx_root_dir () {
     dirname "${MY_REPO}"
@@ -427,6 +431,7 @@ git_local_branch () {
     # This used to work on older git versions
     result=$(git name-rev --name-only HEAD)
     if [ "$result" == "" ] || [ "$result" == "undefined" ]; then
+        echo "HEAD"
         return 1
     fi
 
@@ -436,6 +441,7 @@ git_local_branch () {
     while git_is_tag $result; do
         result=$(git name-rev --name-only $result^1 )
         if [ "$result" == "" ] || [ "$result" == "undefined" ]; then
+            echo "HEAD"
             return 1
         fi
     done
@@ -447,6 +453,7 @@ git_list_remotes () {
     git remote | grep -v gerrit
 }
 
+
 git_remote () {
     local DIR="${1:-${PWD}}"
 
@@ -455,7 +462,7 @@ git_remote () {
     local_branch=$(git_local_branch) || return 1
 
     # Return remote of current local branch, else default remote.
-    git config branch.${local_branch}.remote || git_list_remotes
+    git config branch.${local_branch}.remote || git_list_remotes | head -n 1
     )
 }
 
@@ -473,13 +480,13 @@ git_remote_branch () {
     # Our best bet is if the git config shows the local
     # branch is tracking a remote branch.
     local_branch=$(git_local_branch) || return 1
-    git config branch.${local_branch}.merge | sed 's#^refs/heads/##'
+    git config branch.${local_branch}.merge | grep -v '^refs/tags/' | sed 's#^refs/heads/##'
     if [ ${PIPESTATUS[0]} -eq 0  ]; then
         return 0
     fi
 
     # Before we can select a remote branch, we need to know which remote.
-    remote=$(git_remote)
+    remote=$($git_remote_fp)
     if [ $? -ne 0 ] || [ "$remote" == "" ]; then
         return 1
     fi

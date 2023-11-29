@@ -215,13 +215,17 @@ for subgit in $SUBGITS; do
         exit 1
     fi
 
-    review_method=$(git_repo_review_method)
-    if [ "${review_method}" == "" ]; then
-        echo_stderr "ERROR: Failed to determine review method in ${subgit}"
-        exit 1
+    if [ $BYPASS_GERRIT -eq 0 ]; then
+        review_method=$(git_repo_review_method)
+        if [ "${review_method}" == "" ]; then
+            echo_stderr "ERROR: Failed to determine review method in ${subgit}"
+            exit 1
+        fi
+    else
+        review_method='default'
     fi
 
-    remote=$(git_remote)
+    remote=$(git_repo_remote)
     if [ "${remote}" == "" ]; then
         echo_stderr "ERROR: Failed to determine remote in ${manifest_dir}"
         exit 1
