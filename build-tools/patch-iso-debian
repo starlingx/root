@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2022 Wind River Systems, Inc.
+# Copyright (c) 2023 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -42,7 +42,7 @@ function extract_metadata() {
     local patchesdir=${BUILDDIR}/patches
     local patchfile=$1
     local patchid=$(basename $patchfile .patch)
-    local ostree_log=$(ostree --repo=${BUILDDIR}/ostree_repo log starlingx)
+    local ostree_log=$(ostree --repo=${OSTREE_REPO} log starlingx)
 
     echo "Extracting ${patchfile}"
     # Extract it
@@ -218,7 +218,7 @@ fi
 # Mount the ISO
 mount_iso
 
-rsync -a ${MNTDIR}/ ${BUILDDIR}/
+rsync -a --exclude 'ostree_repo' ${MNTDIR}/ ${BUILDDIR}/
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "Call to rsync ISO content. Aborting..."
@@ -230,13 +230,14 @@ unmount_iso
 # Fix for permission denied if not running as root
 chmod +w ${BUILDDIR}
 chmod -R +w ${BUILDDIR}/isolinux
-chmod -R +w ${BUILDDIR}/ostree_repo
+
 # Create the directory where metadata will be stored
 mkdir -p ${BUILDDIR}/patches
 chmod -R +w ${BUILDDIR}/patches
 
-echo "Updating ostree_repo..."
-ostree --repo=${BUILDDIR}/ostree_repo pull-local ${OSTREE_REPO} starlingx
+echo "Copying only the latest commit from ostree_repo..."
+ostree --repo=${BUILDDIR}/ostree_repo init --mode=archive-z2 
+ostree --repo=${BUILDDIR}/ostree_repo pull-local --depth=0 ${OSTREE_REPO} starlingx
 ostree --repo=${BUILDDIR}/ostree_repo summary --update
 echo "Updated iso ostree commit:"
 ostree --repo=${BUILDDIR}/ostree_repo log starlingx
