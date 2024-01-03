@@ -78,6 +78,7 @@ hostname
 ifenslave
 init
 initramfs-tools
+inotify-tools
 install-info
 iperf3
 ipmitool
@@ -112,6 +113,7 @@ libgcc-s1
 libgeoip1
 libgfapi0
 libgoogle-perftools4
+libinotifytools0
 libiscsi7
 libjs-jquery-cookie
 liblapack3
