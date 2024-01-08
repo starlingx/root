@@ -273,7 +273,6 @@ python3-xstatic-smart-table
 python3-xstatic-spin
 python3-xstatic-term.js
 python-is-python3
-qemu
 redfishtool
 rng-tools
 rpm
