@@ -196,7 +196,7 @@ def get_download_url(url, strategy):
     if strategy == "stx_mirror":
         rt_url = stx_mirror_url
     elif strategy == "upstream":
-        rt_url = urstx_mirror
+        rt_url = url
     elif strategy == "stx_mirror_first":
         try:
             urllib.request.urlopen(stx_mirror_url)
