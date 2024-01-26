@@ -42,7 +42,9 @@ Options:
             Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
 
     -a, --app NAME:
-            Specify the application name
+            Specify the application name.
+            When not specified will fall-back to its default value.
+            Default: stx-openstack
 
     -A, --app-version-file FILENAME:
             Specify the file containing version information for the helm
@@ -316,10 +318,18 @@ function build_application_tarball_fluxcd {
     if [ -n "${LABEL}" ]; then
         APP_VERSION=${APP_VERSION}-${LABEL}
     fi
-    if ! grep -q "^app_name:" metadata.yaml ; then
-        echo "app_name: ${APP_NAME}" >> metadata.yaml
+    if [ -z "${APP_NAME}" ] ; then
+        echo "No APP_NAME argument. Using metadata.yaml info instead..."
+    else
+        echo "Overriding metadata.yaml info... app_name: ${APP_NAME}"
+        sed -i "/^\([[:space:]]*app_name: \).*/s//\1${APP_NAME}/" metadata.yaml
     fi
-    echo "app_version: ${APP_VERSION}" >> metadata.yaml
+    if [ -z "${APP_VERSION}" ] ; then
+        echo "No APP_VERSION argument. Using metadata.yaml info instead..."
+    else
+        echo "Overriding metadata.yaml info... app_version: ${APP_VERSION}"
+        sed -i "/^\([[:space:]]*app_version: \).*/s//\1${APP_VERSION}/" metadata.yaml
+    fi
     if [ -n "${PATCH_DEPENDENCIES}" ]; then
         echo "patch_dependencies:" >> metadata.yaml
         for patch in ${PATCH_DEPENDENCIES[@]}; do
