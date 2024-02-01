@@ -160,6 +160,6 @@ images:
     src_ref: https://opendev.org/starlingx/app-intel-ethernet-operator/commit/fe8b267b30035bb59bf751e961ad37107e91e3d3
     tag: stx.9.0-v22.07
   - name: docker.io/starlingx/metrics-exporter-api
-    src_build_tag: master-debian-stable-20231206T070059Z.0
-    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/107f2f7007c8c30b6756a7dfc82a398d3cf526de
-    tag: stx.9.0-v0.0.1
+    src_build_tag: master-debian-stable-20240313T060056Z.0
+    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/72558ed9c75ebf80089784e4d485d7f4a235bd4d
+    tag: stx.10.0-v1.0.0
