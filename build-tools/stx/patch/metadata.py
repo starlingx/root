@@ -109,15 +109,15 @@ class PatchMetadata(object):
         self.__add_text_tag_to_xml(top_tag, WARNINGS, self.warnings)
         self.__add_text_tag_to_xml(top_tag, STATUS, self.status)
 
-        if self.unremovable:
-            self.__add_text_tag_to_xml(top_tag, UNREMOVABLE, 'Y')
+        if self.unremovable.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, UNREMOVABLE, self.unremovable.upper())
         else:
-            self.__add_text_tag_to_xml(top_tag, UNREMOVABLE, 'N')
+            raise Exception('Supported values for "Unremovable" are Y or N, for "Yes" or "No" respectively')
 
-        if self.reboot_required:
-            self.__add_text_tag_to_xml(top_tag, REBOOT_REQUIRED, 'Y')
+        if self.reboot_required.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, REBOOT_REQUIRED, self.reboot_required.upper())
         else:
-            self.__add_text_tag_to_xml(top_tag, REBOOT_REQUIRED, 'N')
+            raise Exception('Supported values for "Reboot Required" are Y or N, for "Yes" or "No" respectively')
 
         self.__add_text_tag_to_xml(top_tag, SEMANTICS, self.semantics)
 
