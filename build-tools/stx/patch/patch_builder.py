@@ -36,6 +36,12 @@ mdsum_signature_file = "signature"
 BUILD_ROOT = os.environ.get('MY_BUILD_PKG_DIR')
 PATCH_OUTPUT = os.path.join(BUILD_ROOT, "patch_output")
 
+# Default names for every script type
+PATCH_SCRIPTS = {
+   "PRE_INSTALL": "pre-install.sh",
+   "POST_INSTALL": "post-install.sh",
+   "DEPLOY_PRECHECK": "deploy-precheck.sh"
+}
 
 class PatchBuilder(object):
     def __init__(self, patch_recipe_file):
@@ -89,15 +95,15 @@ class PatchBuilder(object):
         # pre/post install scripts
         if pre_install:
             logger.debug(f"Copying pre-install script: {pre_install}")
-            self.copy_script(pre_install)
+            self.copy_script("PRE_INSTALL", pre_install)
 
         if post_install:
             logger.debug(f"Copying post-install script: {post_install}")
-            self.copy_script(post_install)
+            self.copy_script("POST_INSTALL", post_install)
 
         if deploy_precheck:
-            logger.debug(f"Copying pre-check deploy script: {deploy_precheck}")
-            self.copy_script(deploy_precheck)
+            logger.debug(f"Copying deploy pre-check script: {deploy_precheck}")
+            self.copy_script("DEPLOY_PRECHECK", deploy_precheck)
 
         if not pre_install and not post_install and self.metadata.reboot_required == 'N':
             logger.warn("In service patch without restart scripts provided")
@@ -113,13 +119,20 @@ class PatchBuilder(object):
         # Pack .patch file
         self.__sign_and_pack(f'{self.metadata.patch_id}.patch')
 
-    def copy_script(self, install_script):
+    def copy_script(self, script_type, install_script):
         if not os.path.isfile(install_script):
             erro_msg = f"Install script {install_script} not found"
             logger.error(erro_msg)
             raise FileNotFoundError(erro_msg)
 
-        shutil.copy(install_script, ".")
+        # We check the type to correctly rename the file to a expected value
+        script_name = PATCH_SCRIPTS.get(script_type, None)
+
+        if script_name:
+            logger.info(f"Renaming {install_script} to {script_name}")
+            shutil.copy(install_script, f"./{script_name}")
+        else:
+            raise ValueError(f"Script type provided is not valid one: {script_type}")
 
     def __sign_and_pack(self, patch_file):
         """
@@ -129,13 +142,10 @@ class PatchBuilder(object):
         filelist = ["metadata.tar", "software.tar"]
 
         if self.metadata.pre_install:
-            filelist.append(self.metadata.pre_install)
+            filelist.append(PATCH_SCRIPTS["PRE_INSTALL"])
 
         if self.metadata.post_install:
-            filelist.append(self.metadata.post_install)
-
-        if self.metadata.deploy_precheck:
-            filelist.append(self.metadata.deploy_precheck)
+            filelist.append(PATCH_SCRIPTS["POST_INSTALL"])
 
         # Generate the local signature file
         logger.debug(f"Generating signature for patch files {filelist}")
