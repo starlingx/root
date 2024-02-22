@@ -1594,6 +1594,9 @@ class BuildController():
                             logger.warning('Notified dsc_depend to retrieve %s', done_pkg_name)
                             self.req_kill_task('sbuild', done_dsc)
                             logger.debug('Require pkgbuilder to clean the task for %s', done_pkg_name)
+                            if self.attrs['exit_on_fail']:
+                                logger.error("Exiting due to failed package build")
+                                return
                             continue
                     self.req_kill_task('sbuild', done_dsc)
                     logger.debug('Require pkgbuilder to clean the task for %s', done_pkg_name)
