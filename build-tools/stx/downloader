@@ -33,7 +33,8 @@ REPO_BIN = 'deb-local-binary'
 mirror_root = os.environ.get('STX_MIRROR')
 stx_src_mirror = os.path.join(mirror_root, 'sources')
 stx_bin_mirror = os.path.join(mirror_root, 'binaries')
-all_binary_lists = ['base-bullseye.lst', 'os-std.lst', 'os-rt.lst']
+DEBIAN_DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
+all_binary_lists = ['base-' + DEBIAN_DISTRIBUTION + '.lst', 'os-std.lst', 'os-rt.lst']
 types_pkg_dirs = ['debian_pkg_dirs', 'debian_pkg_dirs_rt', 'debian_pkg_dirs_installer']
 
 logger = logging.getLogger('downloader')
@@ -122,7 +123,7 @@ def get_all_stx_pkgs():
 
 def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None):
     """
-    Return all binary packages listed in base-bullseye.lst, os-std.lst,os-rt.lst
+    Return all binary packages listed in base-${DEBIAN_DISTRIBUTION}.lst, os-std.lst,os-rt.lst
     """
     layer_binaries = {}
     stx_config = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
@@ -163,7 +164,7 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
         )
 
     search_dir = os.path.join(stx_config, 'common')
-    pattern='base-*.lst'
+    pattern='base-' + DEBIAN_DISTRIBUTION + '*.lst'
 
     if "common" not in layer_binaries:
         layer_binaries["common"] = []
@@ -536,7 +537,7 @@ class DebDownloader(BaseDownloader):
 
     def start(self):
         """Here define:
-        the complete set of binaries = base_bullseye.lst
+        the complete set of binaries = base_${DEBIAN_DISTRIBUTION}.lst
                                      + <layer>/os-std.lst
                                      + <layer>/os-rt.lst
         """

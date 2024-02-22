@@ -33,6 +33,7 @@ SIGN_KEY = '8C58D092AD39022571D1F57AFA689A0116E3E718'
 SIGN_PASSWD = 'starlingx'
 DEFAULT_TIMEOUT_COUNT = 1
 STX_DIST = os.environ.get('STX_DIST')
+DEBIAN_DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
 
 # Class used to manage aptly data base, it can:
 #     create_remote: Create a repository link to a remote mirror
@@ -332,9 +333,9 @@ class Deb_aptly():
         if task_state != 'SUCCEEDED':
             self.logger.warning('Quick publish for %s create failed: %s', publish_name, task_state)
             return None
-        return publish_name + ' ' + 'bullseye'
+        return publish_name + ' ' + DEBIAN_DISTRIBUTION
 
-    # Publish a snap called "name" with prefix as name, "bullseye" as the distribution
+    # Publish a snap called "name" with prefix as name, DEBIAN_DISTRIBUTION as the distribution
     # Return None or prefix/distribution
     def __publish_snap(self, name):
         '''Deploy a snapshot.'''
@@ -506,8 +507,8 @@ class Deb_aptly():
                 self.logger.warning('%s exists, please choose another name', local_name)
                 return None
 
-        # Static settings: bullseye main
-        repo = self.aptly.repos.create(local_name, default_distribution='bullseye', default_component='main')
+        # Static settings: DEBIAN_DISTRIBUTION main
+        repo = self.aptly.repos.create(local_name, default_distribution=DEBIAN_DISTRIBUTION, default_component='main')
         return repo
 
     # Upload a bundle of Debian package files into a local repository.
@@ -801,7 +802,7 @@ class Deb_aptly():
         for publish in publish_list:
             # Remove all related publish including quick publish
             if publish.prefix.startswith(name + '-') or publish.prefix == name:
-                task = self.aptly.publish.drop(prefix=publish.prefix, distribution='bullseye', force_delete=True)
+                task = self.aptly.publish.drop(prefix=publish.prefix, distribution=DEBIAN_DISTRIBUTION, force_delete=True)
                 task_state = self.__wait_for_task(task)
                 if task_state != 'SUCCEEDED':
                     self.logger.warning('Drop publish failed %s : %s', name, task_state)

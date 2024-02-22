@@ -31,7 +31,7 @@ import yaml
 
 
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
-DIST = os.environ.get('STX_DIST')
+DIST = os.environ.get('DEBIAN_DISTRIBUTION')
 
 # The CENGN_STRATEGY and CENGNURL references is retained for backward
 # compatability with pre-existing build environments.
@@ -853,7 +853,7 @@ class Parser():
         src = run_shell_cmd('dpkg-parsechangelog -l %s --show-field source' % changelog, self.logger)
         ver = run_shell_cmd('dpkg-parsechangelog -l %s --show-field version' % changelog, self.logger)
         ver += self.set_revision()
-        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (self.pkginfo["srcdir"], ver, RELEASENOTES), self.logger)
+        run_shell_cmd('cd %s; dch -p -D %s -v %s %s' % (self.pkginfo["srcdir"], DIST, ver, RELEASENOTES), self.logger)
         # strip epoch
         ver = ver.split(":")[-1]
 
@@ -899,7 +899,7 @@ class Parser():
             run_shell_cmd('mkdir -p %s; cp %s %s' % (srcdir, pfile, srcdir), self.logger)
         run_shell_cmd('tar czvf %s %s; rm -rf %s' % (tarfile, srcdir, srcdir), self.logger)
         run_shell_cmd('debmake -a %s' % tarfile, self.logger)
-        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (srcdir, pkgver, RELEASENOTES), self.logger)
+        run_shell_cmd('cd %s; dch -p -D %s -v %s %s' % (srcdir, DIST, pkgver, RELEASENOTES), self.logger)
         run_shell_cmd('cd %s; dpkg-buildpackage -nc -us -uc -S -d' % srcdir, self.logger)
         # strip epoch
         ver = pkgver.split(":")[-1]

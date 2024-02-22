@@ -33,6 +33,8 @@ STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
+DEBIAN_DISTRIBUTION = os.environ.get("DEBIAN_DISTRIBUTION")
+
 LAT_ROOT = '/localdisk'
 REPO_ALL = 'deb-merge-all'
 REPO_BINARY = 'deb-local-binary'
@@ -625,9 +627,10 @@ if __name__ == "__main__":
     # Upload build repository (deb-local-build) to `aptly`
     # and create a repository URL for it.
     repo_manager.upload_pkg(REPO_BUILD, None)
-    build_repository_url = "deb {}{} bullseye main".format(
+    build_repository_url = "deb {}{} {} main".format(
         os.environ.get("REPOMGR_DEPLOY_URL"),
-        REPO_BUILD
+        REPO_BUILD,
+        DEBIAN_DISTRIBUTION
     )
 
     # Get binary repositories that contribute binaries to the ISO.
@@ -639,9 +642,10 @@ if __name__ == "__main__":
     for binary_repository in binary_repositories:
         repo_manager.upload_pkg(binary_repository, None)
         binary_repositories_urls.append(
-            "deb {}{} bullseye main".format(
+            "deb {}{} {} main".format(
                 os.environ.get("REPOMGR_DEPLOY_URL"),
-                binary_repository
+                binary_repository,
+                DEBIAN_DISTRIBUTION
             )
         )
 
@@ -660,8 +664,8 @@ if __name__ == "__main__":
         logger.error("Fail to get prepared to build image")
         sys.exit(1)
 
-    base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-bullseye.yaml')
-    base_initramfs_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-initramfs-bullseye.yaml')
+    base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-' + DEBIAN_DISTRIBUTION + '.yaml')
+    base_initramfs_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-initramfs-' + DEBIAN_DISTRIBUTION + '.yaml')
     os.environ["WORKSPACE_DIR"] = LAT_ROOT
     lat_yaml = os.path.join(LAT_ROOT, "lat.yaml")
     lat_initramfs_yaml = os.path.join(LAT_ROOT, "lat-initramfs.yaml")
