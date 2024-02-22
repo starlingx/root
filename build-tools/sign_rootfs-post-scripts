@@ -23,10 +23,12 @@
   LOCKD_FILE=LockDown.efi
   LOCKD_PATH=${IMAGE_ROOTFS}/boot/efi/EFI/BOOT/
   LOCKD_INIT=${IMAGE_ROOTFS}/usr/lib/efitools/x86_64-linux-gnu/LockDown.efi
-  KERNEL_RT_FILE=vmlinuz-5.10.0-6-rt-amd64
   KERNEL_RT_PATH=${IMAGE_ROOTFS}/boot/
-  KERNEL_FILE=vmlinuz-5.10.0-6-amd64
+  KERNEL_RT_FILE=$(ls ${KERNEL_RT_PATH}/vmlinuz-*[0-9]-rt-amd64)
+  KERNEL_RT_FILE=${KERNEL_RT_FILE##*/}
   KERNEL_PATH=${IMAGE_ROOTFS}/boot/
+  KERNEL_FILE=$(ls ${KERNEL_PATH}/vmlinuz-*[0-9]-amd64)
+  KERNEL_FILE=${KERNEL_FILE##*/}
   SSH_OPTION_NOCHECKING="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
   REQUEST=$(ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} sudo /opt/signing/sign-debian.sh -r)
   UPLOAD_PATH=${REQUEST#*Upload: }
