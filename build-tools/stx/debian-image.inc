@@ -166,6 +166,7 @@ multipath-tools-boot
 nano
 ncurses-base
 ncurses-bin
+ndisc6
 netcat-openbsd
 nfs-kernel-server
 nftables
