@@ -34,7 +34,7 @@ mirror_root = os.environ.get('STX_MIRROR')
 stx_src_mirror = os.path.join(mirror_root, 'sources')
 stx_bin_mirror = os.path.join(mirror_root, 'binaries')
 DEBIAN_DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
-all_binary_lists = ['base-' + DEBIAN_DISTRIBUTION + '.lst', 'os-std.lst', 'os-rt.lst']
+all_binary_lists = ['base-' + DEBIAN_DISTRIBUTION + '.lst', 'os-' + DEBIAN_DISTRIBUTION + '-std.lst', 'os-' + DEBIAN_DISTRIBUTION + '-rt.lst']
 types_pkg_dirs = ['debian_pkg_dirs', 'debian_pkg_dirs_rt', 'debian_pkg_dirs_installer']
 
 logger = logging.getLogger('downloader')
@@ -123,7 +123,8 @@ def get_all_stx_pkgs():
 
 def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None):
     """
-    Return all binary packages listed in base-${DEBIAN_DISTRIBUTION}.lst, os-std.lst,os-rt.lst
+    Return all binary packages listed in base-${DEBIAN_DISTRIBUTION}.lst,
+    os-${DEBIAN_DISTRIBUTION}-std.lst,os-${DEBIAN_DISTRIBUTION}-rt.lst
     """
     layer_binaries = {}
     stx_config = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
@@ -154,7 +155,7 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
                 logger.warning(' '.join([build_type, 'is not a valid build_type for distro', distro, 'of layer', layer]))
                 continue
 
-            pattern=''.join(['os-',build_type,'.lst'])
+            pattern=''.join(['os-', DEBIAN_DISTRIBUTION, '-', build_type, '.lst'])
             for root, dirs, files in os.walk(search_dir):
                 for f in fnmatch.filter(files, pattern):
                     layer_binaries[layer].append(os.path.join(root, f))
@@ -538,8 +539,8 @@ class DebDownloader(BaseDownloader):
     def start(self):
         """Here define:
         the complete set of binaries = base_${DEBIAN_DISTRIBUTION}.lst
-                                     + <layer>/os-std.lst
-                                     + <layer>/os-rt.lst
+                                     + <layer>/os-${DEBIAN_DISTRIBUTION}-std.lst
+                                     + <layer>/os-${DEBIAN_DISTRIBUTION}-rt.lst
         """
         super(DebDownloader, self).clean()
 
