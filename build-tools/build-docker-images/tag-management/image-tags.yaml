@@ -48,9 +48,9 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/bfbaba57310a03e60f30d44b6dc127de5c77f960
     tag: stx.8.0-v1.0.2
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-debian-stable-20231019T060059Z.0
-    src_ref: https://opendev.org/starlingx/update/commit/af133fec2f1c3d11694420686e906c8d188ae32f
-    tag: stx.9.0-v1.5.13
+    src_build_tag: master-debian-stable-20240315T060056Z.0
+    src_ref: https://opendev.org/starlingx/distcloud-client/commit/02444385e977d1c3d002a764a11fd6f9fc2aa0dc
+    tag: stx.9.0-v1.5.14
   - name: docker.io/starlingx/stx-vault-manager
     src_build_tag: master-debian-stable-20240208T070059Z.0
     src_ref: https://opendev.org/starlingx/vault-armada-app/commit/4f504c064cc1426314afcf457dfae33198253fea
