@@ -163,3 +163,7 @@ images:
     src_build_tag: master-debian-stable-20240313T060056Z.0
     src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/72558ed9c75ebf80089784e4d485d7f4a235bd4d
     tag: stx.10.0-v1.0.0
+  - name: docker.io/starlingx/stx-ceph-manager
+    src_build_tag: master-centos-stable-20230118T031801Z.0
+    src_ref: https://opendev.org/starlingx/rook-ceph/commit/88fa7920ef73d098507a6a6daee50985a0c139cd
+    tag: stx.10.0-v1.7.11
