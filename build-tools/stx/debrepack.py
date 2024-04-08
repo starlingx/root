@@ -237,6 +237,8 @@ class Parser():
         if "debver" not in self.meta_data:
             self.logger.error("No debver defined in meta_data.yaml")
             raise Exception("No debver defined in meta_data.yaml")
+        self.meta_data['debver'] = str(self.meta_data['debver']).rstrip("@")
+        self.logger.info("debver in meta_data %s" % self.meta_data["debver"])
 
         if "debname" in self.meta_data:
             self.pkginfo["debname"] = self.meta_data["debname"]
