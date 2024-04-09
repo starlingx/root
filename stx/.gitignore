@@ -17,6 +17,7 @@ installer-prebuilt
 /app-node-feature-discovery
 /app-oran-o2
 /app-power-metrics
+/app-rook-ceph
 /app-security-profiles-operator
 /app-sriov-fec-operator
 /app-sts-silicom/
