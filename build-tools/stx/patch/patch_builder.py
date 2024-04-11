@@ -44,12 +44,13 @@ PATCH_SCRIPTS = {
 }
 
 class PatchBuilder(object):
-    def __init__(self, patch_recipe_file):
+    def __init__(self, patch_recipe_file, file_name=None):
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
         self.fetch_debs = fetch_debs.FetchDebs()
         self.fetch_debs.need_dl_stx_pkgs = self.metadata.stx_packages
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
+        self.patch_name = f'{self.metadata.patch_id}.patch' if file_name == None else file_name
 
     def get_md5(self, path):
         '''
@@ -64,7 +65,7 @@ class PatchBuilder(object):
         return int(md5.hexdigest(), 16)
 
     def build_patch(self):
-        logger.info(f"Generating patch {self.metadata.patch_id}")
+        logger.info(f"Generating patch {self.patch_name}")
         # Fetch debs from metadata and
         # Create software.tar, metadata.tar and signatures
         # Create a temporary working directory
@@ -117,7 +118,7 @@ class PatchBuilder(object):
         os.remove("metadata.xml")
 
         # Pack .patch file
-        self.__sign_and_pack(f'{self.metadata.patch_id}.patch')
+        self.__sign_and_pack(self.patch_name)
 
     def copy_script(self, script_type, install_script):
         if not os.path.isfile(install_script):
@@ -201,8 +202,11 @@ class PatchBuilder(object):
 @click.command()
 @click.option('--recipe', help='Patch recipe input XML file, examples are available under EXAMLES directory',
                required=True)
-def build(recipe):
-    patch_builder = PatchBuilder(recipe)
+@click.option('--name', help='Allow user to define name of the patch file. e.g.: test-sample-rr.patch. \
+              Name will default to patch_id if not defined',
+               required=False)
+def build(recipe, name=None):
+    patch_builder = PatchBuilder(recipe, name)
     patch_builder.build_patch()
 
 if __name__ == '__main__':
