@@ -106,9 +106,9 @@ images:
     src_ref: https://opendev.org/starlingx/utilities/commit/81c5b2e415f6242977a2b14c40bdad68e3a45a00
     tag: stx.9.0-v1.0.0
   - name: docker.io/starlingx/stx-debian-tools-dev
-    src_build_tag: master-debian-stable-20230504T060000Z.0
-    src_ref: https://opendev.org/starlingx/utilities/commit/81c5b2e415f6242977a2b14c40bdad68e3a45a00
-    tag: stx.9.0-v1.0.0
+    src_build_tag: master-debian-stable-20240402T060056Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/1a1aad921b939a8b60159008ed971895c4de3687
+    tag: stx.10.0-v1.0.0
   - name: docker.io/starlingx/stx-metrics-server-sample-app
     src_build_tag: master-centos-stable-20220531T030625Z.0
     src_ref: https://opendev.org/starlingx/metrics-server-armada-app/commit/512747aec471066dd4a2dbe9e260b887be6319c8
