@@ -74,21 +74,21 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b9f45f28c48b9ca111ffa0dda89c09333eee6f8c
     tag: stx.9.0-v1.0.2
   - name: docker.io/starlingx/notificationservice-base
-    src_build_tag: master-debian-stable-20240301T070056Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/4a001833e66fa73475f2d268970a56022d3dca96
-    tag: stx.9.0-v2.2.0
+    src_build_tag: master-debian-stable-20240419T060054Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/c6b56f454406c834280848ffcb308f61aae77f73
+    tag: stx.10.0-v2.2.1
   - name: docker.io/starlingx/notificationservice-base-v2
-    src_build_tag: master-debian-stable-20240301T070056Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/4a001833e66fa73475f2d268970a56022d3dca96
-    tag: stx.9.0-v2.2.0
+    src_build_tag: master-debian-stable-20240419T060054Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/c6b56f454406c834280848ffcb308f61aae77f73
+    tag: stx.10.0-v2.2.1
   - name: docker.io/starlingx/locationservice-base
-    src_build_tag: master-debian-stable-20240301T070056Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/4a001833e66fa73475f2d268970a56022d3dca96
-    tag: stx.9.0-v2.2.0
+    src_build_tag: master-debian-stable-20240419T060054Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/c6b56f454406c834280848ffcb308f61aae77f73
+    tag: stx.10.0-v2.2.1
   - name: docker.io/starlingx/notificationclient-base
-    src_build_tag: master-debian-stable-20240301T070056Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/4a001833e66fa73475f2d268970a56022d3dca96
-    tag: stx.9.0-v2.2.0
+    src_build_tag: master-debian-stable-20240419T060054Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/c6b56f454406c834280848ffcb308f61aae77f73
+    tag: stx.10.0-v2.2.1
   - name: docker.io/starlingx/stx-audit
     src_build_tag: master-debian-stable-20220930T060000Z.0
     src_ref: https://opendev.org/starlingx/audit-armada-app/commit/b6bb1eed336d8144069324d382e2b2e607a09cae
