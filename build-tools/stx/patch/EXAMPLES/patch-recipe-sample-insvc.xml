@@ -15,7 +15,6 @@
     <!-- Pre and Post install hook scripts are optional -->
     <pre_install></pre_install>
     <post_install></post_install>
-    <deploy_precheck></deploy_precheck>
     <!-- Packages to be included -->
     <stx_packages>
         <!-- Starlingx packages -->

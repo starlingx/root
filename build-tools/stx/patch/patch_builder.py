@@ -40,7 +40,8 @@ PATCH_OUTPUT = os.path.join(BUILD_ROOT, "patch_output")
 PATCH_SCRIPTS = {
    "PRE_INSTALL": "pre-install.sh",
    "POST_INSTALL": "post-install.sh",
-   "DEPLOY_PRECHECK": "deploy-precheck.sh"
+   "DEPLOY_PRECHECK": "deploy-precheck",
+   "UPGRADE_UTILS": "upgrade_utils.py",
 }
 
 class PatchBuilder(object):
@@ -92,19 +93,33 @@ class PatchBuilder(object):
 
         pre_install = self.metadata.pre_install
         post_install = self.metadata.post_install
-        deploy_precheck = self.metadata.deploy_precheck
+
         # pre/post install scripts
         if pre_install:
             logger.debug(f"Copying pre-install script: {pre_install}")
-            self.copy_script("PRE_INSTALL", pre_install)
+            self.copy_rename_script(pre_install, "PRE_INSTALL")
 
         if post_install:
             logger.debug(f"Copying post-install script: {post_install}")
-            self.copy_script("POST_INSTALL", post_install)
+            self.copy_rename_script(post_install, "POST_INSTALL")
 
-        if deploy_precheck:
-            logger.debug(f"Copying deploy pre-check script: {deploy_precheck}")
-            self.copy_script("DEPLOY_PRECHECK", deploy_precheck)
+        # if the patch includes the 'software' package we need to make deploy-precheck 
+        # and upgrade_utils.py from .deb file accessible directly from patch file
+        if 'software' in self.metadata.stx_packages:
+            logger.info(f"Patch includes the software package, getting scripts from deb file...")
+
+            # create temporary folder to hold our files until we copy them to the patch
+            tmp_folder = tempfile.mkdtemp(prefix='deb_')
+
+            # Collect files
+            files_to_get = [PATCH_SCRIPTS["DEPLOY_PRECHECK"], PATCH_SCRIPTS["UPGRADE_UTILS"]]
+            path_files = self.get_files_from_deb(dl_dir, tmp_folder, 'software', files_to_get)
+
+            for path in path_files:
+                self.copy_rename_script(path_to_script=path, rename=False)
+
+            # removing the temporary folder
+            shutil.rmtree(tmp_folder)
 
         if not pre_install and not post_install and self.metadata.reboot_required == 'N':
             logger.warn("In service patch without restart scripts provided")
@@ -120,20 +135,89 @@ class PatchBuilder(object):
         # Pack .patch file
         self.__sign_and_pack(self.patch_name)
 
-    def copy_script(self, script_type, install_script):
-        if not os.path.isfile(install_script):
-            erro_msg = f"Install script {install_script} not found"
+    def copy_rename_script(self, path_to_script, script_type=None, rename=True):
+        '''
+        Copy the script to the directory we are in and rename based
+        on PATCH_SCRIPT, if necessary.
+
+        :param path_to_script: Path to the script
+        :param script_type: Type of the script from the constant PATCH_SCRIPTS
+        :param rename: Select if we should
+
+        '''
+        if not os.path.isfile(path_to_script):
+            erro_msg = f"Install script {path_to_script} not found"
             logger.error(erro_msg)
             raise FileNotFoundError(erro_msg)
 
-        # We check the type to correctly rename the file to a expected value
-        script_name = PATCH_SCRIPTS.get(script_type, None)
+        # check if need a rename or not
+        if rename:
+            # We check the type to correctly rename the file to a expected value
+            script_name = PATCH_SCRIPTS.get(script_type, None)
 
-        if script_name:
-            logger.info(f"Renaming {install_script} to {script_name}")
-            shutil.copy(install_script, f"./{script_name}")
+            if script_name and rename:
+                logger.info(f"Renaming {path_to_script} to {script_name}")
+                shutil.copy(path_to_script, f"./{script_name}")
+            else:
+                raise ValueError(f"Script type provided is not valid one: {script_type}")
         else:
-            raise ValueError(f"Script type provided is not valid one: {script_type}")
+            logger.info(f"Copying {path_to_script}...")
+            shutil.copy(path_to_script, "./")
+
+    def get_files_from_deb(self, download_dir, tmp_folder, package_name, files):
+        '''
+        Get files from inside the .deb and make it available in temporary folder
+
+        :param download_dir: Full path of directory where the deb is downloaded
+        :param tmp_folder: Temporary folder where file will be available
+        :param package_name: Name of the package
+        :param files: List of name of the files to be extracted
+
+        :returns list: full path for the script file
+        '''
+        # from download dir, search for {package_name}_*.deb package
+        pkg_name = None
+        for file in os.listdir(download_dir):
+            if file.startswith(f'{package_name}_') and file.endswith('.deb'):
+                pkg_name = file
+
+        if not pkg_name:
+            erro_msg = f'Unable to find {package_name} package inside download folder'
+            logger.error(erro_msg)
+            raise FileNotFoundError(erro_msg)
+
+        deb_path = os.path.join(download_dir, pkg_name)
+
+        # we copy deb to the temporary folder
+        shutil.copy(deb_path, tmp_folder)
+
+        # We first unpack deb file and get data.tar.xz from there
+        cmd = ['ar', '-x', os.path.join(tmp_folder, pkg_name)]
+        subprocess.check_call(cmd, cwd=tmp_folder)
+
+        # With data.tar.xz, we try to find script file
+        data_tar = tarfile.open(os.path.join(tmp_folder, 'data.tar.xz'))
+        paths = []
+        for f in files:
+            file_tarpath = None
+            for member in data_tar.getnames():
+                if member.endswith(f):
+                    file_tarpath = member
+
+            if not file_tarpath:
+                erro_msg = f"Unable to find {f} inside data tar."
+                logger.error(erro_msg)
+                raise FileNotFoundError(erro_msg)
+
+            # We extract said file to the temporary folder
+            data_tar.extract(file_tarpath, path=tmp_folder)
+
+            # add it to our return
+            paths.append(os.path.join(tmp_folder, file_tarpath))
+
+        data_tar.close()
+
+        return paths
 
     def __sign_and_pack(self, patch_file):
         """
