@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2018 Wind River Systems, Inc.
+# Copyright (c) 2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -929,5 +929,10 @@ else
     build_application_tarball
 fi
 
-exit 0
+export EXTRA_HELM_CHARTS="build-extra-helm-charts.sh"
+echo "Running build extra helm charts script"
 
+"${MY_REPO}/build-tools/$EXTRA_HELM_CHARTS" || exit 1
+
+
+exit 0
