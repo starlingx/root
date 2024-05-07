@@ -276,7 +276,6 @@ python3-xstatic-smart-table
 python3-xstatic-spin
 python3-xstatic-term.js
 python-is-python3
-redfishtool
 rng-tools
 rpm
 rsync
