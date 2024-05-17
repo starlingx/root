@@ -118,17 +118,17 @@ images:
     src_ref: https://opendev.org/starlingx/integ/commit/0783ec950b424c980658765515a649c846dc5121
     tag: stx.7.0-v1.0.0
   - name: docker.io/starlingx/sriov-fec-operator
-    src_build_tag: master-debian-stable-20240320T060056Z.0
-    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/1cad76a8a7ea0ecacd786f28b4f4b7a9a2f61ad3
-    tag: stx.10.0-v2.8.0
+    src_build_tag: master-debian-stable-20240516T060000Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/df18ea06f2b6155947e17e942fcada6172239bda
+    tag: stx.10.0-v2.9.0
   - name: docker.io/starlingx/sriov-fec-labeler
-    src_build_tag: master-debian-stable-20240320T060056Z.0
-    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/1cad76a8a7ea0ecacd786f28b4f4b7a9a2f61ad3
-    tag: stx.10.0-v2.8.0
+    src_build_tag: master-debian-stable-20240516T060000Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/df18ea06f2b6155947e17e942fcada6172239bda
+    tag: stx.10.0-v2.9.0
   - name: docker.io/starlingx/sriov-fec-daemon
-    src_build_tag: master-debian-stable-20240320T060056Z.0
-    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/1cad76a8a7ea0ecacd786f28b4f4b7a9a2f61ad3
-    tag: stx.10.0-v2.8.0
+    src_build_tag: master-debian-stable-20240516T060000Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/df18ea06f2b6155947e17e942fcada6172239bda
+    tag: stx.10.0-v2.9.0
   - name: docker.io/starlingx/stx-fm-rest-api
     src_build_tag: master-debian-stable-20231123T070059Z.0
     src_ref: https://opendev.org/starlingx/fault/commit/8596fc8fc5b36028a9a409e6594b3f0bb9ee9cfa
