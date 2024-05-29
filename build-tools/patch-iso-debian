@@ -136,12 +136,12 @@ function check_requirements {
 
     # Declare "require reqA or reqB" as "reqA__reqB"
     local -a required_utils=(
-        7z                # p7zip-full
-        mkisofs           # genisoimage
-        isohybrid         # syslinux-utils
-        implantisomd5     # isomd5sum
-        ostree            # ostree
-        xmllint__python3  # libxml2-utils
+        7z                   # p7zip-full
+        mkisofs__xorrisofs   # genisoimage / xorriso
+        isohybrid            # syslinux-utils
+        implantisomd5        # isomd5sum
+        ostree               # ostree
+        xmllint__python3     # libxml2-utils / python3
     )
 
     local -i missing=0
@@ -265,26 +265,39 @@ fi
 echo "ISO Label: ${ISO_LABEL}"
 
 function pack_iso(){
-    # Repack the ISO
-    mkisofs -o "${OUTPUT_ISO}" \
-        -A "${ISO_LABEL}" -V "${ISO_LABEL}" \
-        -quiet -U -J -joliet-long -r -iso-level 2 \
-        -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
-        -boot-load-size 4 -boot-info-table \
-        -eltorito-alt-boot \
-        -e efi.img \
-        -no-emul-boot \
-        "${BUILDDIR}"
+    if (which xorrisofs &>/dev/null); then
+        PACK_ISO_CMD="xorrisofs"
+    else
+        PACK_ISO_CMD="mkisofs"
+    fi
+    echo "ISO packaging command: ${PACK_ISO_CMD}"
+
+    # Command Reference:
+    # https://github.com/yoctoproject/poky/blob/master/scripts/lib/wic/plugins/source/isoimage-isohybrid.py#L419
+
+    ${PACK_ISO_CMD} \
+        -V "${ISO_LABEL}" \
+        -o "${OUTPUT_ISO}" -U \
+        -J -joliet-long -r -iso-level 2 -b "isolinux/isolinux.bin" \
+        -c "isolinux/boot.cat" -no-emul-boot -boot-load-size 4 \
+        -boot-info-table -eltorito-alt-boot \
+        -eltorito-platform "0xEF" -eltorito-boot "efi.img" \
+        -no-emul-boot "${BUILDDIR}"
 
     isohybrid --uefi "${OUTPUT_ISO}"
     implantisomd5 "${OUTPUT_ISO}"
 }
 if ! pack_iso; then
+    if [ "${PACK_ISO_CMD}" = "mkisofs" ]; then
+        echo "NOTE: mkisofs has a customization in the LAT container to provide the '-eltorito-boot' flag."
+        echo "      To execute this script outside the LAT container, install the 'xorriso' package and run again."
+    fi
+
     echo "ERROR: Failed to build output ISO!"
     exit 1
 fi
 
-echo "Signing the .iso with the developer private key.."
+echo "Signing the .iso with the developer private key..."
 
 function sign_iso(){
     openssl dgst -sha256 \
