@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021-2024 Wind River Systems,Inc
+# Copyright (C) 2021-2022 Wind River Systems,Inc
 
 import argparse
 import discovery
 import getopt
-import image_utils
 import logging
 import os
 import re
@@ -26,7 +25,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import utils
 import yaml
@@ -762,41 +760,6 @@ if __name__ == "__main__":
                     break
     # stop latd
     stop_latd()
-
-    # We need to add information to iso metadata files
-    # after the iso is built
-    img_utils = image_utils.ImageUtils(lat_yaml)
-
-    # Create temporary folders
-    mnt_point = tempfile.mkdtemp(prefix='mnt_')
-    pck_folder = tempfile.mkdtemp(prefix='pck_')
-
-    try:
-        # Mount and unpack
-        img_utils.mount_iso(mnt_point)
-        img_utils.unpack_iso(mnt_point, pck_folder)
-
-        # Get packages and add them to the metadata files:
-        # patches/*-metadata.xml and upgrades/*-metadata.xml
-        pkgs = img_utils.get_pkgs_from_yaml("/localdisk/workdir/starlingx/packages.yaml")
-        sw_version = img_utils.get_version_metadata(mnt_point)
-        img_utils.add_pkgs_metadata(pkgs, f'{pck_folder}/patches/starlingx-{sw_version}.0-metadata.xml')
-        img_utils.add_pkgs_metadata(pkgs, f'{pck_folder}/upgrades/starlingx-{sw_version}.0-metadata.xml')
-
-        # Pack and umount
-        iso_label = img_utils.get_label_from_isolinux_cfg(f'{mnt_point}/isolinux/isolinux.cfg')
-        img_utils.pack_iso(pck_folder, iso_label, True)
-        img_utils.umount_iso(mnt_point)
-    except:
-        img_utils.umount_iso(mnt_point)
-        os.system(f'sudo rm -rf {mnt_point}')
-        os.system(f'sudo rm -rf {pck_folder}')
-        logger.error("Error when updating ISO, please check the output above.")
-        sys.exit(1)
-
-    # Clean out temporary folders
-    os.system(f'sudo rm -rf {mnt_point}')
-    os.system(f'sudo rm -rf {pck_folder}')
 
     os.system('sudo chown -R ${USER}: ' + LAT_ROOT + '/deploy' )
     # Sign iso with developer key
