@@ -19,6 +19,7 @@ import discovery
 import getopt
 import logging
 import os
+from pathlib import Path
 import re
 import repo_manage
 import shutil
@@ -485,25 +486,88 @@ def user_register_signals():
     signal.signal(signal.SIGPIPE, user_signal_handler)
 
 
-def sign_iso_dev(img_yaml):
+def get_iso_name(iso_name_prefix: str, timestamp: str = None) -> str:
+    if timestamp is not None:
+        return '%s-%s-cd' % (iso_name_prefix, timestamp)
+    return '%s-cd' % iso_name_prefix
+
+
+def rename_iso(deploy_dir: str, iso_name_prefix: str, timestamp: str) -> None:
+    iso_name = get_iso_name(iso_name_prefix)
+    iso_basename = '%s.iso' % iso_name
+    iso_file = '%s/%s' % (deploy_dir, iso_basename)
+    iso_name_regex = re.compile('^%s-[0-9]{4,}.*[.]iso$' % re.escape(iso_name_prefix))
+
+    if not os.path.islink(iso_file):
+        if not os.path.exists(iso_file):
+            logger.warning('%s: file not found', iso_file)
+        else:
+            logger.warning('%s: expecting a symlink', iso_file)
+        return
+
+    def check_iso_file_name(file_name: str) -> bool:
+        if not iso_name_regex.match(file_name):
+            logger.warning('failed to rename %s: unexpected file name pattern', file_name)
+            return False
+        return True
+
+    def create_renamed_info_file(iso_dir, iso_basename, new_iso_basename) -> None:
+        info_file = '%s/%s.RENAMED.txt' % (iso_dir, iso_basename)
+        with open(info_file, 'w') as f:
+            print('File %s renamed to %s by build-image script' % (iso_basename, new_iso_basename), file=f)
+
+    iso_target = os.readlink(iso_file)
+    if os.path.isabs(iso_target):
+        real_iso_file = iso_target
+    else:
+        real_iso_file = os.path.join(os.path.dirname(iso_file), iso_target)
+
+    # make sure target exists
+    if not os.path.exists(real_iso_file):
+        raise RuntimeError('%s: broken symlink', iso_file)
+
+    real_iso_dir = os.path.dirname(real_iso_file)        # .../deploy
+    real_iso_basename = os.path.basename(real_iso_file)  # starlingx-intel-x86-64-${OLD_TIMESTAMP}-cd.iso
+
+    # reject unexpected file names
+    if not check_iso_file_name(real_iso_basename):
+        return
+
+    new_real_iso_basename = '%s.iso' % get_iso_name(iso_name_prefix, timestamp)  # starlingx-intel-x86-64-${TIMESTAMP}-cd.iso
+    new_real_iso_file = os.path.join(real_iso_dir, new_real_iso_basename)        # .../deploy/starlingx-intel-x86-64-${TIMESTAMP}-cd.iso
+
+    # basename already correct, bail out
+    if real_iso_basename == new_real_iso_basename:
+        logger.debug('ISO file name is already correct: %s', real_iso_basename)
+        return
+
+    # if original symlink had a directory component, keep it in the new symlink
+    if iso_target.find('/') != -1:
+        new_iso_target = os.path.join(os.path.dirname(iso_target), new_real_iso_basename)
+    else:
+        new_iso_target = new_real_iso_basename
+
+    # Rename and link
+    Path(iso_file).unlink(missing_ok=True)           # remove symlink
+    Path(new_real_iso_file).unlink(missing_ok=True)  # remove new filename (rename target)
+    os.rename(real_iso_file, new_real_iso_file)      # rename old to new name
+    os.symlink(new_iso_target, iso_file)             # re-create symlink
+
+    # create XYZ.iso.RENAMED.txt
+    create_renamed_info_file(real_iso_dir, real_iso_basename, new_real_iso_basename)
+
+    logger.info('renamed %s/{%s => %s}' % (real_iso_dir, real_iso_basename, new_real_iso_basename))
+
+
+def sign_iso_dev(deploy_dir: str, iso_name_prefix: str)->None:
     '''
     Sign the .iso file with the developer key
-    img_yaml: lat.yaml path
+    deploy_dir: ISO directory
+    iso_name_prefix: prefix for ISO files, eg starlingx-intel-x86-64
     '''
     logger.info("Trying to sign iso image with developer key")
     key_path = os.path.join(os.environ.get('MY_REPO'), 'build-tools/signing/dev-private-key.pem')
-    deploy_dir = '/localdisk/deploy'
-    try:
-        with open(img_yaml) as f:
-            yaml_doc = yaml.safe_load(f)
-    except IOError as e:
-        logger.error(str(e))
-
-    if yaml_doc['name'] and yaml_doc['machine']:
-        iso_name = yaml_doc['name'] + '-' + yaml_doc['machine'] + '-cd'
-    else:
-        # default image name
-        iso_name = 'starlingx-intel-x86-64-cd'
+    iso_name = get_iso_name(iso_name_prefix)
 
     iso_file = f'{deploy_dir}/{iso_name}.iso'
     sig_file = f'{deploy_dir}/{iso_name}.sig'
@@ -534,10 +598,10 @@ def sign_iso_dev(img_yaml):
     if ret != 0:
         raise Exception("Error while signing the image")
 
-    # ISO is a symlink => create the matc hing .sig link
+    # ISO is a symlink => create the matching .sig link
     if os.path.islink (iso_file):
         if os.path.exists (sig_file):
-            os.path.remove (sig_file)
+            os.remove (sig_file)
         os.symlink (sig_target, sig_file)
 
     logger.info("Image signed %s", real_iso_file)
@@ -579,6 +643,26 @@ def get_binary_repositories(config: str):
             sys.exit(1)
     logger.info("Processing complete.")
     return repositories
+
+def post_process(deploy_dir: str, yaml_file: str, sign: bool)->None:
+
+    # find out ISO file name prefix
+    logger.debug('reading %s', yaml_file)
+    with open(yaml_file) as f:
+        yaml_doc = yaml.safe_load(f)
+        assert yaml_doc['name']
+        assert yaml_doc['machine']
+        iso_name_prefix = yaml_doc['name'] + '-' + yaml_doc['machine']
+
+    # rename ISO if necessary
+    new_timestamp = os.getenv('TIMESTAMP')
+    if new_timestamp:
+        #new_timestamp = re.sub(r'[^a-zA-Z0-9]+', '', new_timestamp)
+        rename_iso(deploy_dir, iso_name_prefix, new_timestamp)
+
+    # sign ISO with developer key
+    if sign:
+        sign_iso_dev(deploy_dir, iso_name_prefix)
 
 
 if __name__ == "__main__":
@@ -761,9 +845,10 @@ if __name__ == "__main__":
     # stop latd
     stop_latd()
 
-    os.system('sudo chown -R ${USER}: ' + LAT_ROOT + '/deploy' )
-    # Sign iso with developer key
-    if ret == 0 and not args.no_sign:
-        sign_iso_dev(lat_yaml)
+    deploy_dir = '%s/deploy' % LAT_ROOT
+    subprocess.run('sudo chown -R ${USER}: "%s"' % deploy_dir, shell=True, check=True)
+
+    if ret == 0:
+        post_process(deploy_dir, lat_yaml, not args.no_sign)
 
     sys.exit(ret)
