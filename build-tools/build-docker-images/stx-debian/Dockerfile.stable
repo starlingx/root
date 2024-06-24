@@ -1,7 +1,31 @@
+# These are overridden by build-stx-debian.sh
+ARG DIST=bullseye
+ARG RELEASE=11.2
+
+################################################
+# ca_certs build stage
+################################################
+
+# We need up-to-date SSL certs, otherwise we won't be able to access
+# mirror.starlingx.windriver.com; yet the ca-certificates package is
+# behind that URL. As a workaround: install ca-certificates from
+# upstream debian, then copy the (generated) CA bundle into the.
+# main build stage.
+
+FROM debian:${DIST} as ca_certs
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && \
+    apt-get -y install --no-install-recommends ca-certificates
+
+################################################
+# main build stage
+################################################
+
 # Start with an the old-ish bullseye release (11.2), then upgrade --
 # to make sure packages that come pre-installed in the debian:XXX image
 # are older than anything in StarlingX.
-ARG RELEASE=11.2
 FROM debian:${RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -51,6 +75,18 @@ RUN for layer in /etc/apt/sources.list.d/*.layer.sources.list; do \
 #        debian.list. This would affect Loci scripts in
 #        loci/docker/stx-scripts/
 #
+
+#
+# Copy CA certs from the "ca_certs" build stage. The bundle file was generated
+# by ca-certificates in that stage, and will be re-generated when we install
+# that package again in the main stage below. That version may be *older* than
+# the certs that we are copying here. We assume ca-certificates is regularly
+# updated in stx-tools' package download lists, or it is built by us, and contains
+# all the certs we might need during docker images build, such as the intermidate
+# cert used by mirror.starlingx.windriver.com .
+#
+RUN mkdir -p /etc/ssl/certs
+COPY --from=ca_certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 #
 # Upgrade base packages to versions in managed repos

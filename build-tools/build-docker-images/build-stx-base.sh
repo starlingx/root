@@ -415,6 +415,8 @@ declare -a BUILD_ARGS
 BUILD_ARGS+=(--build-arg RELEASE=${OS_VERSION})
 if [[ "$OS" == "centos" ]] ; then
     BUILD_ARGS+=(--build-arg "REPO_OPTS=${REPO_OPTS}")
+else
+    BUILD_ARGS+=(--build-arg "DIST=${DEBIAN_DISTRIBUTION}")
 fi
 
 # Add proxy to docker build
