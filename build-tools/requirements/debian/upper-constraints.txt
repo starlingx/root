@@ -199,5 +199,5 @@ Werkzeug===1.0.1
 xmlschema===1.4.2
 yappi===1.0
 zipp===1.0.0
-pyzmq===20.0.0
+pyzmq===21.0.2
 zope.interface===5.2.0
