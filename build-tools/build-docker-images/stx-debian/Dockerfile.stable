@@ -137,7 +137,6 @@ RUN apt-get update -y && \
     apt-get install -y \
         python3-thriftpy \
         python3-nss \
-        python-nss \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
