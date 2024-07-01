@@ -178,6 +178,27 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
     )
     return layer_binaries
 
+def update_apt():
+    try:
+        cache = apt.Cache(rootdir='/')
+        cache.update()
+
+        # Reopen the cache to reflect the updates
+        cache.open(None)
+        logger.info("apt update done")
+
+        if cache._depcache.broken_count == 0:
+            logger.info("No apt packages broken")
+        else:
+            logger.error("Broken apt dependencies were found")
+
+    except apt.cache.FetchFailedException as e:
+        logger.error(f"Failed to fetch apt packages {e} before downloader")
+    except Exception as e:
+        if "Failed to lock directory" in str(e):
+            logger.info("Suppressed harmless apt lock error")
+        else:
+            logger.error(f" An unexpected error occurred {e}")
 
 class BaseDownloader():
     def __init__(self, arch, _dl_dir, clean):
@@ -725,6 +746,8 @@ if __name__ == "__main__":
         # Default to binary and source when option is not provided
         args.download_binary = True
         args.download_source = True
+
+    update_apt()
 
     if args.download_binary:
         all_binary_lists = get_all_binary_list(distro=distro, layers=layers, build_types=build_types)
