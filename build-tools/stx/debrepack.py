@@ -97,6 +97,17 @@ def checksum_dsc(dsc_file, logger):
 
     return True
 
+def download_check_dsc(dsc_filename, dget_files, logger):
+    with open(dsc_filename,'r') as f:
+        c = debian.deb822.Dsc(f)
+
+    files = c["Files"]
+    for file in files:
+        filename = file['name']
+        if filename not in dget_files:
+            logger.error("Error: file  %s not found. Error in download" % file)
+            return False
+    return True
 
 def get_str_md5(text):
 
@@ -776,6 +787,11 @@ class Parser():
                         run_shell_cmd("dget -d %s" % alt_dl_url, self.logger)
                 else:
                     run_shell_cmd("dget -d %s" % dl_url, self.logger)
+
+            # check if all files from .dsc files were downloaded by dget
+            dget_files = run_shell_cmd("ls -m",self.logger)
+            if download_check_dsc(dsc_filename,dget_files, self.logger) is False:
+                raise Exception(f'Failed to download {dl_file}')
 
         elif "src_path" not in self.meta_data and "dl_hook" not in self.meta_data:
             ver = self.versions["full_version"].split(":")[-1]
