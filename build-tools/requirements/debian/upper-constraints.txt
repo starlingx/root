@@ -36,15 +36,15 @@ decorator===4.4.2
 defusedxml===0.6.0
 deprecation===2.0.7
 Django===2.2.24
-#dnspython===2.0.0  # on box
-                    # incompatible with eventlet 0.26.1 -> 0.31.1
-dnspython===1.16.0
+dnspython===2.0.0
 docutils===0.16
 docker==4.1.0
 dogpile.cache===1.0.2
 python-editor===1.0.3
 elementpath===2.1.2
-eventlet===0.26.1
+#eventlet===0.26.1  # on box
+eventlet===0.32.0   # 0.30.0 - Fix tox issues - "py39: Add _at_fork_reinit method to Semaphores"
+                    # 0.32.0 - Compatibility with dnspython v2 (bullseye box version)
 extras===1.0.0
 falcon===2.0.0
 fasteners===0.14.1
