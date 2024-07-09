@@ -135,7 +135,7 @@ def limited_walk(dir, max_depth=1):
             del dirs[:]
 
 
-def run_shell_cmd(cmd, logger):
+def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR):
     if type(cmd) is str:
         shell = True
     elif type(cmd) in (tuple, list):
@@ -149,7 +149,7 @@ def run_shell_cmd(cmd, logger):
                                    universal_newlines=True, shell=shell)
     except Exception as e:
         msg = f'[ Failed to execute command: "{cmd}" Exception: "{e}" ]'
-        logger.error(msg)
+        logger.log(error_level, msg)
         # Suppress the original exception when raising our own exception.
         # Syntax is acquired from: https://peps.python.org/pep-0409/#proposal
         raise Exception(msg) from None
@@ -168,11 +168,18 @@ def run_shell_cmd(cmd, logger):
 
     if process.returncode != 0:
         msg = f'[ Command failed with a non-zero return code: "{cmd}" return code: {process.returncode} ]'
-        logger.error(msg)
-        raise Exception(msg)
+        logger.log(error_level, msg)
+        raise subprocess.CalledProcessError(
+                returncode=process.returncode,
+                cmd=cmd,
+                output=outs,
+                stderr=errs
+        )
 
-    return outs.strip()
+    return outs.strip(),errs.strip()
 
+def run_shell_cmd(cmd, logger, error_level=logging.ERROR):
+    return run_shell_cmd_full(cmd, logger, error_level)[0]
 
 def url_to_stx_mirror(url):
 
