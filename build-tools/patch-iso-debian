@@ -1,37 +1,37 @@
-#!/bin/bash
+#!/bin/bash -e
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2024 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Utility for adding patch metadata to the iso
-# Debian patches are sequential and uses ostree
-# so any patch will produce an updated iso, this
-# utility injects the patch metadata into the iso.
-# During install the kickstart will copy the metadata
-# into the right location and the sw-patch query
-# command will output the correct patch level
+# This script takes as input an ISO and one or more patches
+# and generates as output an ISO with the following changes:
+#
+# - Contains only the latest ostree commit from the input ISO
+# - ISO has a "patches" folder with the patches' metadata files.
+#   This folder is processed by kickstart during install, so that
+#   'sw-patch query' has access to this info.
+#
+# The intent is for the system to have record of the patches that are
+# already pre-installed in the system.
 #
 
-source "$(dirname $0)/image-utils.sh"
+BUILD_TOOLS_DIR="$(dirname "$0")"
 
-if [ -z "${STX_BUILD_HOME}" ]; then
-    echo "Required environment variable STX_BUILD_HOME is not set"
-    exit 1
-fi
+# shellcheck source="./build-tools/image-utils.sh"
+source "${BUILD_TOOLS_DIR}/image-utils.sh"
 
+# Define MY_REPO, which is the path to the 'root' repo. Eg.: $REPO_ROOT/cgcs_root
+# Value is used to locate the following file for ISO signing:
+# ${MY_REPO}/build-tools/signing/dev-private-key.pem
 if [ -z "${MY_REPO}" ]; then
-    echo "Required environment variable MY_REPO is not set"
-    exit 1
+    MY_REPO="$(dirname "${BUILD_TOOLS_DIR}")"
 fi
-
-DEPLOY_DIR="${STX_BUILD_HOME}/localdisk/deploy"
-OSTREE_REPO="${DEPLOY_DIR}/ostree_repo"
 
 function usage() {
     echo ""
     echo "Usage: "
-    echo "   $(basename $0) -i <input filename.iso> -o <output filename.iso> [ -p ] <patch> ..."
+    echo "   $(basename "$0") -i <input filename.iso> -o <output filename.iso> [ -p ] <patch> ..."
     echo "        -i <file>: Specify input ISO file"
     echo "        -o <file>: Specify output ISO file"
     echo "        -p <file>: Patch files. You can call it multiple times."
@@ -44,28 +44,33 @@ function extract_ostree_commit_from_metadata_xml() {
 
     # Check if xmllint is available. Otherwise, use python's xml standard lib
     if (which xmllint &>/dev/null); then
-        xmllint --xpath "string(${XPATH})" ${XML_PATH}
+        xmllint --xpath "string(${XPATH})" "${XML_PATH}"
     else
         python3 -c "import xml.etree.ElementTree as ET ; print(ET.parse('${XML_PATH}').find('.${XPATH}').text, end='')"
     fi
 }
 
 function extract_metadata() {
-    local patchesdir=${BUILDDIR}/patches
-    local patchfile=$1
-    local patchid=$(basename $patchfile .patch)
-    local ostree_log=$(ostree --repo=${OSTREE_REPO} log starlingx)
+    local patchesdir
+    local patchfile
+    local patchid
+    local ostree_log
+    local ostree_commit
+
+    patchesdir="${BUILDDIR}/patches"
+    patchfile="$1"
+    patchid="$(basename "$patchfile" .patch)"
+    ostree_log="$(ostree --repo="${2}" log starlingx)"
 
     echo "Extracting ${patchfile}"
     # Extract it
-    tar xf ${patchfile} -O metadata.tar | tar x -O > ${patchesdir}/${patchid}-metadata.xml
-    if [ $? -ne 0 ]; then
-        echo "Failed to extract metadata from ${patchfile}"
+    if ! tar xf "${patchfile}" -O metadata.tar | tar x -O > "${patchesdir}/${patchid}-metadata.xml"; then
+        echo "ERROR: Failed to extract metadata from ${patchfile}"
         exit 1
     fi
 
     # Verify if top commit from metadata exist in ostree log
-    patch_ostree_commit1=$(xmllint --xpath "string(//contents/ostree/commit1/commit)" ${patchesdir}/${patchid}-metadata.xml)
+    patch_ostree_commit1="$(extract_ostree_commit_from_metadata_xml "${patchesdir}/${patchid}-metadata.xml")"
     if [[ "$ostree_log" != *"$patch_ostree_commit1"* ]]; then
         echo "WARNING: Patch ostree commit 1 not found in input ISO."
         echo "Patch ostree commit 1: ${patch_ostree_commit1}"
@@ -74,8 +79,6 @@ function extract_metadata() {
 
 declare INPUT_ISO=
 declare OUTPUT_ISO=
-declare ORIG_PWD=$PWD
-declare DO_UPGRADES=1
 
 while getopts "i:o:p:" opt; do
     case $opt in
@@ -86,7 +89,7 @@ while getopts "i:o:p:" opt; do
             OUTPUT_ISO=$OPTARG
             ;;
         p)
-            PATCH_FILES+=($OPTARG)
+            PATCH_FILES+=("$OPTARG")
             ;;
         *)
             usage
@@ -95,183 +98,165 @@ while getopts "i:o:p:" opt; do
     esac
 done
 
-if [ -z "$INPUT_ISO" -o -z "$OUTPUT_ISO" ]; then
+if [ -z "$INPUT_ISO" ] || [ -z "$OUTPUT_ISO" ]; then
     usage
     exit 1
 fi
 
-if [ ! -f ${INPUT_ISO} ]; then
-    echo "Input file does not exist: ${INPUT_ISO}"
+if [ ! -f "${INPUT_ISO}" ]; then
+    echo "ERROR: Input file does not exist: ${INPUT_ISO}"
     exit 1
 fi
 
-if [ -f ${OUTPUT_ISO} ]; then
-    echo "Output file already exists: ${OUTPUT_ISO}"
+if [ -f "${OUTPUT_ISO}" ]; then
+    echo "ERROR: Output file already exists: ${OUTPUT_ISO}"
     exit 1
 fi
 
 for PATCH in "${PATCH_FILES[@]}";
 do
-    if [ ! -f ${PATCH} ]; then
-        echo "Patch file dos not exists: ${PATCH}"
+    if [ ! -f "${PATCH}" ]; then
+        echo "ERROR: Patch file dos not exists: ${PATCH}"
         exit 1
     fi
 
-    if [[ ! ${PATCH} =~ \.patch$ ]]; then
-        echo "Specified file ${PATCH} does not have .patch extension"
+    if [[ ! "${PATCH}" =~ \.patch$ ]]; then
+        echo "ERROR: Specified file ${PATCH} does not have .patch extension"
         exit 1
     fi
 done
 
 shift $((OPTIND-1))
 
-declare MNTDIR=
 declare BUILDDIR=
 
 function check_requirements {
+    # Next to each requirement is the deb package which provides the command listed.
+    # Run "apt install ..."
 
     # Declare "require reqA or reqB" as "reqA__reqB"
     local -a required_utils=(
-        rsync
-        mkisofs
-        isohybrid
-        implantisomd5
-        ostree
-        xmllint__python3
+        7z                # p7zip-full
+        mkisofs           # genisoimage
+        isohybrid         # syslinux-utils
+        implantisomd5     # isomd5sum
+        ostree            # ostree
+        xmllint__python3  # libxml2-utils
     )
-    if [ $UID -ne 0 ]; then
-        # If running as non-root user, additional utils are required
-        required_utils+=(
-            guestmount
-            guestunmount
-        )
-    fi
 
     local -i missing=0
     local reqA
     local reqB
 
-    for req in ${required_utils[@]}; do
+    for req in "${required_utils[@]}"; do
         if [[ "$req" = *"__"* ]]; then
             reqA="${req%__*}"   # select everything before "__"
             reqB="${req#*__}"   # select everything after "__"
 
-            if ! (which ${reqA} &>/dev/null) && ! (which ${reqB} &>/dev/null); then
+            if ! (which "${reqA}" &>/dev/null) && ! (which "${reqB}" &>/dev/null); then
                 echo "Unable to find required utility: either ${reqA} or ${reqB}" >&2
-                let missing++
+                missing=$(( missing+1 ))
             fi
 
         else
-            if ! (which ${req} &>/dev/null); then
+            if ! (which "${req}" &>/dev/null); then
                 echo "Unable to find required utility: ${req}" >&2
-                let missing++
+                missing=$(( missing+1 ))
             fi
         fi
     done
 
-    if [ ${missing} -gt 0 ]; then
-        echo "One or more required utilities are missing. Aborting..." >&2
+    if [ "${missing}" -gt 0 ]; then
+        echo "ERROR: One or more required utilities are missing" >&2
         exit 1
     fi
 }
 
-function mount_iso {
-    if [ $UID -eq 0 ]; then
-        # Mount the ISO
-        mount -o loop ${INPUT_ISO} ${MNTDIR}
-        if [ $? -ne 0 ]; then
-            echo "Failed to mount ${INPUT_ISO}" >&2
-            exit 1
-        fi
-    else
-        # As non-root user, mount the ISO using guestmount
-        guestmount -a ${INPUT_ISO} -m /dev/sda1 --ro ${MNTDIR}
-        rc=$?
-        if [ $rc -ne 0 ]; then
-            # Add a retry
-            echo "Call to guestmount failed with rc=$rc. Retrying once..."
-
-            guestmount -a ${INPUT_ISO} -m /dev/sda1 --ro ${MNTDIR}
-            rc=$?
-            if [ $rc -ne 0 ]; then
-                echo "Call to guestmount failed with rc=$rc. Aborting..."
-                exit $rc
-            fi
-        fi
-    fi
-}
-
-function unmount_iso {
-    if [ $UID -eq 0 ]; then
-        umount ${MNTDIR}
-    else
-        guestunmount ${MNTDIR}
-    fi
-    rmdir ${MNTDIR}
-}
-
 function cleanup() {
-    if [ -n "$MNTDIR" -a -d "$MNTDIR" ]; then
-        unmount_iso
+    # Delete temporary build directory
+    if [ -n "$BUILDDIR" ] && [ -d "$BUILDDIR" ]; then
+        chmod -R +w "$BUILDDIR"
+        \rm -rf "$BUILDDIR"
     fi
-
-    if [ -n "$BUILDDIR" -a -d "$BUILDDIR" ]; then
-        chmod -R +w $BUILDDIR
-        \rm -rf $BUILDDIR
-    fi
-
 }
 
 check_requirements
 
+# Run cleanup() when finishing/interrupting execution
 trap cleanup EXIT
 
-MNTDIR=$(mktemp -d -p $PWD patchiso_mnt_XXXXXX)
-if [ -z "${MNTDIR}" -o ! -d ${MNTDIR} ]; then
-    echo "Failed to create mntdir. Aborting..."
-    exit $rc
+# Create temporary build directory
+BUILDDIR=$(mktemp -d -p "$PWD" patchiso_build_XXXXXX)
+if [ -z "${BUILDDIR}" ] || [ ! -d "${BUILDDIR}" ]; then
+    echo "ERROR: Failed to create temporary build directory"
+    exit 1
 fi
-
-BUILDDIR=$(mktemp -d -p $PWD patchiso_build_XXXXXX)
-if [ -z "${BUILDDIR}" -o ! -d ${BUILDDIR} ]; then
-    echo "Failed to create builddir. Aborting..."
-    exit $rc
-fi
-
-# Mount the ISO
-mount_iso
-
-rsync -a --exclude 'ostree_repo' ${MNTDIR}/ ${BUILDDIR}/
-rc=$?
-if [ $rc -ne 0 ]; then
-    echo "Call to rsync ISO content. Aborting..."
-    exit $rc
-fi
-
-unmount_iso
 
 # Fix for permission denied if not running as root
-chmod +w ${BUILDDIR}
-chmod -R +w ${BUILDDIR}/isolinux
+chmod +w "${BUILDDIR}"
+if [ -d "${BUILDDIR}/isolinux" ]; then
+    chmod -R +w "${BUILDDIR}/isolinux"
+fi
 
-# Create the directory where metadata will be stored
-mkdir -p ${BUILDDIR}/patches
-chmod -R +w ${BUILDDIR}/patches
+# Erase current patch metadata from ISO if it exists
+# This way, this script can be used on pre-patched ISOs
+if [ -d "${BUILDDIR}/patches" ]; then
+    rm -rf "${BUILDDIR}/patches"
+fi
 
-echo "Copying only the latest commit from ostree_repo..."
-ostree --repo=${BUILDDIR}/ostree_repo init --mode=archive-z2
-ostree --repo=${BUILDDIR}/ostree_repo pull-local --depth=0 ${OSTREE_REPO} starlingx
-ostree --repo=${BUILDDIR}/ostree_repo summary --update
-echo "Updated iso ostree commit:"
-ostree --repo=${BUILDDIR}/ostree_repo log starlingx
+# Create the directory where patch metadata will be stored
+mkdir -p "${BUILDDIR}/patches"
+chmod -R +w "${BUILDDIR}/patches"
 
-echo "Extracting patch metadata"
+echo "Extracting Input ISO contents..."
+if ! 7z x "${INPUT_ISO}" -o"${BUILDDIR}" 1>/dev/null ; then
+    echo "ERROR: Extract ISO contents"
+    exit 1
+fi
+
+# Delete boot directory. It will be re-created when packing the output ISO
+if [ -d "${BUILDDIR}/[BOOT]" ]; then
+    rm -rf "${BUILDDIR}/[BOOT]"
+fi
+
+echo "Extracting patch metadata..."
 for PATCH in "${PATCH_FILES[@]}";
 do
-    extract_metadata $PATCH
+    extract_metadata "$PATCH" "${BUILDDIR}/ostree_repo"
 done
 
+echo "Original ostree repo history:"
+echo "----------------------------------------------------------------------------------"
+ostree --repo="${BUILDDIR}/ostree_repo" log starlingx
+echo "----------------------------------------------------------------------------------"
+
+echo "Clean up all commits from ostree repo except the latest one..."
+
+function clean_ostree(){
+    # Create array of ostree commit IDs
+    mapfile -t ostree_commits < <(ostree --repo="${BUILDDIR}/ostree_repo" log starlingx | grep '^commit' | cut -d ' ' -f 2)
+
+    # Delete each commit except the latest one
+    for ostree_commit in "${ostree_commits[@]:1}"; do
+        echo "Removing commit: ${ostree_commit}"
+        ostree --repo="${BUILDDIR}/ostree_repo" prune --delete-commit="${ostree_commit}"
+    done
+
+    ostree --repo="${BUILDDIR}/ostree_repo" summary --update
+}
+
+if ! clean_ostree; then
+    echo "ERROR: Failed to clean ostree repo!"
+    exit 1
+fi
+
+echo "Output ISO ostree history:"
+echo "----------------------------------------------------------------------------------"
+ostree --repo="${BUILDDIR}/ostree_repo" log starlingx
+echo "----------------------------------------------------------------------------------"
+
 echo "Packing iso..."
+
 # get the install label
 ISO_LABEL=$(grep -ri instiso "${BUILDDIR}"/isolinux/isolinux.cfg | head -1 | xargs -n1 | awk -F= /instiso/'{print $2}')
 if [ -z "${ISO_LABEL}" ] ; then
@@ -279,30 +264,39 @@ if [ -z "${ISO_LABEL}" ] ; then
 fi
 echo "ISO Label: ${ISO_LABEL}"
 
-# Repack the ISO
-mkisofs -o "${OUTPUT_ISO}" \
-    -A "${ISO_LABEL}" -V "${ISO_LABEL}" \
-    -quiet -U -J -joliet-long -r -iso-level 2 \
-    -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
-    -boot-load-size 4 -boot-info-table \
-    -eltorito-alt-boot \
-    -e efi.img \
-    -no-emul-boot \
-    "${BUILDDIR}"
+function pack_iso(){
+    # Repack the ISO
+    mkisofs -o "${OUTPUT_ISO}" \
+        -A "${ISO_LABEL}" -V "${ISO_LABEL}" \
+        -quiet -U -J -joliet-long -r -iso-level 2 \
+        -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
+        -boot-load-size 4 -boot-info-table \
+        -eltorito-alt-boot \
+        -e efi.img \
+        -no-emul-boot \
+        "${BUILDDIR}"
 
-isohybrid --uefi ${OUTPUT_ISO}
-implantisomd5 ${OUTPUT_ISO}
-
-# Sign the .iso with the developer private key
-openssl dgst -sha256 \
-    -sign ${MY_REPO}/build-tools/signing/dev-private-key.pem \
-    -binary \
-    -out ${OUTPUT_ISO/%.iso/.sig} \
-    ${OUTPUT_ISO}
-rc=$?
-if [ $rc -ne 0 ]; then
-    echo "Call to $(basename ${SETUP_PATCH_REPO}) failed with rc=$rc. Aborting..."
-    exit $rc
+    isohybrid --uefi "${OUTPUT_ISO}"
+    implantisomd5 "${OUTPUT_ISO}"
+}
+if ! pack_iso; then
+    echo "ERROR: Failed to build output ISO!"
+    exit 1
 fi
 
-echo "Patched ISO: ${OUTPUT_ISO}"
+echo "Signing the .iso with the developer private key.."
+
+function sign_iso(){
+    openssl dgst -sha256 \
+        -sign "${MY_REPO}/build-tools/signing/dev-private-key.pem" \
+        -binary \
+        -out "${OUTPUT_ISO/%.iso/.sig}" \
+        "${OUTPUT_ISO}"
+}
+if ! sign_iso; then
+    echo "ERROR: Failed to sign ISO!"
+    exit 1
+fi
+
+echo ""
+echo "Output ISO: $(realpath "${OUTPUT_ISO}")"
