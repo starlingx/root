@@ -38,6 +38,18 @@ function usage() {
     echo ""
 }
 
+function extract_ostree_commit_from_metadata_xml() {
+    local XML_PATH=$1
+    local XPATH="//contents/ostree/commit1/commit"
+
+    # Check if xmllint is available. Otherwise, use python's xml standard lib
+    if (which xmllint &>/dev/null); then
+        xmllint --xpath "string(${XPATH})" ${XML_PATH}
+    else
+        python3 -c "import xml.etree.ElementTree as ET ; print(ET.parse('${XML_PATH}').find('.${XPATH}').text, end='')"
+    fi
+}
+
 function extract_metadata() {
     local patchesdir=${BUILDDIR}/patches
     local patchfile=$1
@@ -53,11 +65,11 @@ function extract_metadata() {
     fi
 
     # Verify if top commit from metadata exist in ostree log
-    xml_base=$(xmllint --xpath "string(//contents/ostree/commit1/commit)" ${patchesdir}/${patchid}-metadata.xml)
-    if [[ "$ostree_log" != *"$xml_base"* ]]; then
-        echo "Error, xml base commit does not exist in ostree log."
-        echo "patch base: ${xml_base}"
-        echo "ostree log:"
+    ostree_commit=$(extract_ostree_commit_from_metadata_xml ${patchesdir}/${patchid}-metadata.xml)
+    if [[ "$ostree_log" != *"$ostree_commit"* ]]; then
+        echo "Error: Patch ${patchid} ostree commit does not exist in ISO ostree log."
+        echo "patch's ostree commit: ${ostree_commit}"
+        echo "ISO ostree log:"
         ostree --repo=${BUILDDIR}/ostree_repo log starlingx
         exit 1
     fi
@@ -120,13 +132,15 @@ declare MNTDIR=
 declare BUILDDIR=
 
 function check_requirements {
+
+    # Declare "require reqA or reqB" as "reqA__reqB"
     local -a required_utils=(
         rsync
         mkisofs
         isohybrid
         implantisomd5
         ostree
-        xmllint
+        xmllint__python3
     )
     if [ $UID -ne 0 ]; then
         # If running as non-root user, additional utils are required
@@ -137,12 +151,24 @@ function check_requirements {
     fi
 
     local -i missing=0
+    local reqA
+    local reqB
 
     for req in ${required_utils[@]}; do
-        which ${req} >&/dev/null
-        if [ $? -ne 0 ]; then
-            echo "Unable to find required utility: ${req}" >&2
-            let missing++
+        if [[ "$req" = *"__"* ]]; then
+            reqA="${req%__*}"   # select everything before "__"
+            reqB="${req#*__}"   # select everything after "__"
+
+            if ! (which ${reqA} &>/dev/null) && ! (which ${reqB} &>/dev/null); then
+                echo "Unable to find required utility: either ${reqA} or ${reqB}" >&2
+                let missing++
+            fi
+
+        else
+            if ! (which ${req} &>/dev/null); then
+                echo "Unable to find required utility: ${req}" >&2
+                let missing++
+            fi
         fi
     done
 
@@ -236,7 +262,7 @@ mkdir -p ${BUILDDIR}/patches
 chmod -R +w ${BUILDDIR}/patches
 
 echo "Copying only the latest commit from ostree_repo..."
-ostree --repo=${BUILDDIR}/ostree_repo init --mode=archive-z2 
+ostree --repo=${BUILDDIR}/ostree_repo init --mode=archive-z2
 ostree --repo=${BUILDDIR}/ostree_repo pull-local --depth=0 ${OSTREE_REPO} starlingx
 ostree --repo=${BUILDDIR}/ostree_repo summary --update
 echo "Updated iso ostree commit:"
