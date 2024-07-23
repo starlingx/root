@@ -81,18 +81,21 @@ class DownloadProgress():
         else:
             self.pbar.finish()
 
-def verify_dsc_file(dsc_file, sha256, logger):
+def verify_dsc_file(dsc_file, sha256, logger)->list[str]:
+
+    if not os.path.isfile(dsc_file):
+        return None
 
     # with sha256 supplied, verify it, but not the GPG signature
     if sha256:
         if not checksum(dsc_file, sha256, 'sha256sum', logger):
-            return False
+            return None
         try:
             cmd = 'dscverify --nosigcheck %s' % dsc_file
             out,err = run_shell_cmd_full(cmd, logger, logging.INFO)
         except subprocess.CalledProcessError:
             logger.warning ('%s: dscverify failed', dsc_file)
-            return False
+            return None
         # fall through
 
     # otherwise verify the GPG signature, and if its the only problem,
@@ -109,7 +112,7 @@ def verify_dsc_file(dsc_file, sha256, logger):
                 out,err = run_shell_cmd_full(cmd, logger, logging.INFO)
             except subprocess.CalledProcessError:
                 logger.warning ('%s: dscverify failed', dsc_file)
-                return False
+                return None
             # succeeded w/o GPG check: print a warning
             logger.warning('%s: GPG signature check failed. You can suppress ' +
                            'this warning by adding a dsc_sha256 option with the ' +
@@ -123,9 +126,16 @@ def verify_dsc_file(dsc_file, sha256, logger):
     # Look for those and assume verification failed in this case.
     if err.find('(not present)') != -1:
         logger.warning ('%s: one or more referenced files are missing', dsc_file)
-        return False
+        return None
 
-    return True
+    # Return the list of all files
+    flist = [ dsc_file ]
+    with open(dsc_file) as f:
+        dsc = debian.deb822.Dsc(f)
+        for file in dsc['Files']:
+            flist.append(file['name'])
+
+    return flist
 
 
 def get_str_md5(text):
@@ -746,12 +756,15 @@ class Parser():
 
     def download(self, pkgpath, mirror):
 
+        rel_used_dl_files = []
+
         self.setup(pkgpath)
         if not os.path.exists(mirror):
             self.logger.error("No such %s directory", mirror)
             raise ValueError(f"No such {mirror} directory")
 
-        saveto = os.path.join(mirror, self.pkginfo["pkgname"])
+        rel_saveto = self.pkginfo["pkgname"]
+        saveto = os.path.join(mirror, rel_saveto)
         if not os.path.exists(saveto):
             os.mkdir(saveto)
 
@@ -780,6 +793,7 @@ class Parser():
                         download(dl_url, dl_file, self.logger)
                     if not checksum(dl_file, check_sum, check_cmd, self.logger):
                         raise Exception(f'Fail to download {dl_file}')
+                rel_used_dl_files.append(dl_file)
 
         if "dl_path" in self.meta_data:
             dl_file = self.meta_data["dl_path"]["name"]
@@ -802,12 +816,14 @@ class Parser():
                     download(dl_url, dl_file, self.logger)
                 if not checksum(dl_file, check_sum, check_cmd, self.logger):
                     raise Exception(f'Failed to download {dl_file}')
+            rel_used_dl_files.append(dl_file)
 
         elif "archive" in self.meta_data:
             ver = self.versions["full_version"].split(":")[-1]
             dsc_filename = self.pkginfo["debname"] + "_" + ver + ".dsc"
 
-            if not os.path.exists(dsc_filename) or not verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger):
+            dsc_member_files = verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger)
+            if not dsc_member_files:
                 self.logger.info ('%s: file not found, or integrity verification failed; (re-)downloading...', dsc_filename)
 
                 # save to a temporary directory, then move into place
@@ -831,7 +847,8 @@ class Parser():
                         run_shell_cmd("dget %s %s" % (dget_flags, dl_url), self.logger)
 
                     # verify checksums/signatures
-                    if not verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger):
+                    dsc_member_files = verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger)
+                    if not dsc_member_files:
                         raise Exception('%s: %s: DSC file verification failed' % (self.meta_data_file, dsc_filename))
 
                     # move downloaded files into place
@@ -841,6 +858,7 @@ class Parser():
                 finally:
                     os.chdir(saveto)
 
+            rel_used_dl_files += dsc_member_files
 
             # Upload it to aptly
             # FIXME: this parameter is always None (?)
@@ -853,7 +871,8 @@ class Parser():
 
             # See also comments in the "archive" section above.
 
-            if not os.path.exists(dsc_filename) or not verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger):
+            dsc_member_files = verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger)
+            if not dsc_member_files:
                 self.logger.info ('%s: file not found, or integrity verification failed; (re-)downloading...', dsc_filename)
 
                 # save to a temporary directory, then move into place
@@ -884,7 +903,8 @@ class Parser():
                     run_shell_cmd("apt-get source %s %s" % (apt_get_flags, fullname), self.logger)
 
                     # verify checksums/signatures
-                    if not verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger):
+                    dsc_member_files = verify_dsc_file(dsc_filename, self.dsc_sha256, logger=self.logger)
+                    if not dsc_member_files:
                         raise Exception('%s: %s: DSC file verification failed' % (self.meta_data_file, dsc_filename))
 
                     # move downloaded files into place
@@ -894,12 +914,17 @@ class Parser():
                 finally:
                     os.chdir(saveto)
 
+            rel_used_dl_files += dsc_member_files
+
             # Upload it to aptly
             # FIXME: this parameter is always None (?)
             if self.srcrepo is not None:
                 self.upload_deb_package()
 
         os.chdir(pwd)
+
+        used_dl_files = [ '%s/%s' % (rel_saveto, file) for file in rel_used_dl_files ]
+        return used_dl_files
 
     def package(self, pkgpath, mirror):
 
