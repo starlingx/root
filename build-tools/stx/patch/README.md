@@ -41,7 +41,7 @@ The patch builder requires the following tags in the input xml (or patch recipe)
     <semantics></semantics>
     <!--
         Pre and Post install hook scripts that are executed before/after patch installation.
-        Leave if blank if no scripts are required.
+        Leave if blank if no scripts are required. Both fields require full path to the files.
     -->
     <pre_install>scripts/pre-install.sh</pre_install>
     <post_install>scripts/post-install.sh</post_install>
@@ -81,5 +81,5 @@ $ pip install -r requirements.txt
 - Build your patch:
 
 ```bash
-$ ./patch_builder.py --recipe EXAMPLES\patch-recipe-sample.xml
+$ ./patch-builder --recipe EXAMPLES\patch-recipe-sample.xml
 ```

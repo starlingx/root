@@ -20,7 +20,8 @@ from xml.dom import minidom
 logger = logging.getLogger('metadata_parser')
 utils.set_logger(logger)
 
-INPUT_XML_SCHEMA = 'config/patch-recipe-schema.xsd'
+PATCH_BUILDER_PATH = os.environ.get('PATCH_BUILDER_PATH')
+INPUT_XML_SCHEMA = f'{PATCH_BUILDER_PATH}/config/patch-recipe-schema.xsd'
 
 # Metadata components
 PATCH_ROOT_TAG = 'patch'
@@ -50,6 +51,10 @@ class PatchMetadata(object):
         self.stx_packages = []
         self.binary_packages = []
         self.requires = []
+
+        # Verify if the path to the patch builder folder is set
+        if not PATCH_BUILDER_PATH:
+            raise Exception("Environment variable PATCH_BUILDER_PATH is not set.")
 
     def __str__(self):
         return json.dumps(self.__dict__)
@@ -211,6 +216,6 @@ class PatchMetadata(object):
 
 
 if __name__ == "__main__":
-    patch_recipe_file = "EXAMPLES/patch-recipe-sample.xml"
+    patch_recipe_file = f"${PATCH_BUILDER_PATH}/EXAMPLES/patch-recipe-sample.xml"
     patch_metadata = PatchMetadata(patch_recipe_file)
     patch_metadata.parse_input_xml_data()

@@ -18,6 +18,7 @@
     </requires>
     <semantics></semantics>
     <!-- Pre and Post install hook scripts are optional -->
+    <!-- Both fields require the full path to hook scripts  -->
     <pre_install>scripts/pre-install.sh</pre_install>
     <post_install>scripts/post-install.sh</post_install>
     <!-- Packages to be included -->

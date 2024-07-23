@@ -13,6 +13,7 @@
     <requires></requires>
     <semantics></semantics>
     <!-- Pre and Post install hook scripts are optional -->
+    <!-- Both fields require the full path to hook scripts  -->
     <pre_install></pre_install>
     <post_install></post_install>
     <!-- Packages to be included -->
