@@ -171,7 +171,6 @@ netcat-openbsd
 nfs-kernel-server
 nftables
 ntp
-ntpdate
 nvme-cli
 open-iscsi
 openssh-server
