@@ -17,9 +17,9 @@ source "${WHEEL_UTILS_DIR}/git-utils.sh"
 #
 # Parameters:
 #    stream:    One of 'stable', 'dev'
-#    distro:    One of 'centos', ...
+#    distro:    One of 'debian', ...
 #
-# Returns: A list of unique rpm packages that contain needed wheel
+# Returns: A list of unique packages that contain needed wheel
 #          files.  This is the union per git wheels.inc files.
 
 wheels_inc_list () {

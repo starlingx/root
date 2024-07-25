@@ -14,7 +14,7 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-SUPPORTED_OS_ARGS=('centos' 'debian')
+SUPPORTED_OS_ARGS=('debian')
 OS=
 BUILD_STREAM=stable
 
@@ -24,7 +24,7 @@ Usage:
 $(basename $0) [ --os <os> ] [ --stream <stable|dev> ]
 
 Options:
-    --os:         Specify base OS (eg. centos)
+    --os:         Specify base OS (eg. debian)
     --stream:     Openstack release (default: stable)
 
 EOF
@@ -92,47 +92,23 @@ fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
 
-# For backward compatibility.  Old repo location or new?
-if [ "${OS}" = "centos" ]; then
-    CENTOS_REPO=${MY_REPO}/centos-repo
-    if [ ! -d ${CENTOS_REPO} ]; then
-        CENTOS_REPO=${MY_REPO}/cgcs-centos-repo
-        if [ ! -d ${CENTOS_REPO} ]; then
-            echo "ERROR: directory ${MY_REPO}/centos-repo not found."
-            exit 1
-        fi
-    fi
-fi
-
 function get_wheels_files {
     find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_wheels.inc"
 }
 
 function get_lower_layer_wheels_files {
     # FIXME: debian: these are in repomgr pod, can't get to them easily
-    if [[ "${OS}" != "centos" ]] ; then
+    if [[ "${OS}" == "debian" ]] ; then
         echo "$OS: lower layer wheels not supported!" >&2
         return 1
     fi
-    find ${CENTOS_REPO}/layer_wheels_inc -maxdepth 1 -name "*_${OS}_${BUILD_STREAM}_wheels.inc"
-}
-
-function find_wheel_rpm {
-    local wheel="$1"
-    local repo=
-
-    for repo in ${MY_WORKSPACE}/std/rpmbuild/RPMS \
-                ${CENTOS_REPO}/Binary; do
-        if [ -d $repo ]; then
-            find $repo -name "${wheel}-[^-]*-[^-]*[.][^.]*[.]rpm"
-        fi
-    done | head -n 1
+    # find ${DEBIAN_REPO}/layer_wheels_inc -maxdepth 1 -name "*_${OS}_${BUILD_STREAM}_wheels.inc"
 }
 
 function find_wheel_deb {
     local wheel="$1"
     local repo=
-    # FIXME: debian: we should also scan non-stx RPMs, but they are in repomgr
+    # FIXME: debian: we should also scan non-stx packages, but they are in repomgr
     #        pod and we can't easily get to them.
     for repo in ${MY_WORKSPACE}/std ; do
         if [ -d $repo ]; then
@@ -160,26 +136,6 @@ cd ${BUILD_OUTPUT_PATH}
 declare -a FAILED
 for wheel in $(sed -e 's/#.*//' ${WHEELS_FILES[@]} | sort -u); do
     case $OS in
-        centos)
-            # Bash globbing does not handle [^\-] well,
-            # so use grep instead
-            wheelfile="$(find_wheel_rpm ${wheel})"
-
-            if [ ! -e "${wheelfile}" ]; then
-                echo "Could not find ${wheel}" >&2
-                FAILED+=($wheel)
-                continue
-            fi
-
-            echo Extracting ${wheelfile}
-
-            rpm2cpio ${wheelfile} | cpio -vidu
-            if [ ${PIPESTATUS[0]} -ne 0 -o ${PIPESTATUS[1]} -ne 0 ]; then
-                echo "Failed to extract content of ${wheelfile}" >&2
-                FAILED+=($wheel)
-            fi
-
-            ;;
         debian)
             wheelfile="$(find_wheel_deb ${wheel})"
             if [ ! -e "${wheelfile}" ]; then

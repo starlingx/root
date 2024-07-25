@@ -1,6 +1,6 @@
 # Syntax of wheels config files
 
-The files {debian,centos}/{stable,dev}-wheels.cfg list the 3rd-party wheels
+The files {debian}/{stable,dev}-wheels.cfg list the 3rd-party wheels
 (ie compiled python modules) to be included in the wheels tarball. Wheels are
 listed one per line, each with the following "|"-separated fields.
 

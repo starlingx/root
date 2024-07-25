@@ -17,7 +17,7 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-SUPPORTED_OS_ARGS=('centos' 'debian')
+SUPPORTED_OS_ARGS=( 'debian' )
 OS=
 OS_VERSION=
 BUILD_STREAM=stable

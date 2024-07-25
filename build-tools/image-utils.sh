@@ -50,7 +50,7 @@ get_bsp_dir () {
 # Parameters:
 #    build_target: One of 'iso', 'guest' ...
 #    list_type:    One of 'std', 'dev', 'layer'
-#    distro:       One of 'centos', ...
+#    distro:       One of 'debian', ...
 #    layer:        One of 'compiler', 'distro', 'flock', ...
 #                  Only required if list_type == layer
 #
@@ -68,7 +68,7 @@ image_inc_list () {
     if [ "${list_type}" = "layer" ]; then
         local required_layer_cfg_name="required_layer_${build_target}_inc.cfg"
         local layer_cfg_name="${distro}_build_layer.cfg"
-        local root_dir="${MY_REPO}/../stx-tools/centos-mirror-tools/config/${distro}/${layer}"
+        local root_dir="${MY_REPO}/../stx-tools/${distro}-mirror-tools/config/${distro}/${layer}"
         local layer_cfgs=""
 
         layer_cfgs=$(find $(for x in $GIT_LIST; do echo $x/; done) -maxdepth 1 -name ${layer_cfg_name})

@@ -198,6 +198,8 @@ repo_url_to_sub_path () {
     fi
 
     # set FAMILY from URL
+    echo $URL | grep -q 'debian[.]org' && FAMILY=debian
+    echo $URL | grep -q 'mirror[.]csclub[.]uwaterloo[.]ca[/]debian-security' && FAMILY=debian
     echo $URL | grep -q 'centos[.]org' && FAMILY=centos
     echo $URL | grep -q 'fedoraproject[.]org[/]pub[/]epel' && FAMILY=epel
 

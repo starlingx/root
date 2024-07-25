@@ -3,21 +3,22 @@
 PRIVATE_REGISTRY_USERID=myuser
 PRIVATE_REGISTRY=xxx.xxx.xxx.xxx:9001
 VERSION=2018.11.13
-OS=centos
+OS=debian
 OS_VERSION=7.5.1804
 BUILD_STREAM=stable
 HOST_PORT=8088
+PUBLISH_URL=https://mirror.starlingx.windriver.com/mirror/starlingx/master/${OS}/monolithic/latest_build/
 
-## Step 1: Build stx-centos
+## Step 1: Build stx-debian
 time $MY_REPO/build-tools/build-docker-images/build-stx-base.sh \
     --os ${OS} \
     --os-version ${OS_VERSION} \
     --version ${VERSION} \
     --user ${PRIVATE_REGISTRY_USERID} \
     --registry ${PRIVATE_REGISTRY} \
+    --repo 'deb [trusted=yes check-valid-until=0] $PUBLISH_URL/inputs/packages ./'
+    --repo 'deb [trusted=yes check-valid-until=0] $PUBLISH_URL/outputs/std/packages ./'
     --push \
-    --repo stx-local-build,http://${HOSTNAME}:${HOST_PORT}/${MY_WORKSPACE}/std/rpmbuild/RPMS \
-    --repo stx-mirror-distro,http://${HOSTNAME}:${HOST_PORT}/${MY_REPO}/cgcs-root/cgcs-${OS}-repo/Binary \
     --clean
 
 
