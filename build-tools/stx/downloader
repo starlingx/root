@@ -19,6 +19,7 @@ import argparse
 import debrepack
 import discovery
 import fnmatch
+import glob
 import logging
 import os
 import pathlib
@@ -201,7 +202,7 @@ def update_apt():
             logger.error(f" An unexpected error occurred {e}")
 
 class BaseDownloader():
-    def __init__(self, arch, _dl_dir, clean):
+    def __init__(self, arch, _dl_dir, dl_list_file, clean):
         self.dl_dir = _dl_dir
         self.arch = arch
         self.clean_mirror = clean
@@ -213,6 +214,7 @@ class BaseDownloader():
         self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
                                            '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
                                            rlogger)
+        self.dl_list_fh = open(dl_list_file, 'w')
 
     def clean(self):
         if os.path.exists(self.dl_dir):
@@ -256,10 +258,15 @@ class BaseDownloader():
                 logger.error(' '.join([dlobj.strip()]))
 
 
+    def save_dl_file_names(self, filename_list):
+        for filename in filename_list:
+            print (filename, file=self.dl_list_fh)
+        self.dl_list_fh.flush()
+
 
 class DebDownloader(BaseDownloader):
-    def __init__(self, arch, _dl_dir, force, _layer_binaries):
-        super(DebDownloader, self).__init__(arch, _dl_dir, force)
+    def __init__(self, arch, _dl_dir, dl_list_file, force, _layer_binaries):
+        super(DebDownloader, self).__init__(arch, _dl_dir, dl_list_file, force)
         self.need_download = []
         self.downloaded = []
         self.need_upload = []
@@ -439,6 +446,7 @@ class DebDownloader(BaseDownloader):
         previously_uploaded = self.repomgr.list_pkgs(repo)
         logger.info(' '.join(['previously uploaded to repo', repo, ':', str(previously_uploaded)]))
 
+        used_dl_files = []
         pkg_data_map = {}
         if pkg_data:
             for pkg_dict in pkg_data:
@@ -466,6 +474,7 @@ class DebDownloader(BaseDownloader):
                     logger.debug(''.join([pname_epoch_arch, ' has been downloaded, skip']))
                     self.dl_success.append(pkg_name + '_' + pkg_ver)
                     self.need_upload.append([pname_arch, pname_epoch_arch])
+                    self.save_dl_file_names([pname_arch])
                 else:
                     # Tests show that the 'epoch' should be taken when
                     # fetch the package with 'apt' module, there is not 'epoch'
@@ -484,6 +493,7 @@ class DebDownloader(BaseDownloader):
 
             ret = self.download(debnames[0], debnames[1], url)
             if ret:
+                self.save_dl_file_names([os.path.basename (ret)])
                 deb_ver = debnames[1].split(":")[-1]
                 deb_ver_epoch = '_'.join([debnames[0], debnames[1]])
                 logger.info(' '.join([deb_ver_epoch, ' download ok']))
@@ -579,8 +589,8 @@ class DebDownloader(BaseDownloader):
 
 
 class SrcDownloader(BaseDownloader):
-    def __init__(self, arch, _dl_dir, force):
-        super(SrcDownloader, self).__init__(arch, _dl_dir, force)
+    def __init__(self, arch, _dl_dir, dl_list_file, force):
+        super(SrcDownloader, self).__init__(arch, _dl_dir, dl_list_file, force)
         self.parser = None
 
     def prepare(self):
@@ -599,18 +609,17 @@ class SrcDownloader(BaseDownloader):
 
         return True
 
-    def download_pkg_src(self, _pkg_path):
+    def download_pkg_src(self, _pkg_path)->list[str]:
         if not self.parser:
-            return False
+            return None
         try:
-            self.parser.download(_pkg_path, self.dl_dir)
+            return self.parser.download(_pkg_path, self.dl_dir)
         except Exception as e:
             logger.error(str(e))
             logger.error("Failed to download source with %s", _pkg_path)
-            return False
-        return True
+            return None
 
-    def download_all(self, distro=STX_DEFAULT_DISTRO, layers=None, build_types=None):
+    def download_all(self, distro=STX_DEFAULT_DISTRO, layers=None, build_types=None)->list[str]:
         logger.info("download_all, layers=%s, build_types=%s" % (layers, build_types))
         if layers:
             for layer in layers:
@@ -649,9 +658,11 @@ class SrcDownloader(BaseDownloader):
         logger.info("Starting to download %d source packages", len(pkg_dirs))
         logger.info("%s", sorted(self.dl_need))
         for pkg_dir in pkg_dirs:
-            if self.download_pkg_src(pkg_dir):
+            dl_files = self.download_pkg_src(pkg_dir)
+            if dl_files is not None:
                 if pkg_dir in pkg_dirs_to_names:
                     self.dl_success.append(pkg_dirs_to_names[pkg_dir])
+                self.save_dl_file_names (dl_files)
             else:
                 if pkg_dir in pkg_dirs_to_names:
                     self.dl_failed.append(pkg_dirs_to_names[pkg_dir])
@@ -749,14 +760,20 @@ if __name__ == "__main__":
 
     update_apt()
 
+    dl_list_dir = '%s/required_downloads' % os.environ['MY_WORKSPACE']
+    if os.path.isdir(dl_list_dir):
+        shutil.rmtree(dl_list_dir)
+    os.makedirs(dl_list_dir, exist_ok=True)
     if args.download_binary:
         all_binary_lists = get_all_binary_list(distro=distro, layers=layers, build_types=build_types)
-        binary_dl = DebDownloader(DEFAULT_ARCH, stx_bin_mirror, clean_mirror, all_binary_lists)
+        dl_list_file_bin = '%s/binaries.txt' % dl_list_dir
+        binary_dl = DebDownloader(DEFAULT_ARCH, stx_bin_mirror, dl_list_file_bin, clean_mirror, all_binary_lists)
         if not binary_dl.create_binary_repo():
             sys.exit(1)
 
     if args.download_source:
-        source_dl = SrcDownloader(DEFAULT_ARCH, stx_src_mirror, clean_mirror)
+        dl_list_file_src = '%s/sources.txt' % dl_list_dir
+        source_dl = SrcDownloader(DEFAULT_ARCH, stx_src_mirror, dl_list_file_src, clean_mirror)
 
     dl_register_signal_handler()
     if binary_dl:
@@ -769,6 +786,14 @@ if __name__ == "__main__":
     if source_dl:
         logger.info('Show the download result for source packages:')
         source_ret = source_dl.reports()
+
+    # sort required_download lists
+    for dl_list_file in glob.glob('%s/*.txt' % dl_list_dir):
+        if os.path.isfile(dl_list_file):
+            cmd = 'file="%s" && sort -u "$file" >"$file".tmp && mv -f "$file".tmp "$file"' % dl_list_file
+            utils.run_shell_cmd(cmd, logger)
+
+    logger.info('Required downloads\' file names are in %s/', dl_list_dir)
 
     logger.info("Verifying downloader return status")
     if binary_ret != 0:
