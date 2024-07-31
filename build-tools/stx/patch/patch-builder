@@ -33,8 +33,8 @@ detached_signature_file = "signature.v2"
 mdsum_signature_file = "signature"
 
 # Patch output directory
-BUILD_ROOT = os.environ.get('MY_BUILD_PKG_DIR')
-PATCH_OUTPUT = os.path.join(BUILD_ROOT, "patch_output")
+DEPLOY_DIR = "/localdisk/deploy"
+PATCH_OUTPUT = os.path.join(DEPLOY_DIR, "patch_output")
 
 # Default names for every script type
 PATCH_SCRIPTS = {
