@@ -15,6 +15,7 @@
 # Copyright (C) 2024 Wind River Systems,Inc
 
 import argparse
+import glob
 import logging
 import os
 import shutil
@@ -22,8 +23,8 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import yaml
 import xml.etree.ElementTree as ET
+import yaml
 
 BASE_BULLSEYE_PATH = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
                            "stx-tools/debian-mirror-tools/config/debian/common/base-bullseye.yaml")
@@ -212,6 +213,75 @@ def setup_gpg_client():
         subprocess.call([cmd], shell=True)
         os.environ["GNUPGHOME"] = GPG_HOME
 
+def add_tag_xml(parent, name, text):
+    """Add tag with text to a parent tag
+
+    Utility function that helps us create XML tags inside another
+    tag with a value inside it without repeating ourselves too much.
+
+    :param parent: XML parent tag
+    :param name: Name of the tag
+    :param text: Value inside the tag
+    """
+    tag = ET.SubElement(parent, name)
+    tag.text = text
+
+def add_ostree_info(metadata, iso_path):
+    """Adds ostree repository info to a metadata file
+
+    This function get the ostree data from inside the iso and update
+    metadata file with this information.
+
+    :param metadata: Path to the metadata file
+    :param iso_path: Path to the ISO
+    """
+    logger.info("Adding ostree info to metadata...")
+
+    # Load XML structure and create base
+    tree = ET.parse(metadata)
+    root = tree.getroot()
+    content = ET.SubElement(root, "contents")
+    ostree = ET.SubElement(content, "ostree")
+
+    add_tag_xml(ostree, "number_of_commits", "1")
+
+    base_element = ET.SubElement(ostree, "base")
+    # For now we add empty values here as the software
+    # expect this fields to be in the XML
+    add_tag_xml(base_element, "commit", "")
+    add_tag_xml(base_element, "checksum", "")
+
+    # Get ostree commit
+    try:
+        cmd = f"ostree --repo={iso_path}/ostree_repo rev-parse starlingx"
+        logger.debug('Running command: %s', cmd)
+        commit_value = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
+                                               shell=True).decode(sys.stdout.encoding).strip()
+    except subprocess.CalledProcessError as e:
+        raise Exception(e.output)
+    except Exception as e:
+        raise Exception(e)
+
+    # Get ostree checksum
+    try:
+        cmd = (f"ostree --repo={iso_path}/ostree_repo log starlingx"
+                '| grep -m 1 -i checksum | sed "s/.* //"')
+        logger.debug('Running command: %s', cmd)
+        checksum_value = subprocess.check_output(cmd, stderr=subprocess.STDOUT,
+                                                 shell=True).decode(sys.stdout.encoding).strip()
+    except subprocess.CalledProcessError as e:
+        raise Exception(e.output)
+    except Exception as e:
+        raise Exception(e)
+
+    # Add info in commit1
+    commit1_element = ET.SubElement(ostree, "commit1")
+    add_tag_xml(commit1_element, "commit", commit_value)
+    add_tag_xml(commit1_element, "checksum", checksum_value)
+
+    # Save metadata file changes
+    tree.write(metadata)
+
 def main():
     parser = argparse.ArgumentParser(description="Create a valid StarlingX ISO with patches \
                                       already applied.",
@@ -293,6 +363,7 @@ def main():
         logger.debug('Running command: %s', cmd)
         subprocess.check_call(cmd, shell=False)
 
+        latest_patch_number = 0
         logger.info('Unpacking patches...')
         # For every patch we need to extract the metadata.xml, the deb files
         # and save the sw_version and packages names to be used on apt-ostree
@@ -308,8 +379,8 @@ def main():
                     xml_root = ET.parse(f"{extract_folder}/metadata.xml").getroot()
                     sw_version = xml_root.find('sw_version').text
                     os.makedirs(f"{ptc_folder}/{sw_version}/metadata")
-                    metadata_path = f"{ptc_folder}/{sw_version}/metadata/\
-                        starlingx-{sw_version}-metadata.xml"
+                    metadata_path = (f"{ptc_folder}/{sw_version}/metadata/starlingx-{sw_version}"
+                        "-metadata.xml")
                     shutil.copy(f"{extract_folder}/metadata.xml", metadata_path)
                     # From inside software.tar we extract every .deb file
                     f.extract('software.tar', f"{extract_folder}/")
@@ -327,10 +398,25 @@ def main():
                         "packages": packages,
                         "metadata": metadata_path
                         })
+
+                    # Save the biggest version from the patches we have
+                    patch_num = int(sw_version.split(".")[-1])
+                    if patch_num > latest_patch_number:
+                        latest_patch_number = patch_num
+
                     logger.info(f'Patch {sw_version} unpacked sucessfully.')
 
         # Here we setup our gpg client
         setup_gpg_client()
+
+        # We delete the patches folder from the base iso and recreate it
+        # so we may populate with the metadatas from the patches we are using
+        shutil.rmtree(f"{iso_folder}/patches")
+        os.mkdir(f"{iso_folder}/patches")
+
+        # We clean all the metadatas inside upgrades folder
+        for file in glob.glob(f"{iso_folder}/upgrades/*-metadata.xml"):
+            os.remove(file)
 
         # Now we need to populate reprepo feed with every deb from every patch
         # after that we install it on the ostree repository
@@ -357,8 +443,13 @@ def main():
             logger.debug('Running command: %s', cmd)
             subprocess.check_call(cmd, shell=False)
 
-            # Copy patch metadata to iso
-            shutil.copy(patch["metadata"], f"{iso_folder}/patches")
+            # Copy only the patch metadata with the biggest patch version to ISO
+            patch_num = int(patch["sw_version"].split(".")[-1])
+            if latest_patch_number == patch_num:
+                shutil.copy(patch["metadata"], f"{iso_folder}/patches")
+                # Metadata inside upgrades requires ostree information
+                add_ostree_info(patch["metadata"], iso_folder)
+                shutil.copy(patch["metadata"], f"{iso_folder}/upgrades")
 
         # Update ostree summary
         cmd = ["ostree", "summary", "--update", f"--repo={iso_folder}/ostree_repo"]
