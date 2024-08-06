@@ -160,9 +160,9 @@ images:
     src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/3eec69ac37ec9c518a61d1e9ee690a80e7cac831
     tag: stx.10.0-v1.0.2
   - name: docker.io/starlingx/stx-ceph-manager
-    src_build_tag: master-centos-stable-20230118T031801Z.0
-    src_ref: https://opendev.org/starlingx/rook-ceph/commit/88fa7920ef73d098507a6a6daee50985a0c139cd
-    tag: stx.10.0-v1.7.11
+    src_build_tag: master-debian-stable-20240806T060001Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/251ed8f219c7fdc0fd4cd7e0ff30bcf7c9d8eedc
+    tag: stx.10.0-v18.2.2-0
   - name: docker.io/starlingx/stx-openstackclients
     src_build_tag: master-debian-stable-20240402T160056Z.0
     src_ref: https://opendev.org/starlingx/openstack-armada-app/commit/fbb747ca744fe2161401c342654b725c374cba84
