@@ -39,14 +39,14 @@
 #     list-of-image-record-files: one or more files containing image records
 #
 #     e.g.
-#     cat $MY_WORKSPACE/std/build-images/images-centos-stable-versioned.lst
-#     docker.io/starlingx/stx-keystone-api-proxy:master-centos-stable-20200811T002300Z.0
-#     docker.io/starlingx/stx-nova-client:master-centos-stable-20200811T002300Z.0
+#     cat $MY_WORKSPACE/std/build-images/images-debian-stable-versioned.lst
+#     docker.io/starlingx/stx-keystone-api-proxy:master-debian-stable-20200811T002300Z.0
+#     docker.io/starlingx/stx-nova-client:master-debian-stable-20200811T002300Z.0
 #     ...
 #
 # Sample usage:
 #    helm_chart_modify.py <input-yaml-file> <output-yaml-file> \
-#         $MY_WORKSPACE/std/build-images/images-centos-stable-versioned.lst
+#         $MY_WORKSPACE/std/build-images/images-debian-stable-versioned.lst
 
 import collections
 import sys

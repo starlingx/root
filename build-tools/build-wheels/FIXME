@@ -7,9 +7,8 @@ debian/Dockerfile:
 - convert thrifty & nss to wheels and don't install them in Dockerfile
 
 build-wheel-tarball.sh:
-- current DEB wheel packages install wheels at random locations, rather
-  than under /wheels as in CentOS. Fix them and remove the workaround
-  in this script.
+- current DEB wheel packages install wheels at random locations.
+  Fix them and remove the workaround in this script.
 
 build-wheel-tarball.sh:
 - look for wheels in non-Starlingx DEBs. Requires accessing repomgr via

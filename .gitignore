@@ -1,9 +1,6 @@
 *.swp
 .tox
 __pycache__/
-/centos-repo
-/cgcs-centos-repo
-/cgcs-tis-repo
 /local-build-data
 /local-repo
 /public-keys/

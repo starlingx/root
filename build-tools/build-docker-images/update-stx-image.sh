@@ -58,7 +58,7 @@ Options:
     --module-src: Specify path to module source to install/update (dir or git repo)
                   Formats: dir[|version]
                            url[|branch][|version]
-    --pkg:        Specify path to distro package to install/update (ie. rpm)
+    --pkg:        Specify path to distro package to install/update (ie. deb)
     --customize:  Customization script
     --extra:      Extra file (to be accessible to customization script)
     --push:       Push to docker repo

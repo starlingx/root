@@ -12,7 +12,7 @@
 BUILD_HELM_CHARTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source $BUILD_HELM_CHARTS_DIR/utils.sh || exit 1
 
-SUPPORTED_OS_ARGS=('centos' 'debian')
+SUPPORTED_OS_ARGS=('debian')
 OS=
 LABEL=""
 APP_NAME="stx-openstack"
@@ -35,7 +35,7 @@ Usage:
 $(basename $0) [--os <os>] [-a, --app <app-name>]
                [-A, --app-version-file /path/to/$APP_VERSION_BASE]
                [-B, --app-version <version>]
-               [-r, --rpm <rpm-name>] [-i, --image-record <image-record>] [--label <label>]
+               [--package <package-name>] [-i, --image-record <image-record>] [--label <label>]
                [-p, --patch-dependency <patch-dependency>] [ --verbose ]
 Options:
     --os:
@@ -55,12 +55,9 @@ Options:
             Specify application (tarball) version, this overrides any other
             version information.
 
-    -r, --package PACKAGE_NAME,... :
+    --package PACKAGE_NAME,... :
             Top-level package(s) containing the helm chart(s), comma-separated.
             Default: ${APP_NAME}-helm
-
-    --rpm PACKAGE_NAME,... :
-            (Deprecated) same as --package
 
     -i, --image-record FILENAME :
             Specify the path to image record file(s) or url(s).
@@ -136,18 +133,18 @@ function build_image_versions_to_armada_manifest {
         # <docker-registry>/<repository>/<repository>/.../<image-name>:<tag>
         #
         # An example of the content of an image record file:
-        # e.g. images-centos-dev-latest.lst
-        # docker.io/starlingx/stx-aodh:master-centos-dev-latest
-        # docker.io/starlingx/stx-ceilometer:master-centos-dev-latest
-        # docker.io/starlingx/stx-cinder:master-centos-dev-latest
+        # e.g. images-debian-stable-latest.lst
+        # docker.io/starlingx/stx-aodh:master-debian-stable-latest
+        # docker.io/starlingx/stx-ceilometer:master-debian-stable-latest
+        # docker.io/starlingx/stx-cinder:master-debian-stable-latest
         # ...
         #
         # An example of the usage of an image reference in manifest file:
         # e.g. manifest.yaml
         # images:
         #   tags:
-        #     aodh_api: docker.io/starlingx/stx-aodh:master-centos-stable-latest
-        #     aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #     aodh_api: docker.io/starlingx/stx-aodh:master-debian-stable-latest
+        #     aodh_db_sync: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #     ...
         #
         # To replace the images in the manifest file with the images in image record file:
@@ -156,14 +153,14 @@ function build_image_versions_to_armada_manifest {
         #    e.g. image_name = stx-aodh
         #
         # 2. search the image reference in manifest yaml via image_name
-        #    e.g. old_image_reference = docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #    e.g. old_image_reference = docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #
         # 3. update the manifest file to replace the old image references with the new one
         #    e.g. manifest.yaml
         #    images:
         #      tags:
-        #        aodh_api: docker.io/starlingx/stx-aodh:master-centos-dev-latest
-        #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-dev-latest
+        #        aodh_api: docker.io/starlingx/stx-aodh:master-debian-stable-latest
+        #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
         ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
@@ -188,18 +185,18 @@ function build_image_versions_to_fluxcd_manifests {
         # <docker-registry>/<repository>/<repository>/.../<image-name>:<tag>
         #
         # An example of the content of an image record file:
-        # e.g. images-centos-dev-latest.lst
-        # docker.io/starlingx/stx-aodh:master-centos-dev-latest
-        # docker.io/starlingx/stx-ceilometer:master-centos-dev-latest
-        # docker.io/starlingx/stx-cinder:master-centos-dev-latest
+        # e.g. images-debian-stable-latest.lst
+        # docker.io/starlingx/stx-aodh:master-debian-stable-latest
+        # docker.io/starlingx/stx-ceilometer:master-debian-stable-latest
+        # docker.io/starlingx/stx-cinder:master-debian-stable-latest
         # ...
         #
         # An example of the usage of an image reference in manifest file:
         # e.g. manifest.yaml
         # images:
         #   tags:
-        #     aodh_api: docker.io/starlingx/stx-aodh:master-centos-stable-latest
-        #     aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #     aodh_api: docker.io/starlingx/stx-aodh:master-debian-stable-latest
+        #     aodh_db_sync: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #     ...
         #
         # To replace the images in the manifest file with the images in image record file:
@@ -208,14 +205,14 @@ function build_image_versions_to_fluxcd_manifests {
         #    e.g. image_name = stx-aodh
         #
         # 2. search the image reference in manifest yaml via image_name
-        #    e.g. old_image_reference = docker.io/starlingx/stx-aodh:master-centos-stable-latest
+        #    e.g. old_image_reference = docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #
         # 3. update the manifest file to replace the old image references with the new one
         #    e.g. manifest.yaml
         #    images:
         #      tags:
-        #        aodh_api: docker.io/starlingx/stx-aodh:master-centos-dev-latest
-        #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-centos-dev-latest
+        #        aodh_api: docker.io/starlingx/stx-aodh:master-debian-stable-latest
+        #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #
         image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
         find ${manifest_folder} -name "*.yaml" | while read manifest_file; do
@@ -435,23 +432,7 @@ filter_existing_dirs() {
 function find_package_files {
     local -a dirlist
     local dir
-    if [[ "$OS" == "centos" ]] ; then
-        local centos_repo="${MY_REPO}/centos-repo"
-        if [[ ! -d "${centos_repo}" ]] ; then
-            centos_repo="${MY_REPO}/cgcs-centos-repo"
-            if [[ ! -d "${centos_repo}" ]] ; then
-                echo "ERROR: directory ${MY_REPO}/centos-repo not found." >&2
-                exit 1
-            fi
-        fi
-        readarray -t dirlist < <(filter_existing_dirs \
-            "${MY_WORKSPACE}/std/rpmbuild/RPMS" \
-            "${centos_repo}/Binary/noarch")
-        if [[ "${#dirlist[@]}" -gt 0 ]] ; then
-            echo "looking for packages in ${dirlist[*]}" >&2
-            find "${dirlist[@]}" -xtype f -name "*.tis.noarch.rpm"
-        fi
-    else
+    if [[ "$OS" == "debian" ]] ; then
         # FIXME: can't search 3rd-party binary debs because they are not accessible
         # on the filesystem, but only as remote files in apt repos
         readarray -t dirlist < <(filter_existing_dirs "${MY_WORKSPACE}/std")
@@ -491,9 +472,7 @@ function find_helm_chart_package_files {
     local failed=0
     for package_file in $(find_package_files) ; do
         package_name="$(
-            if [[ "$OS" == "centos" ]] ; then
-                rpm_get_name "$package_file" || exit 1
-            else
+            if [[ "$OS" == "debian" ]] ; then
                 deb_get_control "$package_file" | deb_get_field "Package"
                 check_pipe_status
             fi
@@ -537,10 +516,7 @@ function find_helm_chart_package_files {
         fi
 
         local -a dep_package_names=($(
-            if [[ "$OS" == "centos" ]] ; then
-                rpm -qRp "$package_file" | sed 's/rpmlib([a-zA-Z0-9]*)[[:space:]]\?[><=!]\{0,2\}[[:space:]]\?[0-9.-]*//g' | grep -E -v -e '/' -e '^\s*$'
-                check_pipe_status || exit 1
-            else
+            if [[ "$OS" == "debian" ]] ; then
                 deb_get_control "$package_file" | deb_get_simple_depends
                 check_pipe_status || exit 1
             fi
@@ -591,14 +567,6 @@ function extract_chart_from_package {
     local package_file=$1
     echo "extracting charts from package $package_file" >&2
     case $OS in
-        centos)
-            rpm2cpio "$package_file" | cpio ${CPIO_FLAGS}
-            if ! check_pipe_status ; then
-                echo "Failed to extract content of helm package: ${package_file}" >&2
-                exit 1
-            fi
-            ;;
-
         debian)
             deb_extract_content "$package_file" $([[ "$VERBOSE" == "true" ]] && echo --verbose || true)
             if ! check_pipe_status ; then
@@ -671,10 +639,7 @@ function get_app_version {
     echo "extracting version from $1" >&2
     local app_version
     app_version="$(
-        if [[ "$OS" == "centos" ]] ; then
-            rpm -q --qf '%{VERSION}-%{RELEASE}' -p "$1" | sed 's![.]tis!!g'
-            check_pipe_status || exit 1
-        else
+        if [[ "$OS" == "debian" ]] ; then
             control="$(deb_get_control "$1")" || exit 1
             version="$(echo "$control" | deb_get_field "Version" | sed -r -e 's/^[^:]+:+//')"
             if [[ -z "$version" ]] ; then
@@ -689,7 +654,7 @@ function get_app_version {
 }
 
 # TODO(awang): remove the deprecated image-file option
-OPTS=$(getopt -o h,a:,A:,B:,r:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,rpm:,package:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
+OPTS=$(getopt -o h,a:,A:,B:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,package:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -720,10 +685,7 @@ while true; do
             APP_VERSION="$2"
             shift 2
             ;;
-        -r | --rpm | --package)
-            if [[ "$1" == "--rpm" ]] ; then
-                echo "WARNING: option $1 is deprecated, use --package instead" >&2
-            fi
+        --package)
             APP_PACKAGES+=(${2//,/ })
             shift 2
             ;;
@@ -770,8 +732,6 @@ if [ -z "$OS" ] ; then
     if [[ -z "$OS" ]] ; then
         echo "Unable to determine OS, please re-run with \`--os' option" >&2
         exit 1
-    elif [[ "$OS" != "debian" ]] ; then
-        OS="centos"
     fi
 fi
 VALID_OS=1
@@ -810,10 +770,8 @@ function find_python_2_or_3 {
 }
 PYTHON_2_OR_3="$(find_python_2_or_3)" || exit 1
 
-# include SRPM utils
-if [[ "$OS" == "centos" ]] ; then
-    source $BUILD_HELM_CHARTS_DIR/srpm-utils || exit 1
-else
+# include packaging utils
+if [[ "$OS" == "debian" ]] ; then
     source $BUILD_HELM_CHARTS_DIR/deb-utils.sh || exit 1
 fi
 

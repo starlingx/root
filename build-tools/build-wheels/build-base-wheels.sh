@@ -20,7 +20,7 @@ fi
 
 KEEP_IMAGE=no
 KEEP_CONTAINER=no
-SUPPORTED_OS_LIST=('centos' 'debian')
+SUPPORTED_OS_LIST=( 'debian' )
 OS=
 OS_VERSION=
 BUILD_STREAM=stable
@@ -38,7 +38,7 @@ Usage:
 $(basename $0) [ --os <os> ] [ --keep-image ] [ --keep-container ] [ --stream <stable|dev> ]
 
 Options:
-    --os:             Override base OS (eg. centos; default: auto)
+    --os:             Override base OS (eg. debian; default: auto)
     --os-version:     Override OS version (default: auto)
     --keep-image:     Skip deletion of the wheel build image in docker
     --keep-container: Skip deletion of container used for the build

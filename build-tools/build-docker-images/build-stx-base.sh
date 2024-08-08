@@ -18,7 +18,7 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
-SUPPORTED_OS_ARGS=('centos' 'debian')
+SUPPORTED_OS_ARGS=( 'debian' )
 OS=                      # default: autodetect
 OS_VERSION=              # default: lookup "ARG RELEASE" in Dockerfile
 BUILD_STREAM=stable
@@ -52,7 +52,6 @@ Options:
     --version:    Specify version for output image
     --stream:     Build stream, stable or dev (default: stable)
     --repo:       Software repository, can be specified multiple times
-                    * CentOS format: "NAME,BASEURL"
                     * Debian format: "TYPE [OPTION=VALUE...] URL DISTRO COMPONENTS..."
                       This will be added to /etc/apt/sources.list as is,
                       see also sources.list(5) manpage.
@@ -281,13 +280,7 @@ fi
 
 if [ ${#REPO_LIST[@]} -eq 0 ]; then
     # Either --repo or --local must be specified
-    if [ "${LOCAL}" = "yes" ]; then
-        if [[ "$OS" == "centos" ]] ; then
-            REPO_LIST+=("local-std,http://${HOST}:8088${MY_WORKSPACE}/std/rpmbuild/RPMS")
-            REPO_LIST+=("stx-distro,http://${HOST}:8089${MY_REPO}/cgcs-${OS}-repo/Binary")
-        fi
-        # debian is handled down below
-    elif [ "${BUILD_STREAM}" != "dev" -a "${BUILD_STREAM}" != "master" ]; then
+    if [ "${LOCAL}" != "yes" -a "${BUILD_STREAM}" != "dev" -a "${BUILD_STREAM}" != "master" ]; then
         echo "Either --local or --repo must be specified" >&2
         exit 1
     fi
@@ -314,33 +307,7 @@ fi
 cp ${SRC_DOCKERFILE} ${BUILDDIR}/Dockerfile
 
 # Generate the stx.repo file
-if [[ "$OS" == "centos" ]] ; then
-    STX_REPO_FILE=${BUILDDIR}/stx.repo
-    for repo in ${REPO_LIST[@]}; do
-        repo_name=$(echo $repo | awk -F, '{print $1}')
-        repo_baseurl=$(echo $repo | awk -F, '{print $2}')
-
-        if [ -z "${repo_name}" -o -z "${repo_baseurl}" ]; then
-            echo "Invalid repo specified: ${repo}" >&2
-            echo "Expected format: name,baseurl" >&2
-            exit 1
-        fi
-
-        cat >>${STX_REPO_FILE} <<EOF
-[${repo_name}]
-name=${repo_name}
-baseurl=${repo_baseurl}
-enabled=1
-gpgcheck=0
-skip_if_unavailable=1
-metadata_expire=0
-
-EOF
-
-        REPO_OPTS="${REPO_OPTS} --enablerepo=${repo_name}"
-    done
-else
-
+if [[ "$OS" == "debian" ]] ; then
     # These env vars must be defined in debian builder pods
     for var in DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION REPOMGR_DEPLOY_URL REPOMGR_ORIGIN ; do
         if [[ -z "${!var}" ]] ; then
@@ -413,9 +380,7 @@ IMAGE_NAME_LATEST=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${LATEST_TAG}
 
 declare -a BUILD_ARGS
 BUILD_ARGS+=(--build-arg RELEASE=${OS_VERSION})
-if [[ "$OS" == "centos" ]] ; then
-    BUILD_ARGS+=(--build-arg "REPO_OPTS=${REPO_OPTS}")
-else
+if [[ "$OS" == "debian" ]] ; then
     BUILD_ARGS+=(--build-arg "DIST=${DEBIAN_DISTRIBUTION}")
 fi
 
