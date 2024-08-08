@@ -412,12 +412,12 @@ class DebDownloader(BaseDownloader):
                             url_dict = utils.deb_file_name_to_dict(os.path.basename(url).replace("%2B", "+"))
                             logger.debug("dkg_data: name=%s, ver=%s, url=%s, url_dict=%s, file=%s", pkg_name, pkg_ver, url, str(url_dict), list_file)
                             if url_dict['ver'] and url_dict['ver'] != pkg_ver:
-                                logger.warning("Package version mismatch for package %s, $s vs %s, in file %s", pkg_name, pkg_ver, url_dict['ver'], list_file)
+                                logger.warning("Package version mismatch for package %s, %s vs %s, in file %s", pkg_name, pkg_ver, url_dict['ver'], list_file)
                                 pkg_ver = url_dict['ver']
                             if url_dict['epoch'] and url_dict['epoch'] != pkg_epoch:
                                 logger.warning("Package epoch mismatch for package %s, $s vs %s, in file %s", pkg_name, pkg_epoch, url_dict['epoch'], list_file)
                                 pkg_epoch = url_dict['epoch']
-                                
+
                             # Get arch from filename
                             arch = pathlib.Path(url).stem.split("_")[-1]
                         else:
