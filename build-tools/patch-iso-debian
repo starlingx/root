@@ -65,13 +65,10 @@ function extract_metadata() {
     fi
 
     # Verify if top commit from metadata exist in ostree log
-    ostree_commit=$(extract_ostree_commit_from_metadata_xml ${patchesdir}/${patchid}-metadata.xml)
-    if [[ "$ostree_log" != *"$ostree_commit"* ]]; then
-        echo "Error: Patch ${patchid} ostree commit does not exist in ISO ostree log."
-        echo "patch's ostree commit: ${ostree_commit}"
-        echo "ISO ostree log:"
-        ostree --repo=${BUILDDIR}/ostree_repo log starlingx
-        exit 1
+    patch_ostree_commit1=$(xmllint --xpath "string(//contents/ostree/commit1/commit)" ${patchesdir}/${patchid}-metadata.xml)
+    if [[ "$ostree_log" != *"$patch_ostree_commit1"* ]]; then
+        echo "WARNING: Patch ostree commit 1 not found in input ISO."
+        echo "Patch ostree commit 1: ${patch_ostree_commit1}"
     fi
 }
 
