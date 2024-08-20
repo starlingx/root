@@ -251,6 +251,9 @@ def add_ostree_info(metadata, iso_path):
     add_tag_xml(base_element, "commit", "")
     add_tag_xml(base_element, "checksum", "")
 
+    # Add Y to prepatched-iso tag
+    add_tag_xml(base_element, "prepatched_iso", "Y")
+
     # Get ostree commit
     try:
         cmd = f"ostree --repo={iso_path}/ostree_repo rev-parse starlingx"
