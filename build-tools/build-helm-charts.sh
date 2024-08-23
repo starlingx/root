@@ -852,7 +852,7 @@ if [ ! -d "usr/lib/fluxcd" ] || [ ! -d "usr/lib/helm" ]; then
 fi
 
 # Stage all the charts
-cp -R usr/lib/helm staging/charts
+rsync -a usr/lib/helm/ staging/charts/ --exclude=helm-toolkit-*
 if [ $? -ne 0 ]; then
     echo "Failed to copy the charts from ${BUILD_OUTPUT_PATH}/usr/lib/helm to ${BUILD_OUTPUT_PATH}/staging/charts" >&2
     exit 1
