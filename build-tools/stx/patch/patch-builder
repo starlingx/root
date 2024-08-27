@@ -22,6 +22,8 @@ import fetch_debs
 import metadata
 from signing.patch_signing import sign_files
 
+import constants
+
 sys.path.append('..')
 import utils
 
@@ -35,14 +37,6 @@ mdsum_signature_file = "signature"
 # Patch output directory
 DEPLOY_DIR = "/localdisk/deploy"
 PATCH_OUTPUT = os.path.join(DEPLOY_DIR, "patch_output")
-
-# Default names for every script type
-PATCH_SCRIPTS = {
-   "PRE_INSTALL": "pre-install.sh",
-   "POST_INSTALL": "post-install.sh",
-   "DEPLOY_PRECHECK": "deploy-precheck",
-   "UPGRADE_UTILS": "upgrade_utils.py",
-}
 
 class PatchBuilder(object):
     def __init__(self, patch_recipe_file, file_name=None):
@@ -103,7 +97,7 @@ class PatchBuilder(object):
             logger.debug(f"Copying post-install script: {post_install}")
             self.copy_rename_script(post_install, "POST_INSTALL")
 
-        # if the patch includes the 'software' package we need to make deploy-precheck 
+        # if the patch includes the 'software' package we need to make deploy-precheck
         # and upgrade_utils.py from .deb file accessible directly from patch file
         if 'software' in self.metadata.stx_packages:
             logger.info(f"Patch includes the software package, getting scripts from deb file...")
@@ -112,7 +106,8 @@ class PatchBuilder(object):
             tmp_folder = tempfile.mkdtemp(prefix='deb_')
 
             # Collect files
-            files_to_get = [PATCH_SCRIPTS["DEPLOY_PRECHECK"], PATCH_SCRIPTS["UPGRADE_UTILS"]]
+            files_to_get = [constants.PATCH_SCRIPTS["DEPLOY_PRECHECK"],
+                            constants.PATCH_SCRIPTS["UPGRADE_UTILS"]]
             path_files = self.get_files_from_deb(dl_dir, tmp_folder, 'software', files_to_get)
 
             for path in path_files:
@@ -153,7 +148,7 @@ class PatchBuilder(object):
         # check if need a rename or not
         if rename:
             # We check the type to correctly rename the file to a expected value
-            script_name = PATCH_SCRIPTS.get(script_type, None)
+            script_name = constants.PATCH_SCRIPTS.get(script_type, None)
 
             if script_name and rename:
                 logger.info(f"Renaming {path_to_script} to {script_name}")
@@ -227,10 +222,10 @@ class PatchBuilder(object):
         filelist = ["metadata.tar", "software.tar"]
 
         if self.metadata.pre_install:
-            filelist.append(PATCH_SCRIPTS["PRE_INSTALL"])
+            filelist.append(constants.PATCH_SCRIPTS["PRE_INSTALL"])
 
         if self.metadata.post_install:
-            filelist.append(PATCH_SCRIPTS["POST_INSTALL"])
+            filelist.append(constants.PATCH_SCRIPTS["POST_INSTALL"])
 
         # Generate the local signature file
         logger.debug(f"Generating signature for patch files {filelist}")

@@ -17,6 +17,8 @@ import xml.etree.ElementTree as ET
 from lxml import etree
 from xml.dom import minidom
 
+import constants
+
 logger = logging.getLogger('metadata_parser')
 utils.set_logger(logger)
 
@@ -98,10 +100,6 @@ class PatchMetadata(object):
 
     def generate_patch_metadata(self, file_path):
         # Generate patch metadata.xml
-        # strip path from pre_install and post_install scripts
-        self.pre_install = self.pre_install.split('/')[-1]
-        self.post_install = self.post_install.split('/')[-1]
-
         top_tag = ET.Element(PATCH_ROOT_TAG)
         self.__add_text_tag_to_xml(top_tag, PATCH_ID, self.patch_id)
         self.__add_text_tag_to_xml(top_tag, SW_VERSION, self.sw_version)
@@ -128,8 +126,17 @@ class PatchMetadata(object):
         for req_patch in sorted(self.requires):
             self.__add_text_tag_to_xml(requires_atg, REQUIRES_PATCH_ID, req_patch)
 
-        self.__add_text_tag_to_xml(top_tag, PRE_INSTALL, self.pre_install)
-        self.__add_text_tag_to_xml(top_tag, POST_INSTALL, self.post_install)
+        if self.pre_install:
+            self.__add_text_tag_to_xml(top_tag, PRE_INSTALL,
+                                       constants.PATCH_SCRIPTS['PRE_INSTALL'])
+        else:
+            self.__add_text_tag_to_xml(top_tag, PRE_INSTALL, "")
+
+        if self.post_install:
+            self.__add_text_tag_to_xml(top_tag, POST_INSTALL,
+                                       constants.PATCH_SCRIPTS['POST_INSTALL'])
+        else:
+            self.__add_text_tag_to_xml(top_tag, POST_INSTALL, "")
 
         packages_tag = ET.SubElement(top_tag, PACKAGES)
         for package in sorted(self.debs):
@@ -202,7 +209,7 @@ class PatchMetadata(object):
     def check_script_path(self, script_path):
         if not script_path:
             # No scripts provided
-            return ''
+            return None
 
         if not os.path.isabs(script_path):
             script_path = os.path.join(os.getcwd(), script_path)
