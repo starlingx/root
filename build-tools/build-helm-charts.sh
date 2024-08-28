@@ -23,6 +23,7 @@ declare -a IMAGE_RECORDS
 declare -a PATCH_DEPENDENCIES
 declare -a APP_PACKAGES
 declare -a CHART_PACKAGE_FILES
+declare -a IGNORE_CHARTS
 # PYTHON_2_OR_3: initialized below
 
 VERBOSE=false
@@ -36,6 +37,7 @@ $(basename $0) [--os <os>] [-a, --app <app-name>]
                [-A, --app-version-file /path/to/$APP_VERSION_BASE]
                [-B, --app-version <version>]
                [--package <package-name>] [-i, --image-record <image-record>] [--label <label>]
+               [--ignore <chart-name>]
                [-p, --patch-dependency <patch-dependency>] [ --verbose ]
 Options:
     --os:
@@ -70,6 +72,10 @@ Options:
     -l, --label LABEL:
             Specify the label of the application tarball. The label
             will be appended to the version string in tarball name.
+
+    --ignore IGNORE_CHARTS,... :
+            Specify the Helm chart file name pattern(s) to be excluded
+            from the final application tarball.
 
     -p, --patch-dependency DEPENDENCY,... :
             Specify the patch dependency of the application tarball,
@@ -654,7 +660,7 @@ function get_app_version {
 }
 
 # TODO(awang): remove the deprecated image-file option
-OPTS=$(getopt -o h,a:,A:,B:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,package:,image-record:,image-file:,label:,patch-dependency:,verbose -- "$@")
+OPTS=$(getopt -o h,a:,A:,B:,i:,l:,p: -l help,os:,app:,app-version-file:,app-version:,package:,image-record:,image-file:,label:,ignore:,patch-dependency:,verbose -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -696,6 +702,11 @@ while true; do
             ;;
         -l | --label)
             LABEL=$2
+            shift 2
+            ;;
+        --ignore)
+            # Read comma-separated values into array
+            IGNORE_CHARTS+=(${2//,/ })
             shift 2
             ;;
         -p | --patch-dependency)
@@ -851,8 +862,16 @@ if [ ! -d "usr/lib/fluxcd" ] || [ ! -d "usr/lib/helm" ]; then
     fi
 fi
 
-# Stage all the charts
-rsync -a usr/lib/helm/ staging/charts/ --exclude=helm-toolkit-*
+# Transform array into the format expected by rsync
+declare -a IGNORE_CHARTS_ARGS
+if [ ${#IGNORE_CHARTS[@]} -ne 0 ]; then
+    for chart in "${IGNORE_CHARTS[@]}"; do
+        IGNORE_CHARTS_ARGS+=("--exclude=${chart}")
+    done
+fi
+
+# Stage the charts
+rsync -a usr/lib/helm/ staging/charts/ "${IGNORE_CHARTS_ARGS[@]}"
 if [ $? -ne 0 ]; then
     echo "Failed to copy the charts from ${BUILD_OUTPUT_PATH}/usr/lib/helm to ${BUILD_OUTPUT_PATH}/staging/charts" >&2
     exit 1
