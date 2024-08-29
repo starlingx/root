@@ -226,7 +226,7 @@ def add_tag_xml(parent, name, text):
     tag = ET.SubElement(parent, name)
     tag.text = text
 
-def add_ostree_info(metadata, iso_path):
+def update_metadata_info(metadata, iso_path):
     """Adds ostree repository info to a metadata file
 
     This function get the ostree data from inside the iso and update
@@ -245,14 +245,14 @@ def add_ostree_info(metadata, iso_path):
 
     add_tag_xml(ostree, "number_of_commits", "1")
 
+    # Update prepatched iso field
+    add_tag_xml(root, "prepatched_iso", "Y")
+
     base_element = ET.SubElement(ostree, "base")
     # For now we add empty values here as the software
     # expect this fields to be in the XML
     add_tag_xml(base_element, "commit", "")
     add_tag_xml(base_element, "checksum", "")
-
-    # Add Y to prepatched-iso tag
-    add_tag_xml(base_element, "prepatched_iso", "Y")
 
     # Get ostree commit
     try:
@@ -449,9 +449,9 @@ def main():
             # Copy only the patch metadata with the biggest patch version to ISO
             patch_num = int(patch["sw_version"].split(".")[-1])
             if latest_patch_number == patch_num:
-                shutil.copy(patch["metadata"], f"{iso_folder}/patches")
                 # Metadata inside upgrades requires ostree information
-                add_ostree_info(patch["metadata"], iso_folder)
+                update_metadata_info(patch["metadata"], iso_folder)
+                shutil.copy(patch["metadata"], f"{iso_folder}/patches")
                 shutil.copy(patch["metadata"], f"{iso_folder}/upgrades")
 
         # Update ostree summary
