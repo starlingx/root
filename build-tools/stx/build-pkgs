@@ -51,25 +51,41 @@ DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
 STX_ARCH = 'amd64'
 STX_META_NAME = 'stx-meta'
 STX_META_PKG = 'stx-meta_1.0.orig.tar.gz'
+
 # Different reasons can lead to package build failure
 # Set maximum retry count for failed packages
 MAX_PKG_BUILD_COUNT = 3
+
 # The maximum parallel instances run at the same time
 MAX_PARALLEL_JOBS = 30
+
 # The default number of parallel tasks
 DEFAULT_PARALLEL_TASKS = 1
+
+# The default percentage of memory to use for tmpfs build environmnets
+MAX_TEMPFS_PERCENTAGE = 50
+
+# The default percentage of memory to use for tmpfs build environmnets
+DEFAULT_TEMPFS_PERCENTAGE = 0
+
 # The default interval of polling build status (seconds)
 DEFAULT_POLL_INTERVAL = 10
+
 # Maximum number of package make jobs
 MAX_PKG_MAKE_JOBS = 6
+
 # The local STX repository which contains build output
 REPO_BUILD = 'deb-local-build'
+
 # The local STX source repository
 REPO_SOURCE = 'deb-local-source'
+
 # The mirror created with reused URL
 REUSE_MIRROR = 'deb-remote-reuse'
+
 # The maximum times that repogmr tries to create repository
 REPOMGR_MAX_RETRY = 3
+
 # The time interval between retires in seconds
 REPOMGR_RETRY_INTERVAL = 20
 
@@ -137,6 +153,25 @@ def filter_depends(deps):
     return pkgs_list
 
 
+def get_pkg_build_size(dsc_file):
+    '''
+    return the 'Build-Size' value from the dsc, if it exists.
+    '''
+    if not dsc_file.endswith('dsc'):
+        logger.error("Invalid dsc %s", dsc_file)
+        return 1
+    try:
+        with open(dsc_file, 'r') as fh:
+            dsc = deb822.Dsc(fh)
+            if 'Build-Size' in dsc.keys():
+                return dsc['Build-Size'].strip()
+            else:
+                return 1
+    except Exception as e:
+        logger.error(str(e))
+        logger.error("Failed to parse dsc %s", dsc_file)
+        return 1
+    
 def get_build_depends(dsc_file, all_debs):
         '''
         Get package's build depends with its dsc file
@@ -165,7 +200,7 @@ def get_build_depends(dsc_file, all_debs):
                     logger.debug("%s build_depends_arch: %s", dsc_file, ','.join(build_depends_arch))
         except Exception as e:
             logger.error(str(e))
-            logger.error("Failed to parse dsc %s")
+            logger.error("Failed to parse dsc %s", dsc_file)
             return all_depends
 
         all_depends = set(build_depends)
@@ -931,7 +966,7 @@ class BuildController():
 
         if 'success' in ret:
             logger.debug('Parent chroot is ready to create children chroots')
-            ret_status = req_chroots_action('clonechroot', {'instances': self.attrs['parallel']})
+            ret_status = req_chroots_action('clonechroot', {'instances': self.attrs['parallel'], 'tmpfs_percentage': self.attrs['tmpfs_percentage']})
             if not 'success' == ret_status:
                 logger.error("Failed to clone children chroots")
             else:
@@ -1094,7 +1129,7 @@ class BuildController():
         logger.info("Successfully uploaded source %s to repository %s", dsc, repo_name)
         return True
 
-    def req_add_task(self, pkg_dir, dsc, build_type, snapshot_index, layer):
+    def req_add_task(self, pkg_dir, dsc, build_type, snapshot_index, layer, size=1, allow_tmpfs=False):
         status = 'fail'
         chroot = None
         # For serial build and parallel build, the pkg_jobs should have different value
@@ -1112,6 +1147,8 @@ class BuildController():
         req_params['jobs'] = str(pkg_jobs)
         req_params['snapshot_idx'] = snapshot_index
         req_params['layer'] = layer
+        req_params['size'] = size
+        req_params['allow_tmpfs'] = allow_tmpfs
 
         try:
             resp = requests.post(BUILDER_URL + 'addtask', json=req_params)
@@ -1492,7 +1529,10 @@ class BuildController():
                 self.publish_repo(REPO_BUILD, snapshot_idx)
                 # Requires the remote pkgbuilder to add build task
                 logger.info("To Require to add build task for %s with snapshot %s", pkg_name, snapshot_idx)
-                (status, chroot) = self.req_add_task(pkg_dir, dsc_path, build_type, snapshot_idx, layer)
+                # Only allow use of tmpfs on the first build attempt
+                allow_tmpfs = pkg_dir not in build_counter.keys()
+                size = get_pkg_build_size(dsc_path)
+                (status, chroot) = self.req_add_task(pkg_dir, dsc_path, build_type, snapshot_idx, layer, size, allow_tmpfs)
                 if 'fail' in status:
                     if chroot and 'ServerError' in chroot:
                         self.req_stop_task()
@@ -1536,7 +1576,7 @@ class BuildController():
                     logger.debug("wait_task_done is enabled")
 
                 logger.info("############################################################")
-                logger.info("Remain packages %d, building packages %d", dscs_count, dscs_building_count)
+                logger.info("Remaing packages %d, building packages %d", dscs_count, dscs_building_count)
                 logger.info("------------------------------------------------------------")
                 if self.dscs_building:
                     for bdsc in self.dscs_building:
@@ -2083,6 +2123,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--refresh_chroots', help="Force to fresh chroots before build", action='store_true')
     parser.add_argument('--parallel', help="The number of parallel build tasks", type=int, default=DEFAULT_PARALLEL_TASKS)
+    parser.add_argument('--tmpfs_percentage', help="Percentage of ram that can be used for tmpfs to accelerate builds", type=int, default=DEFAULT_TEMPFS_PERCENTAGE)
     parser.add_argument('--poll_interval', help="The interval to poll the build status", type=int, default=DEFAULT_POLL_INTERVAL)
     parser.add_argument('--max_make_jobs', help="The maximum number of jobs for package make", type=int, default=MAX_PKG_MAKE_JOBS)
     parser.add_argument('-d', '--distro', type=str, nargs=1,
@@ -2143,9 +2184,14 @@ if __name__ == "__main__":
         build_controller.attrs['run_tests'] = True
     if args.parallel:
         if args.parallel < 1 or args.parallel > MAX_PARALLEL_JOBS:
-            logger.critical("Invalid parallel build tasks[1-%s]", MAX_PARALLEL_JOBS)
+            logger.critical("Invalid parallel build tasks.  Valid range[1-%s]", MAX_PARALLEL_JOBS)
             sys.exit(1)
         build_controller.attrs['parallel'] = args.parallel
+    if args.tmpfs_percentage:
+        if args.tmpfs_percentage < 0 or args.tmpfs_percentage > MAX_TEMPFS_PERCENTAGE:
+            logger.critical("Invalid tmpfs percentage.  Valid range[0-%s]", MAX_TEMPFS_PERCENTAGE)
+            sys.exit(1)
+        build_controller.attrs['tmpfs_percentage'] = args.tmpfs_percentage
     if args.poll_interval:
         build_controller.attrs['poll_interval'] = args.poll_interval
     if args.max_make_jobs:
