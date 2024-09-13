@@ -176,7 +176,9 @@ SQLAlchemy===1.2.0  # Temporary workaround for stx/config/sysinv unit tests
                     # https://bugs.launchpad.net/starlingx/+bug/1940281
 sqlparse===0.4.1
 statsd===3.3.0
-stevedore===3.2.2
+#stevedore===3.2.2     # on box
+stevedore===5.0.0      # Compatibility with packaging 22 and setuptools 71
+                       # https://github.com/python/importlib_metadata/issues/348
 python-swiftclient===3.10.1
 Tempita===0.5.2
 tenacity===6.2.0
