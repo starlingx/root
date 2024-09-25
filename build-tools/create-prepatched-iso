@@ -227,15 +227,15 @@ def add_tag_xml(parent, name, text):
     tag.text = text
 
 def update_metadata_info(metadata, iso_path):
-    """Adds ostree repository info to a metadata file
+    """Update iso's metadata files
 
-    This function get the ostree data from inside the iso and update
-    metadata file with this information.
+    This function updates the metadata files with information from
+    the patches and the ostree repository.
 
     :param metadata: Path to the metadata file
     :param iso_path: Path to the ISO
     """
-    logger.info("Adding ostree info to metadata...")
+    logger.info("Updating metadata's info...")
 
     # Load XML structure and create base
     tree = ET.parse(metadata)
@@ -281,6 +281,11 @@ def update_metadata_info(metadata, iso_path):
     commit1_element = ET.SubElement(ostree, "commit1")
     add_tag_xml(commit1_element, "commit", commit_value)
     add_tag_xml(commit1_element, "checksum", checksum_value)
+
+    # Remove requires field from metadata
+    requires = root.find("requires")
+    if requires is not None:
+        requires.clear()
 
     # Save metadata file changes
     tree.write(metadata)
