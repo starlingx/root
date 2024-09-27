@@ -966,7 +966,10 @@ class BuildController():
 
         if 'success' in ret:
             logger.debug('Parent chroot is ready to create children chroots')
-            ret_status = req_chroots_action('clonechroot', {'instances': self.attrs['parallel'], 'tmpfs_percentage': self.attrs['tmpfs_percentage']})
+            extra_args = {'instances': self.attrs['parallel']}
+            if hasattr(self, 'tmpfs_percentage'):
+                extra_args['tmpfs_percentage'] = self.attrs['tmpfs_percentage']
+            ret_status = req_chroots_action('clonechroot', extra_args)
             if not 'success' == ret_status:
                 logger.error("Failed to clone children chroots")
             else:
