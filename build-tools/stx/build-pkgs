@@ -593,7 +593,8 @@ class BuildController():
             'build_all': False,
             'reuse_export': True,
             'dl_reused': False,
-            'reuse_shared_repo': True
+            'reuse_shared_repo': True,
+            'tmpfs_percentage': DEFAULT_TEMPFS_PERCENTAGE
         }
         self.kits = {
             'dsc_cache': {},
@@ -804,6 +805,7 @@ class BuildController():
     def stop(self):
         self.attrs['poll_build_status'] = False
         self.req_stop_task()
+        self.free_tmpfs_chroots()
         return self.show_build_stats()
 
     def get_reused_debs(self):
@@ -967,7 +969,8 @@ class BuildController():
         if 'success' in ret:
             logger.debug('Parent chroot is ready to create children chroots')
             extra_args = {'instances': self.attrs['parallel']}
-            if hasattr(self, 'tmpfs_percentage'):
+            if 'tmpfs_percentage' in self.attrs:
+                logger.info("tmpfs_percentage = %s" % self.attrs['tmpfs_percentage'])
                 extra_args['tmpfs_percentage'] = self.attrs['tmpfs_percentage']
             ret_status = req_chroots_action('clonechroot', extra_args)
             if not 'success' == ret_status:
@@ -976,6 +979,13 @@ class BuildController():
                 logger.info("Successfully cloned children chroots")
 
         return ret
+
+    def free_tmpfs_chroots(self):
+        ret = req_chroots_action('freetmpfschroots', None)
+        if 'success' in ret:
+            logger.debug('Successfully freed tmpfs chroots')
+        if 'fail' in ret:
+            logger.debug('Failed to free tmpfs chroots')
 
     def clone_chroots(self):
         ret = req_chroots_action('clonechroot', None)
@@ -2233,7 +2243,7 @@ if __name__ == "__main__":
 
     if args.refresh_chroots:
         if build_controller.refresh_chroots() != 'success':
-            logger.error("Failed to fresh all the idle chroots")
+            logger.error("Failed to refresh all the idle chroots")
             sys.exit(1)
         else:
             logger.info("Successfully refreshed all the idle chroots")
