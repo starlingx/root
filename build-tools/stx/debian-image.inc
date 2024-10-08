@@ -31,6 +31,7 @@ diffutils
 dnf
 docker.io
 dosfstools
+eatmydata
 e2fsprogs
 efibootmgr
 eject
