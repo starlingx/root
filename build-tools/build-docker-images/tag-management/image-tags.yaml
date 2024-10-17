@@ -62,9 +62,9 @@ images:
     # Tag based on upstream package version
     tag: stx.5.0-v0.7.0
   - name: docker.io/starlingx/stx-snmp
-    src_build_tag: master-debian-stable-20231217T070059Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/50919b751a4da8b8dd6377900f4de1ba65eaabc9
-    tag: stx.9.0-v1.0.2
+    src_build_tag: master-debian-stable-20241015T060000Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/00b9c69cd5bf5a397db66fd1b79be506c3bf10fc
+    tag: stx.10.0-v1.0.2
   - name: docker.io/starlingx/stx-fm-subagent
     src_build_tag: master-debian-stable-20230412T060000Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/8a6171fce0abdc84fc1488bb78b40a5046fdc4ef
