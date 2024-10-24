@@ -152,10 +152,14 @@ class FetchDebs(object):
             logger.debug(f'checking {pkg}')
             with open(package_list, 'r') as f:
                 for line in f.readlines():
-                    if pkg in line:
+                    if pkg == line.split()[0]:
+                        logger.debug(f'Line for package {pkg} found')
                         pkg_entry = ' '.join(line.split()[:2])
+                        logger.debug(f'Adding "{pkg_entry}" to be downloaded')
                         all_debs.add(pkg_entry)
                         break
+                else:
+                    logger.warning(f"Package '{pkg}' not found in the package list")
 
         logger.debug('Binary packages to download:%s', all_debs)
         fetch_ret = self.download(all_debs)
