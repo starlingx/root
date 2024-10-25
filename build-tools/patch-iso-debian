@@ -4,16 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# This script takes as input an ISO and one or more patches
-# and generates as output an ISO with the following changes:
-#
-# - Contains only the latest ostree commit from the input ISO
-# - ISO has a "patches" folder with the patches' metadata files.
-#   This folder is processed by kickstart during install, so that
-#   'sw-patch query' has access to this info.
-#
-# The intent is for the system to have record of the patches that are
-# already pre-installed in the system.
+# Script to generate pre-patched ISOs.
 #
 
 BUILD_TOOLS_DIR="$(dirname "$0")"
@@ -21,21 +12,40 @@ BUILD_TOOLS_DIR="$(dirname "$0")"
 # shellcheck source="./build-tools/image-utils.sh"
 source "${BUILD_TOOLS_DIR}/image-utils.sh"
 
-# Define MY_REPO, which is the path to the 'root' repo. Eg.: $REPO_ROOT/cgcs_root
-# Value is used to locate the following file for ISO signing:
-# ${MY_REPO}/build-tools/signing/dev-private-key.pem
-if [ -z "${MY_REPO}" ]; then
-    MY_REPO="$(dirname "${BUILD_TOOLS_DIR}")"
-fi
+usage="
+Script to generate pre-patched ISOs.
+
+Inputs:
+- an ISO
+- one or more patches
+- ostree repo (assumed to be in \${DEPLOY_DIR}/ostree_repo/
+  or \${STX_BUILD_HOME}/localdisk/deploy/ostree_repo/)
+
+It generates as output an ISO with the following changes:
+
+- Contains only the latest ostree commit from the input ostree repo
+- ISO has a 'patches' folder with the patches' metadata files.
+  This folder is processed by kickstart during install, so that
+  'sw-patch query' has access to this info to list the patches
+  (each of them refers to one of the older commits in the ostree repo)
+
+The intent is for the system to have record of the patches that are
+already pre-installed in the system.
+
+Usage:
+    $(basename "$0") -i <input filename.iso> -o <output filename.iso> [ -p ] <patch> ...
+        -i <file>: Specify input ISO file
+        -o <file>: Specify output ISO file
+        -p <file>: Patch files. Can be called multiple times.
+
+Attention:
+- Either the DEPLOY_DIR or the STX_BUILD_HOME env variable must be defined.
+  It's used to find the input ostree repo.
+
+"
 
 function usage() {
-    echo ""
-    echo "Usage: "
-    echo "   $(basename "$0") -i <input filename.iso> -o <output filename.iso> [ -p ] <patch> ..."
-    echo "        -i <file>: Specify input ISO file"
-    echo "        -o <file>: Specify output ISO file"
-    echo "        -p <file>: Patch files. You can call it multiple times."
-    echo ""
+    echo "${usage}"
 }
 
 function extract_ostree_commit_from_metadata_xml() {
@@ -79,6 +89,7 @@ function extract_metadata() {
 
 declare INPUT_ISO=
 declare OUTPUT_ISO=
+declare BUILDDIR=
 
 while getopts "i:o:p:" opt; do
     case $opt in
@@ -128,7 +139,6 @@ done
 
 shift $((OPTIND-1))
 
-declare BUILDDIR=
 
 function check_requirements {
     # Next to each requirement is the deb package which provides the command listed.
@@ -185,11 +195,39 @@ check_requirements
 # Run cleanup() when finishing/interrupting execution
 trap cleanup EXIT
 
+# Define MY_REPO, which is the path to the 'root' repo. Eg.: $REPO_ROOT/cgcs_root
+# Value is used to locate the following file for ISO signing:
+# ${MY_REPO}/build-tools/signing/dev-private-key.pem
+if [ -z "${MY_REPO}" ]; then
+    MY_REPO="$(dirname "${BUILD_TOOLS_DIR}")"
+fi
+
+# Define DEPLOY_DIR, which is the directory containing the input ostree repo
+if [ -z "${DEPLOY_DIR}" ]; then
+    if [ -n "${STX_BUILD_HOME}" ]; then
+        DEPLOY_DIR="${STX_BUILD_HOME}/localdisk/deploy"
+    else
+        echo "ERROR: Please define either the DEPLOY_DIR or the STX_BUILD_HOME env variables."
+        exit 1
+    fi
+fi
+
 # Create temporary build directory
 BUILDDIR=$(mktemp -d -p "$PWD" patchiso_build_XXXXXX)
 if [ -z "${BUILDDIR}" ] || [ ! -d "${BUILDDIR}" ]; then
     echo "ERROR: Failed to create temporary build directory"
     exit 1
+fi
+
+echo "Extracting Input ISO contents (except ostree repo)..."
+if ! 7z x "${INPUT_ISO}" -o"${BUILDDIR}" -x\!ostree_repo 1>/dev/null ; then
+    echo "ERROR: Failed to extract ISO contents"
+    exit 1
+fi
+
+# Deleting '[BOOT]' directory. It will be re-created when packing the output ISO.
+if [ -d "${BUILDDIR}/[BOOT]" ]; then
+    rm -rf "${BUILDDIR}/[BOOT]"
 fi
 
 # Fix for permission denied if not running as root
@@ -204,20 +242,18 @@ if [ -d "${BUILDDIR}/patches" ]; then
     rm -rf "${BUILDDIR}/patches"
 fi
 
+echo "List contents extracted from Input ISO (after adjustments):"
+ls -lh "${BUILDDIR}"
+
 # Create the directory where patch metadata will be stored
 mkdir -p "${BUILDDIR}/patches"
 chmod -R +w "${BUILDDIR}/patches"
 
-echo "Extracting Input ISO contents..."
-if ! 7z x "${INPUT_ISO}" -o"${BUILDDIR}" 1>/dev/null ; then
-    echo "ERROR: Extract ISO contents"
-    exit 1
-fi
-
-# Delete boot directory. It will be re-created when packing the output ISO
-if [ -d "${BUILDDIR}/[BOOT]" ]; then
-    rm -rf "${BUILDDIR}/[BOOT]"
-fi
+echo "Create a copy of the input ostree repo in the temp build directory..."
+echo "Input ostree repo: ${DEPLOY_DIR}/ostree_repo/"
+ostree --repo="${BUILDDIR}/ostree_repo" init --mode=archive-z2
+ostree --repo="${BUILDDIR}/ostree_repo" pull-local --depth=-1 "${DEPLOY_DIR}/ostree_repo/" starlingx
+ostree --repo="${BUILDDIR}/ostree_repo" summary --update
 
 echo "Extracting patch metadata..."
 for PATCH in "${PATCH_FILES[@]}";
