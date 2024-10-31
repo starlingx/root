@@ -45,6 +45,7 @@ PACKAGES = 'packages'
 STX_PACKAGES = 'stx_packages'
 BINARY_PACKAGES = 'binary_packages'
 SEMANTICS = 'semantics'
+ACTIVATION_SCRIPTS = 'activation_scripts'
 
 
 class PatchMetadata(object):
@@ -53,6 +54,7 @@ class PatchMetadata(object):
         self.stx_packages = []
         self.binary_packages = []
         self.requires = []
+        self.activation_scripts = []
 
         # Verify if the path to the patch builder folder is set
         if not PATCH_BUILDER_PATH:
@@ -138,6 +140,13 @@ class PatchMetadata(object):
         else:
             self.__add_text_tag_to_xml(top_tag, POST_INSTALL, "")
 
+        if self.activation_scripts:
+            activation_scripts_tag = ET.SubElement(top_tag, ACTIVATION_SCRIPTS)
+            for script in self.activation_scripts:
+                self.__add_text_tag_to_xml(activation_scripts_tag, "script", script.split('/')[-1])
+        else:
+            self.__add_text_tag_to_xml(top_tag, ACTIVATION_SCRIPTS, "")
+
         packages_tag = ET.SubElement(top_tag, PACKAGES)
         for package in sorted(self.debs):
             self.__add_text_tag_to_xml(packages_tag, "deb", package)
@@ -151,6 +160,19 @@ class PatchMetadata(object):
         if type(tag_content) != list:
             return [tag_content]
         return tag_content
+
+    def _validate_activation_script(self, script_list):
+        '''
+        Validate if scripts filename start with an integer
+        '''
+        for fullpath_script in script_list:
+            try:
+                name = os.path.basename(fullpath_script)
+                int(name.split("-")[0])
+            except Exception:
+                logger.error("Error while parsing the activation script:")
+                logger.error("Filename '%s' doesn't start with an integer." % fullpath_script)
+                sys.exit(1)
 
     def parse_metadata(self, patch_recipe):
         self.patch_id = f"{patch_recipe[COMPONENT]}-{patch_recipe[SW_VERSION]}"
@@ -172,6 +194,17 @@ class PatchMetadata(object):
         if 'id' in patch_recipe[REQUIRES]:
             self.requires = self.__tag_to_list(patch_recipe[REQUIRES]['id'])
         self.semantics = patch_recipe[SEMANTICS]
+        if 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
+            # the xml parser transform the 'script' value in string or in
+            # array depending on how much elements we add.
+            scripts_lst = []
+            if isinstance(patch_recipe[ACTIVATION_SCRIPTS]['script'], str):
+                scripts_lst.append(self.check_script_path(patch_recipe[ACTIVATION_SCRIPTS]['script']))
+            else:
+                for script in patch_recipe[ACTIVATION_SCRIPTS]['script']:
+                    scripts_lst.append(self.check_script_path(script))
+            self._validate_activation_script(scripts_lst)
+            self.activation_scripts = scripts_lst
         self.debs = []
 
         if self.status != 'DEV' and self.status != 'REL':
@@ -202,7 +235,7 @@ class PatchMetadata(object):
                 logger.error(f"Line {error.line}: {error.message}")
             sys.exit(1)
 
-        print(xml_dict)
+        logger.info(xml_dict)
         self.parse_metadata(xml_dict)
 
 
