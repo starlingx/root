@@ -602,7 +602,7 @@ class Parser():
         series_file = os.path.join(self.pkginfo["srcdir"], "debian/patches/series")
         if not os.path.isdir(patches_folder):
             os.mkdir(patches_folder)
-            os.mknod(series_file)
+            os.mknod(series_file, 0o666)
 
         pwd = os.getcwd()
         os.chdir(self.pkginfo["srcdir"])

@@ -1339,7 +1339,7 @@ class BuildController():
             stamp_dir = os.path.join(os.environ.get('MY_WORKSPACE'), build_type, 'stamp')
             os.makedirs(stamp_dir, exist_ok=True)
             dsc_stamp = '.'.join([os.path.basename(dsc_file), checksum, state])
-            os.mknod(os.path.join(stamp_dir, dsc_stamp))
+            os.mknod(os.path.join(stamp_dir, dsc_stamp), 0o666)
         except Exception as e:
             logger.error(str(e))
             logger.error("Failed to create stamp(%s) for %s", state, pkg_dir)
