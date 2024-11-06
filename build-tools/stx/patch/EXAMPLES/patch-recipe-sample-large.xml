@@ -17,6 +17,7 @@
         -->
     </requires>
     <semantics></semantics>
+    <activation_scripts></activation_scripts>
     <!-- Pre and Post install hook scripts -->
     <!-- Both fields require the full path to hook scripts  -->
     <pre_install>scripts/pre-install.sh</pre_install>

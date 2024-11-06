@@ -97,6 +97,11 @@ class PatchBuilder(object):
             logger.debug(f"Copying post-install script: {post_install}")
             self.copy_rename_script(post_install, "POST_INSTALL")
 
+        # Copy all activate scripts
+        if self.metadata.activation_scripts:
+            for script in self.metadata.activation_scripts:
+                self.copy_rename_script(path_to_script=script, rename=False)
+
         # if the patch includes the 'software' package we need to make deploy-precheck
         # and upgrade_utils.py from .deb file accessible directly from patch file
         if 'software' in self.metadata.stx_packages:

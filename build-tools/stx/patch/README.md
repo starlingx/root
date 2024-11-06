@@ -40,8 +40,15 @@ The patch builder requires the following tags in the input xml (or patch recipe)
     </requires>
     <semantics></semantics>
     <!--
+        Activation scripts are scripts used to help with the upgrade of containerized solutions
+        Leave blank if no scripts are required. Field should be full path to the files.
+     -->
+    <activation_scripts>
+        <script>01-example.sh</script>
+    </activation_scripts>
+    <!--
         Pre and Post install hook scripts that are executed before/after patch installation.
-        Leave if blank if no scripts are required. Both fields require full path to the files.
+        Leave blank if no scripts are required. Both fields require full path to the files.
     -->
     <pre_install>scripts/pre-install.sh</pre_install>
     <post_install>scripts/post-install.sh</post_install>
