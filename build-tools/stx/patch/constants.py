@@ -11,3 +11,8 @@ PATCH_SCRIPTS = {
    "DEPLOY_PRECHECK": "deploy-precheck",
    "UPGRADE_UTILS": "upgrade_utils.py",
 }
+
+# Default path to the script that generates the upload path
+GET_UPLOAD_PATH = "/opt/signing/sign.sh"
+# Default path to the script that sign the patch
+REQUEST_SIGN = "/opt/signing/sign_patch.sh"
