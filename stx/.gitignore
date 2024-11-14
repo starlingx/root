@@ -17,6 +17,7 @@ installer-prebuilt
 /app-kubevirt/
 /app-node-feature-discovery
 /app-node-interface-metrics-exporter
+/app-openbao
 /app-oran-o2
 /apt-ostree
 /app-power-metrics
