@@ -34,18 +34,23 @@ utils.set_logger(logger)
 detached_signature_file = "signature.v2"
 mdsum_signature_file = "signature"
 
+# Signing server variables
+signing_server = os.getenv('SIGNING_SERVER', '')
+signing_user = os.getenv('SIGNING_USER', '')
+
 # Patch output directory
 DEPLOY_DIR = "/localdisk/deploy"
 PATCH_OUTPUT = os.path.join(DEPLOY_DIR, "patch_output")
 
 class PatchBuilder(object):
-    def __init__(self, patch_recipe_file, file_name=None):
+    def __init__(self, patch_recipe_file, file_name=None, sign_remote=False):
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
         self.fetch_debs = fetch_debs.FetchDebs()
         self.fetch_debs.need_dl_stx_pkgs = self.metadata.stx_packages
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
         self.patch_name = f'{self.metadata.patch_id}.patch' if file_name == None else file_name
+        self.sign_remote = sign_remote
 
     def get_md5(self, path):
         '''
@@ -267,30 +272,87 @@ class PatchBuilder(object):
             tar.add(file)
         tar.close()
         logger.info(f"Patch file created {patch_full_path}")
+        if self.sign_remote:
+            self.__sign_patch_remotely(patch_full_path)
 
-    def __sign_official_patches(self, patch_file):
+    def __sign_patch_remotely(self, patch_file):
         """
-        Sign formal patch
-        Called internally once a patch is created and formal flag is set to true
+        Send the patch file to be signed remotely by a signing server
+
         :param patch_file full path to the patch file
         """
-        logger.info("Signing patch %s", patch_file)
+        logger.info("Starting remote signing for: %s", patch_file)
+
+        if not signing_server:
+            logger.exception("SIGNING_SERVER variable not set, unable to continue.")
+            sys.exit(1)
+        if not signing_user:
+            logger.exception("SIGNING_USER variable not set, unable to continue.")
+            sys.exit(1)
         try:
-            subprocess.check_call(["sign_patch_formal.sh", patch_file])
+            conn_string = f"{signing_user}@{signing_server}"
+            patch_basename = os.path.basename(patch_file)
+
+            # First we get the upload path from the signing server, it should return something
+            # similar to: "Upload: /tmp/sign_upload.5jR11pS0"
+            call_path = subprocess.check_output([
+                "ssh",
+                "-o StrictHostKeyChecking=no",
+                conn_string,
+                f"sudo {constants.GET_UPLOAD_PATH} -r"]).decode(sys.stdout.encoding).strip()
+            upload_path = call_path.split()[1]
+            logger.info("Upload path receive from signing server: %s", upload_path)
+
+            # We send the patch to the signing server
+            logger.info("Sending patch to signing server...")
+            subprocess.check_output([
+                "scp",
+                "-q",
+                patch_file,
+                f"{conn_string}:{upload_path}"])
+
+            # Request the signing server to sign the patch, it should return the full path
+            # of the patch inside the signing server
+            logger.info("Signing patch...")
+            signed_patch_path = subprocess.check_output([
+                "ssh",
+                conn_string,
+                f"sudo {constants.REQUEST_SIGN}",
+                f"{upload_path}/{patch_basename}",
+                "usm"]).decode(sys.stdout.encoding).strip()
+            logger.info("Signing successful, path returned: %s", signed_patch_path)
+
+            logger.info("Downloading signed patch...")
+            subprocess.check_output([
+                "scp",
+                "-q",
+                f"{conn_string}:{signed_patch_path}",
+                patch_file])
+            logger.info("Patch successfully signed: %s", patch_file)
         except subprocess.CalledProcessError as e:
-            logger.exception("Failed to sign official patch. Call to sign_patch_formal.sh process returned non-zero exit status %i", e.returncode)
-        except FileNotFoundError:
-            logger.exception("sign_patch_formal.sh not found, make sure $STX_BUILD_HOME/repo/cgcs-root/build-tools is in the $PATH")
+            logger.exception("Failure to sign patch: %s", e)
+        except Exception as e:
+            logger.exception("An unexpected error has occurred when signing the patch: %s", e)
 
 
 @click.command()
-@click.option('--recipe', help='Patch recipe input XML file, examples are available under EXAMLES directory',
-               required=True)
-@click.option('--name', help='Allow user to define name of the patch file. e.g.: test-sample-rr.patch. \
-              Name will default to patch_id if not defined',
-               required=False)
-def build(recipe, name=None):
-    patch_builder = PatchBuilder(recipe, name)
+@click.option(
+            '--recipe',
+            help='Patch recipe input XML file, examples are available under EXAMLES directory',
+            required=True)
+@click.option(
+            '--name',
+            help='Allow user to define name of the patch file. e.g.: test-sample-rr.patch. \
+                Name will default to patch_id if not defined',
+            required=False)
+@click.option(
+            '--remote-sign',
+            help='Send the patch to defined SIGNING SERVER to be sign with an different key.',
+            is_flag=True,
+            required=False)
+
+def build(recipe, name=None, remote_sign=False):
+    patch_builder = PatchBuilder(recipe, name, remote_sign)
     patch_builder.build_patch()
 
 if __name__ == '__main__':
