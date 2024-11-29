@@ -386,8 +386,9 @@ def main():
                     # Get sw_version value and save metadata.xml using sw_version as sufix
                     xml_root = ET.parse(f"{extract_folder}/metadata.xml").getroot()
                     sw_version = xml_root.find('sw_version').text
+                    component = xml_root.find('component').text
                     os.makedirs(f"{ptc_folder}/{sw_version}/metadata")
-                    metadata_path = (f"{ptc_folder}/{sw_version}/metadata/starlingx-{sw_version}"
+                    metadata_path = (f"{ptc_folder}/{sw_version}/metadata/{component}-{sw_version}"
                         "-metadata.xml")
                     shutil.copy(f"{extract_folder}/metadata.xml", metadata_path)
                     # From inside software.tar we extract every .deb file
