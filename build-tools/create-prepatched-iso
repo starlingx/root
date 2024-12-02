@@ -400,12 +400,31 @@ def main():
                     packages = []
                     for i in xml_root.find('packages').findall('deb'):
                         packages.append(i.text.split("_")[0])
+                    # Patches can contain precheck scripts, we need to verify if
+                    # they exist and if so move then to the pre-patched iso.
+                    precheck = False
+                    path_precheck = ''
+                    path_upgrade_utils = ''
+                    if "deploy-precheck" in f.getnames() and "upgrade_utils.py" in f.getnames():
+                        precheck = True
+                        f.extract('deploy-precheck', f"{extract_folder}/")
+                        f.extract('upgrade_utils.py', f"{extract_folder}/")
+                        precheck_folder = f"{ptc_folder}/{sw_version}/precheck"
+                        os.makedirs(f"{precheck_folder}")
+                        path_precheck = f"{precheck_folder}/deploy-precheck"
+                        path_upgrade_utils = f"{precheck_folder}/upgrade_utils.py"
+                        shutil.copy(f"{extract_folder}/deploy-precheck", path_precheck)
+                        shutil.copy(f"{extract_folder}/upgrade_utils.py", path_upgrade_utils)
+
                     # Now we save the information we extract for later use
                     patches_data.append({
                         "sw_version": sw_version,
                         "path": f"{ptc_folder}/{sw_version}",
                         "packages": packages,
-                        "metadata": metadata_path
+                        "metadata": metadata_path,
+                        "precheck": precheck,
+                        "path_precheck": path_precheck,
+                        "path_upgrade_utils": path_upgrade_utils
                         })
 
                     # Save the biggest version from the patches we have
@@ -430,6 +449,7 @@ def main():
         # Now we need to populate reprepo feed with every deb from every patch
         # after that we install it on the ostree repository
         logger.info('Populate ostree repository with .deb files...')
+        patches_data = sorted(patches_data, key=lambda x:x['sw_version'])
         for patch in patches_data:
             # Scan /debs/ folder and load every patch to the reprepo feed
             deb_dir = os.scandir(os.path.join(patch["path"],"debs/"))
@@ -451,6 +471,11 @@ def main():
                 "--component", patch['sw_version'], pkgs]
             logger.debug('Running command: %s', cmd)
             subprocess.check_call(cmd, shell=False)
+
+            # Check if patch has precheck scripts, if yes move then to the upgrades folder
+            if patch["precheck"]:
+                shutil.copy(patch["path_precheck"], f"{iso_folder}/upgrades")
+                shutil.copy(patch["path_upgrade_utils"], f"{iso_folder}/upgrades")
 
             # Copy only the patch metadata with the biggest patch version to ISO
             patch_num = int(patch["sw_version"].split(".")[-1])
