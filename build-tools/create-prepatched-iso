@@ -18,6 +18,7 @@ import argparse
 import glob
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,7 @@ LAT_SDK_SYSROOT = "/opt/LAT/SDK/sysroots/x86_64-wrlinuxsdk-linux"
 MYUNAME = os.environ.get('MYUNAME')
 PROJECT = os.environ.get('PROJECT')
 FEED_PATH = f"/localdisk/loadbuild/{MYUNAME}/{PROJECT}/patches_feed"
+DEPLOY_DIR = os.environ.get('DEPLOY_DIR')
 
 logger = logging.getLogger('create-prepatched-iso')
 
@@ -290,6 +292,27 @@ def update_metadata_info(metadata, iso_path):
     # Save metadata file changes
     tree.write(metadata)
 
+def clean_ostree(ostree_repo_path):
+    '''
+    This function takes an ostree repository path as input and deletes all
+    commits in that repository except for the latest one.
+
+    :param ostree_repo_path: Path to the ostree repository
+    '''
+    cmd = f"ostree --repo='{ostree_repo_path}' log starlingx"
+    repo_history = subprocess.check_output(cmd, shell=True).decode(sys.stdout.encoding)
+
+    commits = re.findall(pattern=r"^commit\s*(.*)", string=repo_history, flags=re.MULTILINE)
+
+    # Delete each commit except the latest one
+    for commit in commits[1:]:
+        cmd = f"ostree --repo='{ostree_repo_path}' prune --delete-commit='{commit}'"
+        _ = subprocess.check_output(cmd, shell=True).decode(sys.stdout.encoding)
+
+    cmd = ["ostree", "summary", "--update", f"--repo={ostree_repo_path}"]
+    logger.debug('Running command: %s', cmd)
+    subprocess.check_call(cmd, shell=False)
+
 def main():
     parser = argparse.ArgumentParser(description="Create a valid StarlingX ISO with patches \
                                       already applied.",
@@ -309,6 +332,9 @@ def main():
                         required=True)
     parser.add_argument('-v','--verbose',action='store_true',
                         help="Active debug logging")
+    parser.add_argument('-b','--base',type=str,
+                        help="Full path to ostree repository to be used as base to the \
+                            pre-patched iso. Default value is: $DEPLOY_DIR/ostree_repo")
 
     args = parser.parse_args()
 
@@ -329,6 +355,12 @@ def main():
         if not os.path.isfile(patch):
             logger.error(f"Patch file {patch} doesn't exist, please input a valid file.")
             sys.exit(1)
+    path_ostree_repo = f"{DEPLOY_DIR}/ostree_repo"
+    if args.base:
+        path_ostree_repo = args.base
+    if not os.path.isdir(f"{path_ostree_repo}"):
+        logger.error("Not able to find %s folder.", path_ostree_repo)
+        sys.exit(1)
 
     # Check if env variables are correctly set
     if not MYUNAME:
@@ -352,8 +384,8 @@ def main():
         mount_iso(args.iso, mnt_folder)
 
         logger.info('Copying all files from %s to %s', mnt_folder, iso_folder)
-        # Copy all files from the mount point to the iso temporary folder
-        cmd = ["rsync", "-a", f'{mnt_folder}/', iso_folder]
+        # Copy all files, except ostree_repo, from the mount point to the iso temporary folder
+        cmd = ["rsync", "-a", "--exclude", "ostree_repo/", f'{mnt_folder}/', iso_folder]
         logger.debug('Running command: %s', cmd)
         subprocess.check_call(cmd, shell=False)
 
@@ -362,6 +394,12 @@ def main():
 
         # Change permissions on iso folder so we can update the files
         os.chmod(iso_folder, 0o777)
+
+        # Copy the base ostree repository to the iso folder
+        logger.info('Copying ostree repository...')
+        cmd = ["rsync", "-a", f'{path_ostree_repo}/', f"{iso_folder}/ostree_repo"]
+        logger.debug('Running command: %s', cmd)
+        subprocess.check_call(cmd, shell=False)
 
         # We initiate a reprepo feed in loadbuild because we need to access it
         # through a http service
@@ -490,7 +528,9 @@ def main():
         logger.debug('Running command: %s', cmd)
         subprocess.check_call(cmd, shell=False)
 
-        # TODO(dalbinob): Remember to copy only the latest ostree commit
+        # Keep only the latest commit in ostree_repo to save storage space
+        clean_ostree(f"{iso_folder}/ostree_repo")
+
         # Now we get the label and re create the ISO with the new ostree
         logger.info('Creating new .iso file...')
         instlabel = get_label_from_isolinux_cfg(f"{iso_folder}/isolinux/isolinux.cfg")
