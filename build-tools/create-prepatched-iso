@@ -335,7 +335,9 @@ def main():
     parser.add_argument('-b','--base',type=str,
                         help="Full path to ostree repository to be used as base to the \
                             pre-patched iso. Default value is: $DEPLOY_DIR/ostree_repo")
-
+    parser.add_argument('-g','--sign-gpg',action='store_true',
+                        help="Sign the commit created by apt-ostree using the default \
+                            GPG_HOME from LAT container.")
     args = parser.parse_args()
 
     # Config logging
@@ -472,8 +474,9 @@ def main():
 
                     logger.info(f'Patch {sw_version} unpacked sucessfully.')
 
-        # Here we setup our gpg client
-        setup_gpg_client()
+        # Here we setup our gpg client if needed
+        if args.sign_gpg:
+            setup_gpg_client()
 
         # We delete the patches folder from the base iso and recreate it
         # so we may populate with the metadatas from the patches we are using
@@ -502,11 +505,15 @@ def main():
             # apt-ostree requires an http connection to access the host files
             # so we give the full http path using the ip
             full_feed_path = f'\"{HTTP_FULL_ADDR}{FEED_PATH} bullseye\"'
-            gpg_key = get_yaml_value("gpg.ostree.gpgid")
+            cmd = ["apt-ostree", "compose", "install", "--repo", f"{iso_folder}/ostree_repo"]
+            # If we have ostree setup we will use the gpg key
+            if args.sign_gpg:
+                gpg_key = get_yaml_value("gpg.ostree.gpgid")
+                cmd += ["--gpg-key", gpg_key]
             pkgs = " ".join(patch["packages"])
-            cmd = ["apt-ostree", "compose", "install", "--repo", f"{iso_folder}/ostree_repo",
-                "--gpg-key", gpg_key, "--branch", "starlingx", "--feed", full_feed_path,
-                "--component", patch['sw_version'], pkgs]
+            cmd += ["--branch", "starlingx", "--feed", full_feed_path, "--component",
+                patch['sw_version'], pkgs]
+
             logger.debug('Running command: %s', cmd)
             subprocess.check_call(cmd, shell=False)
 
