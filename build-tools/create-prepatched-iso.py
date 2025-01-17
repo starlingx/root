@@ -508,6 +508,32 @@ def get_ostree_history(ostree_repo: str, filtered: bool = True) -> str:
     return "\n".join(filtered_history)
 
 
+def remove_ostree_remotes(ostree_repo: str) -> None:
+    """
+    Remove all references to remote ostree repos from the target ostree repo
+
+    :param ostree_repo: Path to ostree repo
+    """
+
+    logger.info("Cleaning remotes from ostree repo...")
+
+    if not os.path.isdir(ostree_repo):
+        raise Exception(f"Ostree repo directory does not exist: {ostree_repo}")
+
+    cmd = ["ostree", f"--repo={ostree_repo}", "remote", "list"]
+    remote_list = run_command(cmd).split()
+    logger.debug(f"Remotes: {remote_list}")
+
+    for remote in remote_list:
+        cmd = ["ostree", f"--repo={ostree_repo}", "remote", "delete", remote]
+        run_command(cmd)
+
+    with open(f"{ostree_repo}/config", mode="r", encoding="utf-8") as file:
+        ostree_config = file.read()
+
+    logger.debug(log_message("Clean ostree config:", ostree_config))
+
+
 # TODO (lfagunde): This function, along with all ostree repo manipulations
 # across this script, can be implemented as a separate file for "ostree utils".
 # Define a class with the repo path as it's defining property and several
@@ -975,6 +1001,9 @@ def main():
 
         # Keep only the latest commit in ostree_repo to save storage space
         clean_ostree(f"{build_tempdir}/ostree_repo")
+
+        # Remove all references to remote ostree repos used during build
+        remove_ostree_remotes(f"{build_tempdir}/ostree_repo")
 
         # Now we get the label and re create the ISO with the new ostree
         logger.info('Creating new .iso file...')
