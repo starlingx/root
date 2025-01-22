@@ -17,6 +17,10 @@ fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
 
+# make this process nice
+renice -n 10 -p $$
+ionice -c 3 -p $$
+
 SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
 OS=
 OS_LABEL=

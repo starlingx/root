@@ -18,6 +18,10 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
     exit 1
 fi
 
+# make this process nice
+renice -n 10 -p $$
+ionice -c 3 -p $$
+
 SUPPORTED_OS_ARGS=( 'debian' )
 OS=                      # default: autodetect
 OS_VERSION=              # default: lookup "ARG RELEASE" in Dockerfile
