@@ -38,6 +38,10 @@ import time
 import utils
 import yaml
 
+# make ourself nice
+pid = os.getpid()
+os.setpriority(os.PRIO_PROCESS, 0, 15)
+subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
 
 BUILDER_URL = os.environ.get('BUILDER_URL')
 REPOMGR_URL = os.environ.get('REPOMGR_URL')

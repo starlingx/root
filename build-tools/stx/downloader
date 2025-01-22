@@ -26,8 +26,14 @@ import pathlib
 import repo_manage
 import shutil
 import signal
+import subprocess
 import sys
 import utils
+
+# make ourself nice
+pid = os.getpid()
+os.setpriority(os.PRIO_PROCESS, 0, 15)
+subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
 
 DEFAULT_ARCH = 'amd64'
 REPO_BIN = 'deb-local-binary'
