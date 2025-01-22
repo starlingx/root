@@ -30,6 +30,11 @@ import time
 import utils
 import yaml
 
+# make ourself nice
+pid = os.getpid()
+os.setpriority(os.PRIO_PROCESS, 0, 15) 
+subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
+
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
