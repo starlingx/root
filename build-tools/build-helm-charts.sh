@@ -305,15 +305,25 @@ function build_application_tarball_armada {
 function compare_custom_manifests {
     MANIFEST_LIST=$1
     for manifest in ${MANIFEST_LIST}; do
+
+        if [ ! -s usr/lib/fluxcd/${manifest} ]; then
+            cp -R usr/lib/fluxcd/custom-manifests/${manifest} usr/lib/fluxcd/${manifest}
+            continue
+        fi
+
+        if [ -f usr/lib/fluxcd/custom-manifests/${manifest} ]; then
+            ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/merge_manifests.py usr/lib/fluxcd/${manifest} usr/lib/fluxcd/custom-manifests/${manifest}
+            continue
+        fi
+
         MAIN_MANIFESTS=$(ls usr/lib/fluxcd/${manifest})
         CUSTOM_MANIFESTS=$(ls usr/lib/fluxcd/custom-manifests/${manifest})
 
         for manifest_file in ${MAIN_MANIFESTS}; do
-            if [ ! -f usr/lib/fluxcd/custom-manifests/${manifest}/${manifest_file} ]; then
-                echo "Warning: missing ${manifest_file} in custom manifests"
-            else
-                ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/merge_manifests.py usr/lib/fluxcd/${manifest}/${manifest_file} usr/lib/fluxcd/custom-manifests/${manifest}/${manifest_file}
-            fi
+            ${PYTHON_2_OR_3} \
+            $BUILD_HELM_CHARTS_DIR/merge_manifests.py \
+            usr/lib/fluxcd/${manifest}/${manifest_file} \
+            usr/lib/fluxcd/custom-manifests/${manifest}/${manifest_file}
         done
     done
 }
