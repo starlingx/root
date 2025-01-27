@@ -302,9 +302,34 @@ function build_application_tarball_armada {
     fi
 }
 
+function compare_custom_manifests {
+    MANIFEST_LIST=$1
+    for manifest in ${MANIFEST_LIST}; do
+        MAIN_MANIFESTS=$(ls usr/lib/fluxcd/${manifest})
+        CUSTOM_MANIFESTS=$(ls usr/lib/fluxcd/custom-manifests/${manifest})
+
+        for manifest_file in ${MAIN_MANIFESTS}; do
+            if [ ! -f usr/lib/fluxcd/custom-manifests/${manifest}/${manifest_file} ]; then
+                echo "Warning: missing ${manifest_file} in custom manifests"
+            else
+                ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/merge_manifests.py usr/lib/fluxcd/${manifest}/${manifest_file} usr/lib/fluxcd/custom-manifests/${manifest}/${manifest_file}
+            fi
+        done
+    done
+}
+
 function build_application_tarball_fluxcd {
 
     FLUXCD_MANIFEST_DIR='fluxcd-manifests'
+    CUSTOM_MANIFEST_LIST=$(ls usr/lib/fluxcd/custom-manifests)
+
+    if [ ${#CUSTOM_MANIFEST_LIST} -ne 0 ]; then
+        echo "Custom manifests detected. Merging custom manifests with FluxCD manifests"
+        compare_custom_manifests "${CUSTOM_MANIFEST_LIST}"
+
+        # Removing custom manifests directory to prevent unnecessary files from being included
+        rm -rd usr/lib/fluxcd/custom-manifests
+    fi
 
     # Stage all the fluxcd manifests
     cp -R usr/lib/fluxcd staging/${FLUXCD_MANIFEST_DIR}
