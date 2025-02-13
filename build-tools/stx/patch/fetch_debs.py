@@ -107,7 +107,9 @@ class FetchDebs(object):
                 debs_to_remove.append(deb)
 
         for deb in debs_to_remove:
-            dl_debs_dict.pop(deb)
+            # If package is explicitly in the patch recipe it should NOT be removed
+            if deb not in self.need_dl_stx_pkgs:
+                dl_debs_dict.pop(deb)
 
         logger.debug(f'Package list after filtering:{dl_debs_dict}')
 
