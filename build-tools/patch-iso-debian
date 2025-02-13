@@ -1,6 +1,6 @@
 #!/bin/bash -e
 #
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -41,6 +41,7 @@ Usage:
 Attention:
 - Either the DEPLOY_DIR or the STX_BUILD_HOME env variable must be defined.
   It's used to find the input ostree repo.
+- Requires sudo privileges for mounting the input ISO
 
 "
 
@@ -146,11 +147,11 @@ function check_requirements {
 
     # Declare "require reqA or reqB" as "reqA__reqB"
     local -a required_utils=(
-        7z                   # p7zip-full
         mkisofs__xorrisofs   # genisoimage / xorriso
         isohybrid            # syslinux-utils
         implantisomd5        # isomd5sum
         ostree               # ostree
+        rsync                # rsync
         xmllint__python3     # libxml2-utils / python3
     )
 
@@ -219,22 +220,27 @@ if [ -z "${BUILDDIR}" ] || [ ! -d "${BUILDDIR}" ]; then
     exit 1
 fi
 
-echo "Extracting Input ISO contents (except ostree repo)..."
-if ! 7z x "${INPUT_ISO}" -o"${BUILDDIR}" -x\!ostree_repo 1>/dev/null ; then
-    echo "ERROR: Failed to extract ISO contents"
+# Create temporary mount directory
+MNTDIR=$(mktemp -d -p "$PWD" patchiso_mount_XXXXXX)
+if [ -z "${MNTDIR}" ] || [ ! -d "${MNTDIR}" ]; then
+    echo "ERROR: Failed to create temporary mount directory"
     exit 1
 fi
 
-# Deleting '[BOOT]' directory. It will be re-created when packing the output ISO.
-if [ -d "${BUILDDIR}/[BOOT]" ]; then
-    rm -rf "${BUILDDIR}/[BOOT]"
+echo "Mounting input ISO..."
+if ! mount -o loop ${INPUT_ISO} ${MNTDIR} ; then
+    echo "ERROR: Failed to mount input ISO. Are you root?"
+    exit 1
 fi
 
-# Fix for permission denied if not running as root
-chmod +w "${BUILDDIR}"
-if [ -d "${BUILDDIR}/isolinux" ]; then
-    chmod -R +w "${BUILDDIR}/isolinux"
+echo "Extracting Input ISO contents (except ostree repo)..."
+if ! rsync -a --exclude 'ostree_repo' ${MNTDIR}/ ${BUILDDIR}/ ; then
+    echo "ERROR: Failed to rsync content from mount dir to build dir" 
+    umount ${MNTDIR}
+    exit 1
 fi
+
+umount ${MNTDIR}
 
 # Erase current patch metadata from ISO if it exists
 # This way, this script can be used on pre-patched ISOs
@@ -242,8 +248,8 @@ if [ -d "${BUILDDIR}/patches" ]; then
     rm -rf "${BUILDDIR}/patches"
 fi
 
-echo "List contents extracted from Input ISO (after adjustments):"
-ls -lh "${BUILDDIR}"
+echo "List contents extracted from Input ISO:"
+ls -lah "${BUILDDIR}"
 
 # Create the directory where patch metadata will be stored
 mkdir -p "${BUILDDIR}/patches"
