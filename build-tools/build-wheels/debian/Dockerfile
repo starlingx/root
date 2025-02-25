@@ -70,6 +70,7 @@ RUN set -ex ; \
         python3-nss \
         python3-pip \
         python3-setuptools \
+        python3-setuptools-scm \
         python3-thriftpy \
         python3-wheel \
         swig \
