@@ -236,10 +236,10 @@ repo_url_to_sub_path () {
     return 0
 }
 
-STX_MIRROR_PROTOCOL="https"
-STX_MIRROR_HOST="mirror.starlingx.windriver.com"
-STX_MIRROR_PORT="443"
-STX_MIRROR_URL_ROOT="mirror"
+STX_MIRROR_PROTOCOL="${STX_MIRROR_PROTOCOL:-https}"
+STX_MIRROR_HOST="${STX_MIRROR_HOST:-mirror.starlingx.windriver.com}"
+STX_MIRROR_PORT="${STX_MIRROR_PORT:-443}"
+STX_MIRROR_URL_ROOT="${STX_MIRROR_URL_ROOT:-mirror}"
 
 url_to_stx_mirror_url () {
     local URL="$1"
