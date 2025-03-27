@@ -30,6 +30,11 @@ if [ -z "${SIGNING_SERVER}" ]; then
     exit 1
 fi
 
+if [ -z "${SIGNING_USER}" ]; then
+    echo "ERROR: Please export SIGNING_USER first!"
+    exit 1
+fi
+
 # Get shim deb version number.
 SHIM_DEB=$(ls ${MY_WORKSPACE}/std/shim/shim-unsigned_*_amd64.deb)
 SHIM_DEB=${SHIM_DEB##*/}
@@ -59,7 +64,7 @@ fi
 SSH_OPTION_NOCHECKING="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
 
 # Request upload path from signing server.
-REQUEST=$(ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} sudo /opt/signing/sign-debian.sh -r)
+REQUEST=$(ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} sudo /opt/signing/sign-debian.sh -r)
 UPLOAD_PATH=${REQUEST#*Upload: }
 echo UPLOAD_PATH: ${UPLOAD_PATH}
 if [ -z "${UPLOAD_PATH}" ]; then
@@ -80,25 +85,25 @@ sudo dpkg-deb -R shim-unsigned_${SHIM_VERSION}_amd64.deb ./shim-unsigned/ \
 cd shim-unsigned/usr/lib/shim
 
 # Copy shimx64.efi to signing server
-scp ${SSH_OPTION_NOCHECKING} shimx64.efi ${SIGNING_SERVER}:${UPLOAD_PATH} \
+scp ${SSH_OPTION_NOCHECKING} shimx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
     || { echo "Fail to copy shimx64.efi to signing server!"; exit 1; }
 # Sign shimx64.efi
-ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} \
+ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
     sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/shimx64.efi -t shim \
     || { echo "Fail to sign shimx64.efi!"; exit 1; }
 # Copy back signed shimx64.efi which is renamed as bootx64.efi
-sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER}:${UPLOAD_PATH}/bootx64.efi ./ \
+sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/bootx64.efi ./ \
     || { echo "Fail to copy back signed shim image!"; exit 1; }
 
 # Copy mmx64.efi to signing server
-scp ${SSH_OPTION_NOCHECKING} mmx64.efi ${SIGNING_SERVER}:${UPLOAD_PATH} \
+scp ${SSH_OPTION_NOCHECKING} mmx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
     || { echo "Fail to copy mmx64.efi to signing server!"; exit 1; }
 # Sign mmx64.efi
-ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} \
+ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
     sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/mmx64.efi -t shimtool \
     || { echo "Fail to sign mmx64.efi!"; exit 1; }
 # Copy back signed mmx64.efi (renamed to grubx64.efi by server and need rename it back)
-sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER}:${UPLOAD_PATH}/mmx64.efi.signed ./mmx64.efi \
+sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/mmx64.efi.signed ./mmx64.efi \
     || { echo "Fail to copy back signed shim tool image!"; exit 1; }
 
 cd -
@@ -124,14 +129,14 @@ sudo dpkg-deb -R grub-efi-amd64_${GRUB_EFI_VERSION}_amd64.deb ./grub-efi-amd64 \
 cd ./grub-efi-amd64/boot/efi/EFI/BOOT
 
 # Copy grubx64.efi to signing server
-scp ${SSH_OPTION_NOCHECKING} grubx64.efi ${SIGNING_SERVER}:${UPLOAD_PATH} \
+scp ${SSH_OPTION_NOCHECKING} grubx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
     || { echo "Fail to copy grubx64.efi to signing server!"; exit 1; }
 # Sign grubx64.efi
-ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} \
+ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
     sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/grubx64.efi -t grub \
     || { echo "Fail to sign grubx64.efi!"; exit 1; }
 # Copy back signed grubx64.efi
-sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER}:${UPLOAD_PATH}/grubx64.efi . \
+sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/grubx64.efi . \
     || { echo "Fail to copy back signed grub image!"; exit 1; }
 
 cd -
@@ -185,7 +190,7 @@ done
 sed -i "s/2SPACE/  /g" ${YAML_FILE}
 
 # Replace the signing server in the base-bullseye.yaml with the input of this script.
-sed -i "s/INPUT_SIGNING_SERVER/${SIGNING_SERVER}/g" ${YAML_FILE}
+sed -i -e "s/INPUT_SIGNING_SERVER/${SIGNING_SERVER}/g" -e "s/INPUT_SIGNING_USER/${SIGNING_USER}/g" ${YAML_FILE}
 
 echo "***Finish preparing gpg signing***"
 
