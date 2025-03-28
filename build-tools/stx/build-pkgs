@@ -150,9 +150,9 @@ def filter_depends(deps):
     deps = deps.replace('|', ',')
     deps = deps.replace(' ', '').split(',')
     for pkg in deps:
-        pkg = re.sub('\(.*?\)','', pkg)
-        pkg = re.sub('\[.*?\]','', pkg)
-        pkg = re.sub('\<.*?\>','', pkg)
+        pkg = re.sub(r'\(.*?\)','', pkg)
+        pkg = re.sub(r'\[.*?\]','', pkg)
+        pkg = re.sub(r'\<.*?\>','', pkg)
         pkgs_list.append(pkg)
     return pkgs_list
 
@@ -959,7 +959,7 @@ class BuildController():
 
         ret = req_chroots_action('addchroot', extra_req)
         if 'creating' in ret:
-            key_string = "Successfully set up bullseye chroot"
+            key_string = "Successfully set up " + DISTRIBUTION + " chroot"
             state = show_task_log(os.path.join(PKGBUILDER_ROOT, USER, PROJECT, 'chroot.log'),
                                   10, key_string, "E: ")
             if 'success' in state:
@@ -2256,7 +2256,7 @@ if __name__ == "__main__":
 
     reuse_dl_ret = 0
     build_controller.set_reuse(os.path.join(BUILD_ROOT, 'caches'))
-    if not build_controller.download_reused_debs('bullseye'):
+    if not build_controller.download_reused_debs(DISTRIBUTION):
         reuse_dl_ret = 1
 
     ret_value = build_controller.stop()
