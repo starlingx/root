@@ -37,7 +37,7 @@ subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
 
 DEFAULT_ARCH = 'amd64'
 REPO_BIN = 'deb-local-binary'
-mirror_root = os.environ.get('STX_MIRROR')
+mirror_root = os.environ.get('OS_MIRROR')
 stx_src_mirror = os.path.join(mirror_root, 'sources')
 stx_bin_mirror = os.path.join(mirror_root, 'binaries')
 all_binary_lists = ['base-bullseye.lst', 'os-std.lst', 'os-rt.lst']
@@ -52,15 +52,8 @@ ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
-# The CENGN_STRATEGY reference is retained for backward compatability 
-# with pre-existing build environments.
-CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
-if not STX_MIRROR_STRATEGY:
-    STX_MIRROR_STRATEGY = CENGN_STRATEGY
-if STX_MIRROR_STRATEGY == "cengn":
-    STX_MIRROR_STRATEGY = "stx_mirror"
-elif STX_MIRROR_STRATEGY == "cengn_first":
+if STX_MIRROR_STRATEGY is None:
     STX_MIRROR_STRATEGY = "stx_mirror_first"
 
 def get_downloaded(dl_dir, dl_type):

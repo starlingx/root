@@ -21,16 +21,10 @@ import subprocess
 import urllib.parse
 import urllib.request
 
-# The CENGNURL reference is retained for backward compatability 
-# with pre-existing build environmnets.
-CENGNURL = os.environ.get('CENGNURL')
-if CENGNURL:
-    CENGN_BASE = os.path.join(CENGNURL, "debian")
-STX_MIRROR_URL = os.environ.get('STX_MIRROR_URL')
-if STX_MIRROR_URL:
-    STX_MIRROR_BASE = os.path.join(STX_MIRROR_URL, "debian")
-if not STX_MIRROR_BASE:
-    STX_MIRROR_BASE=CENGN_BASE
+OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
+OS_MIRROR_DIST_PATH = os.environ.get('OS_MIRROR_DIST_PATH')
+if OS_MIRROR_URL:
+    OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DIST_PATH)
 
 log_levels = {
     'debug': logging.DEBUG,
@@ -181,7 +175,7 @@ def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR):
 def run_shell_cmd(cmd, logger, error_level=logging.ERROR):
     return run_shell_cmd_full(cmd, logger, error_level)[0]
 
-def url_to_stx_mirror(url):
+def url_to_os_mirror(url):
 
     url_change = urllib.parse.urlparse(url)
     url_path = pathlib.Path(url_change.path)
@@ -191,23 +185,23 @@ def url_to_stx_mirror(url):
         path = url_path
 
     # FIXME: the ":" in a path is converted to "%25", after
-    # uploading to STX_MIRROR, the "%25" in the path is converted
+    # uploading to OS_MIRROR, the "%25" in the path is converted
     # to "%2525".
-    return os.path.join(STX_MIRROR_BASE, path).replace("%25", "%2525")
+    return os.path.join(OS_MIRROR_BASE, path).replace("%25", "%2525")
 
 
 def get_download_url(url, strategy):
 
     alt_rt_url = None
-    stx_mirror_url = url_to_stx_mirror(url)
+    os_mirror_url = url_to_os_mirror(url)
     if strategy == "stx_mirror":
-        rt_url = stx_mirror_url
+        rt_url = os_mirror_url
     elif strategy == "upstream":
         rt_url = url
     elif strategy == "stx_mirror_first":
         try:
-            urllib.request.urlopen(stx_mirror_url)
-            rt_url = stx_mirror_url
+            urllib.request.urlopen(os_mirror_url)
+            rt_url = os_mirror_url
             alt_rt_url = url
         except:
             rt_url = url
@@ -215,9 +209,9 @@ def get_download_url(url, strategy):
         try:
             urllib.request.urlopen(url)
             rt_url = url
-            alt_rt_url = stx_mirror_url
+            alt_rt_url = os_mirror_url
         except:
-            rt_url = stx_mirror_url
+            rt_url = os_mirror_url
     else:
         raise Exception(f'Invalid value "{strategy}" of STX_MIRROR_STRATEGY')
 

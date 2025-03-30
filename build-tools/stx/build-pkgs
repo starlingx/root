@@ -1263,7 +1263,7 @@ class BuildController():
 
         if not skip_create_dsc:
             try:
-                src_mirror_dir = os.path.join(os.environ.get('STX_MIRROR'), 'sources')
+                src_mirror_dir = os.path.join(os.environ.get('OS_MIRROR'), 'sources')
                 dsc_recipes = self.kits['dsc_maker'][build_type].package(pkg_dir, src_mirror_dir)
             except Exception as e:
                 logger.error(str(e))

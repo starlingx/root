@@ -35,29 +35,14 @@ import yaml
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
 DIST = os.environ.get('STX_DIST')
 
-# The CENGN_STRATEGY and CENGNURL references is retained for backward
-# compatability with pre-existing build environments.
-CENGN_BASE = None
-CENGNURL = os.environ.get('CENGNURL')
-CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
-if CENGNURL is not None:
-    CENGN_BASE = os.path.join(CENGNURL, "debian")
-STX_MIRROR_BASE = None
-STX_MIRROR_URL = os.environ.get('STX_MIRROR_URL')
-if STX_MIRROR_URL is not None: 
-    STX_MIRROR_BASE = os.path.join(STX_MIRROR_URL, "debian")
-if STX_MIRROR_BASE is None:
-    STX_MIRROR_BASE = CENGN_BASE
-STX_MIRROR_BASE = os.path.join(os.environ.get('STX_MIRROR_URL'), "debian")
+OS_MIRROR_BASE = None
+OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
+if OS_MIRROR_URL is not None: 
+    OS_MIRROR_DIST_PATH = os.environ.get('OS_MIRROR_DIST_PATH')
+    OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DIST_PATH)
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
-if STX_MIRROR_BASE is None:
-    STX_MIRROR_BASE = CENGN_BASE
 if STX_MIRROR_STRATEGY is None:
-    STX_MIRROR_STRATEGY = CENGN_STRATEGY
-    if STX_MIRROR_STRATEGY == "cengn":
-        STX_MIRROR_STRATEGY = "stx_mirror"
-    if STX_MIRROR_STRATEGY == "cengn_first":
-        STX_MIRROR_STRATEGY = "stx_mirror_first"
+    STX_MIRROR_STRATEGY = "stx_mirror_first"
 
 BTYPE = "@KERNEL_TYPE@"
 
