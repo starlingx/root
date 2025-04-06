@@ -36,6 +36,9 @@ os.setpriority(os.PRIO_PROCESS, 0, 15)
 subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
 
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+
+ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
@@ -671,6 +674,8 @@ def post_process(deploy_dir: str, yaml_file: str, sign: bool)->None:
 
 
 if __name__ == "__main__":
+    distro = STX_DEFAULT_DISTRO
+    distro_codename = STX_DEFAULT_DISTRO_CODENAME
 
     parser = argparse.ArgumentParser(
         description="build-image helper",
@@ -681,6 +686,12 @@ if __name__ == "__main__":
                               action='store_true')
     kernel_types.add_argument('--rt', help="build rt image",
                               action='store_true')
+    parser.add_argument('-d', '--distro', type=str,
+                        help="name of the distro to build\n   %s" % ALL_DISTROS,
+                        default=STX_DEFAULT_DISTRO, required=False)
+    parser.add_argument('-C', '--distro_codename', type=str,
+                        help="name of the distro codename to build\n   %s" % discovery.STX_DISTRO_DICT,
+                        default=STX_DEFAULT_DISTRO_CODENAME, required=False)
     parser.add_argument('-c', '--clean', help="(DEPRECATED) Start a fresh image build",
                         default=True, action='store_true')
     parser.add_argument('-k', '--keep', help="Keep the current environment " +
@@ -698,6 +709,41 @@ if __name__ == "__main__":
         default=IMAGE_LAYERS_PATH
     )
     args = parser.parse_args()
+
+    if args.distro:
+        if args.distro not in ALL_DISTROS:
+            logger.error('Distro "{}" is not supported. It should be one of: [{}]'.format(
+                args.distro,
+                ','.join(ALL_DISTROS)))
+            logger.error("Please consult: build-pkgs --help")
+            sys.exit(1)
+        distro = args.distro
+
+    if args.distro_codename:
+        if args.distro_codename not in discovery.STX_DISTRO_DICT[distro]:
+              logger.error('Distro codname "{}" is not supported for {}. It should be one of: [{}]'.format(
+                  args.distro_codename,
+                  distro,
+                  ','.join(discovery.STX_DISTRO_DICT[distro])))
+              logger.error("Please consult: build-pkgs --help")
+              sys.exit(1)
+        distro_codename = args.distro_codename
+
+    # Verify that this container build suite has the correct tooling for this distro/codename
+    os_release_dict = {}
+    with open("/etc/os-release") as myfile:
+        for line in myfile:
+            key, val = line.partition("=")[::2]
+            os_release_dict[key.strip()] = val.strip()
+
+    if distro != os_release_dict['ID'] and distro_codename != os_release_dict['VERSION_CODENAME']:
+        logger.error('Invalid tooling. You are attempting to build {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+        sys.exit(1)
+    else:
+        logger.info('Tooling validated. You are building {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+
     if args.rt:
         kernel_type = 'rt'
     else:

@@ -25,14 +25,29 @@ from utils import bc_safe_fetch
 LAYER_PRIORITY_DEFAULT = 99
 BUILD_TYPE_PRIORITY_DEFAULT = 99
 
-STX_DEFAULT_DISTRO = "debian"
-STX_DEFAULT_DISTRO_LIST = [ "debian" ]
+# Supported distros + codenames
+STX_DISTRO_DEBIAN = 'debian'
+STX_DISTRO_DEBIAN_BULLSEYE = 'bullseye'
+#STX_DISTRO_DEBIAN_TRIXIE = 'trixie'
+
+#STX_DISTRO_XXXX = 'XXXX'
+
+STX_DISTRO_DICT = {
+    STX_DISTRO_DEBIAN : [
+        STX_DISTRO_DEBIAN_BULLSEYE,
+    ]
+}
+
+# Default distro/codename build
+STX_DEFAULT_DISTRO = STX_DISTRO_DEBIAN
+STX_DEFAULT_DISTRO_CODENAME = STX_DISTRO_DEBIAN_BULLSEYE
+
 STX_DEFAULT_BUILD_TYPE = "std"
-STX_DEFAULT_BUILD_TYPE_LIST = [STX_DEFAULT_BUILD_TYPE]
+STX_DEFAULT_BUILD_TYPE_LIST = [ STX_DEFAULT_BUILD_TYPE ]
 
 
 def get_all_distros():
-    distro_lst = STX_DEFAULT_DISTRO_LIST
+    distro_lst = list(STX_DISTRO_DICT.keys())
     return sorted(distro_lst)
 
 def get_build_type_priority(build_type, layer, distro="debian"):

@@ -47,6 +47,7 @@ logger = logging.getLogger('downloader')
 utils.set_logger(logger)
 
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
 
 ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
@@ -698,6 +699,7 @@ if __name__ == "__main__":
     binary_ret = 0
     source_ret = 0
     distro = STX_DEFAULT_DISTRO
+    distro_codename = STX_DEFAULT_DISTRO_CODENAME
     layers = None
     build_types = None
 
@@ -708,9 +710,12 @@ if __name__ == "__main__":
                         action='store_true')
     parser.add_argument('-c', '--clean_mirror', help="clean the whole mirror and download again, be careful to use",
                         action='store_true')
-    parser.add_argument('-d', '--distro', type=str, nargs=1,
+    parser.add_argument('-d', '--distro', type=str,
                         help="name of the distro to build\n   %s" % ALL_DISTROS,
                         default=STX_DEFAULT_DISTRO, required=False)
+    parser.add_argument('-C', '--distro_codename', type=str,
+                        help="name of the distro codename to build\n   %s" % discovery.STX_DISTRO_DICT,
+                        default=STX_DEFAULT_DISTRO_CODENAME, required=False)
     parser.add_argument('-B', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
                         default='std,rt', required=False)
@@ -724,12 +729,22 @@ if __name__ == "__main__":
 
     if args.distro:
         if args.distro not in ALL_DISTROS:
-            logger.error(' '.join(['Distro', args.distro, 'not in', ','.join(ALL_DISTROS)]))
-            logger.error("Please consult: downloader --help")
+            logger.error('Distro "{}" is not supported. It should be one of: [{}]'.format(
+                args.distro,
+                ','.join(ALL_DISTROS)))
+            logger.error("Please consult: build-pkgs --help")
             sys.exit(1)
         distro = args.distro
-        ALL_LAYERS = discovery.get_all_layers(distro=distro)
-        ALL_BUILD_TYPES = discovery.get_all_build_types(distro=distro)
+
+    if args.distro_codename:
+        if args.distro_codename not in discovery.STX_DISTRO_DICT[distro]:
+            logger.error('Distro codname "{}" is not supported for {}. It should be one of: [{}]'.format(
+                args.distro_codename,
+                distro, 
+                ','.join(discovery.STX_DISTRO_DICT[distro])))
+            logger.error("Please consult: build-pkgs --help")
+            sys.exit(1)
+        distro_codename = args.distro_codename
 
     if args.build_types:
         build_types = args.build_types.strip().split(',')
@@ -739,6 +754,21 @@ if __name__ == "__main__":
                 logger.error(' '.join(['Build_type', build_type, 'not in', ','.join(ALL_BUILD_TYPES)]))
                 logger.error("Please consult: downloader --help")
                 sys.exit(1)
+
+    # Verify that this container build suite has the correct tooling for this distro/codename
+    os_release_dict = {}
+    with open("/etc/os-release") as myfile:
+        for line in myfile:
+            key, val = line.partition("=")[::2]
+            os_release_dict[key.strip()] = val.strip()
+
+    if distro != os_release_dict['ID'] and distro_codename != os_release_dict['VERSION_CODENAME']:
+        logger.error('Invalid tooling. You are attempting to download {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+        sys.exit(1)
+    else:
+        logger.info('Tooling validated. You are downloading {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
 
     if args.layers:
         layers = args.layers.strip().split(',')

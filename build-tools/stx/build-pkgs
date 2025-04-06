@@ -133,6 +133,7 @@ STX_SOURCE_REPOS = [
 ]
 
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
 STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
 STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
 
@@ -2120,6 +2121,7 @@ def bc_reg_signal_handler():
 
 if __name__ == "__main__":
     distro = STX_DEFAULT_DISTRO
+    distro_codename = STX_DEFAULT_DISTRO_CODENAME
     layers = None
     build_types = None
     packages = None
@@ -2143,9 +2145,12 @@ if __name__ == "__main__":
     parser.add_argument('--tmpfs_percentage', help="Percentage of ram that can be used for tmpfs to accelerate builds", type=int, default=DEFAULT_TEMPFS_PERCENTAGE)
     parser.add_argument('--poll_interval', help="The interval to poll the build status", type=int, default=DEFAULT_POLL_INTERVAL)
     parser.add_argument('--max_make_jobs', help="The maximum number of jobs for package make", type=int, default=MAX_PKG_MAKE_JOBS)
-    parser.add_argument('-d', '--distro', type=str, nargs=1,
+    parser.add_argument('-d', '--distro', type=str,
                         help="name of the distro to build\n   %s" % ALL_DISTROS,
                         default=STX_DEFAULT_DISTRO, required=False)
+    parser.add_argument('-C', '--distro_codename', type=str,
+                        help="name of the distro codename to build\n   %s" % discovery.STX_DISTRO_DICT,
+                        default=STX_DEFAULT_DISTRO_CODENAME, required=False)
     parser.add_argument('-b', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
                         default='std,rt', required=False)
@@ -2166,12 +2171,40 @@ if __name__ == "__main__":
 
     if args.distro:
         if args.distro not in ALL_DISTROS:
-            logger.error(' '.join(['Distro', args.distro, 'not in', ','.join(ALL_DISTROS)]))
+            logger.error('Distro "{}" is not supported. It should be one of: [{}]'.format(
+                args.distro,
+                ','.join(ALL_DISTROS)))
             logger.error("Please consult: build-pkgs --help")
             sys.exit(1)
         distro = args.distro
-        ALL_LAYERS = discovery.get_all_layers(distro=distro)
-        ALL_BUILD_TYPES = discovery.get_all_build_types(distro=distro)
+
+    if args.distro_codename:
+        if args.distro_codename not in discovery.STX_DISTRO_DICT[distro]:
+              logger.error('Distro codname "{}" is not supported for {}. It should be one of: [{}]'.format(
+                  args.distro_codename,
+                  distro, 
+                  ','.join(discovery.STX_DISTRO_DICT[distro])))
+              logger.error("Please consult: build-pkgs --help")
+              sys.exit(1)
+        distro_codename = args.distro_codename
+
+    # Verify that this container build suite has the correct tooling for this distro/codename
+    os_release_dict = {}
+    with open("/etc/os-release") as myfile:
+        for line in myfile:
+            key, val = line.partition("=")[::2]
+            os_release_dict[key.strip()] = val.strip()
+
+    if distro != os_release_dict['ID'] and distro_codename != os_release_dict['VERSION_CODENAME']:
+        logger.error('Invalid tooling. You are attempting to build {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+        sys.exit(1)
+    else:
+        logger.info('Tooling validated. You are building {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+
+    ALL_LAYERS = discovery.get_all_layers(distro=distro)
+    ALL_BUILD_TYPES = discovery.get_all_build_types(distro=distro)
 
     if args.build_types:
         build_types = args.build_types.strip().split(',')
