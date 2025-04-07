@@ -209,7 +209,9 @@ def is_git_repo(path):
 
 class Parser():
 
-    def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std"):
+    def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std",
+                 distro=discovery.STX_DEFAULT_DISTRO,
+                 codename=discovery.STX_DEFAULT_DISTRO_CODENAME):
 
         self.logger = logging.getLogger(__name__)
         if not self.logger.handlers:
@@ -231,6 +233,9 @@ class Parser():
             raise Exception(f"{output}: No such file or directory")
         self.output = os.path.abspath(output)
 
+        self.distro=distro
+        self.codename=codename
+
         self.srcrepo = srcrepo
         self.btype = btype
         self.meta_data = dict()
@@ -246,12 +251,12 @@ class Parser():
             raise Exception(f"{pkgpath}: No such file or directory")
 
         self.pkginfo["pkgpath"] = os.path.abspath(pkgpath)
-        self.pkginfo["pkgname"] = discovery.package_dir_to_package_name(pkgpath, 'debian')
+        self.pkginfo["pkgname"] = discovery.package_dir_to_package_name(pkgpath, self.distro, self.codename)
         self.pkginfo["packdir"] = os.path.join(self.basedir, self.pkginfo["pkgname"])
 
-        self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")
+        self.pkginfo["debfolder"] = discovery.get_relocated_package_dir(pkgpath, self.distro, self.codename)
         if not os.path.isdir(self.pkginfo["debfolder"]):
-            self.logger.error("No debian folder")
+            self.logger.error("No debian folder: {}".format(self.pkginfo["debfolder"]))
             raise Exception("No debian folder")
 
         self.meta_data_file = os.path.join(self.pkginfo["debfolder"], "meta_data.yaml")
@@ -299,10 +304,11 @@ class Parser():
         self.versions["debian_revision"] = BaseVersion(self.versions["full_version"]).debian_revision
         self.versions["epoch"] = BaseVersion(self.versions["full_version"]).epoch
 
-        self.logger.info("=== Package Name: %s", self.pkginfo["pkgname"])
+        self.logger.info("=== Package Name:        %s", self.pkginfo["pkgname"])
         self.logger.info("=== Debian Package Name: %s", self.pkginfo["debname"])
-        self.logger.info("=== Package Version: %s", self.versions["full_version"])
-        self.logger.info("=== Package Path: %s", self.pkginfo["pkgpath"])
+        self.logger.info("=== Package Version:     %s", self.versions["full_version"])
+        self.logger.info("=== Package Path:        %s", self.pkginfo["pkgpath"])
+        self.logger.info("=== Distro Package Path: %s", self.pkginfo["debfolder"])
 
         srcdir = self.pkginfo["debname"] + "-" + self.versions["upstream_version"]
         self.pkginfo["srcdir"] = os.path.join(self.pkginfo["packdir"], srcdir)
@@ -341,7 +347,7 @@ class Parser():
                 src_dir = os.path.join(self.pkginfo['pkgpath'], src_dir)
             self.logger.info ("SRC_DIR = %s", src_dir)
         else:
-            src_dir = self.pkginfo["pkgpath"]
+            src_dir = self.pkginfo["debfolder"]
             self.logger.info("SRC_DIR = %s (guessed)", src_dir)
         return src_dir
 
@@ -353,7 +359,14 @@ class Parser():
             return dist
 
         # reset the debfolder
-        self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")
+        #
+        # This also means that when a package is relocated to the "new style"
+        # for bullseye builds, we need to make sure that the revcount is
+        # adjusted properly for continuity of patching, this will require setting
+        # "revision.stx_patch: <number>" in the package meta_data.yaml correctly
+        #
+        self.pkginfo["debfolder"] = discovery.get_relocated_package_dir(self.pkginfo["pkgpath"],
+                                                                        self.distro, self.codename)
 
         revision_data = self.meta_data["revision"]
         if "dist" in revision_data:

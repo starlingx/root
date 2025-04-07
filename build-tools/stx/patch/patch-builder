@@ -26,6 +26,12 @@ import constants
 
 sys.path.append('..')
 import utils
+import discover
+
+STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
+STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
 
 logger = logging.getLogger('patch_builder')
 utils.set_logger(logger)
@@ -43,7 +49,7 @@ DEPLOY_DIR = "/localdisk/deploy"
 PATCH_OUTPUT = os.path.join(DEPLOY_DIR, "patch_output")
 
 class PatchBuilder(object):
-    def __init__(self, patch_recipe_file, file_name=None, sign_remote=False):
+    def __init__(self, patch_recipe_file, file_name=None, sign_remote=False, codename=STX_DEFAULT_DISTRO_CODENAME):
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
         self.fetch_debs = fetch_debs.FetchDebs()
@@ -51,6 +57,7 @@ class PatchBuilder(object):
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
         self.patch_name = f'{self.metadata.patch_id}.patch' if file_name == None else file_name
         self.sign_remote = sign_remote
+        self.distro_codename = codename
 
     def get_md5(self, path):
         '''
@@ -71,7 +78,7 @@ class PatchBuilder(object):
         # Create a temporary working directory
         logger.debug("Fetching debs...")
         self.fetch_debs.fetch_stx_packages()
-        self.fetch_debs.fetch_external_binaries()
+        self.fetch_debs.fetch_external_binaries(codename=self.distro_codename)
         # verify if dir is not empty
         dl_dir = os.path.join(self.fetch_debs.output_dir, "downloads", "binary")
         if not os.listdir(dl_dir):
@@ -351,8 +358,8 @@ class PatchBuilder(object):
             is_flag=True,
             required=False)
 
-def build(recipe, name=None, remote_sign=False):
-    patch_builder = PatchBuilder(recipe, name, remote_sign)
+def build(recipe, name=None, remote_sign=False, codename=STX_DEFAULT_DISTRO_CODENAME):
+    patch_builder = PatchBuilder(recipe, name, remote_sign, codename=codename)
     patch_builder.build_patch()
 
 if __name__ == '__main__':

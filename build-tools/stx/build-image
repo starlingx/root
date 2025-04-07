@@ -39,7 +39,7 @@ STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
 
 ALL_DISTROS = discovery.get_all_distros()
-ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
+ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
 LAT_ROOT = '/localdisk'
@@ -246,26 +246,6 @@ def update_rt_kernel_in_main_yaml(main_yaml):
     return replace_in_yaml(main_yaml, 'rootfs-pre-scripts', 'yaml_list', stx_std_kernel, stx_rt_kernel)
 
 
-def update_rt_kernel_in_initramfs_yaml(initramfs_yaml):
-    ret = False
-
-    # Updated the name of kernel module
-    for layer in ALL_LAYERS:
-        pkg_dirs = discovery.package_dir_list(distro=STX_DEFAULT_DISTRO, layer=layer, build_type='rt')
-        if not pkg_dirs:
-            continue
-        for pkg_dir in pkg_dirs:
-            pkg_name = discovery.package_dir_to_package_name(pkg_dir, STX_DEFAULT_DISTRO)
-            if pkg_name and pkg_name != 'linux-rt':
-                if replace_in_yaml(initramfs_yaml, 'packages', 'yaml_list_suffix', pkg_name, '-rt'):
-                    logger.debug("RT Initramfs: Updated %s with rt suffix", pkg_name)
-                else:
-                    logger.debug("RT Initramfs: Failed to update %s with rt suffix", pkg_name)
-                    return ret
-    ret = replace_in_yaml(initramfs_yaml, 'packages', 'yaml_list', stx_std_kernel, stx_rt_kernel)
-    return ret
-
-
 def include_initramfs(img_yaml, ramfs_yaml_path):
     if not os.path.exists(img_yaml):
         logger.error("LAT yaml file %s does not exist", img_yaml)
@@ -304,7 +284,7 @@ def feed_lat_src_repos(img_yaml, repo_url):
     return True
 
 
-def add_lat_packages(img_yaml, packages):
+def add_lat_packages(img_yaml, packages, distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME):
     if not os.path.exists(img_yaml):
         logger.error(' '.join(['LAT yaml file', img_yaml, 'does not exist']))
         return False
@@ -314,7 +294,7 @@ def add_lat_packages(img_yaml, packages):
     yaml_doc['packages'].extend(packages)
 
     for build_type in ALL_BUILD_TYPES:
-        pkgs = discovery.package_iso_list(distro=STX_DEFAULT_DISTRO, layer="all", build_type=build_type)
+        pkgs = discovery.package_iso_list(distro=distro, codename=codename, layer="all", build_type=build_type)
         yaml_doc['packages'].extend(pkgs)
 
     yaml_doc['packages'] = list(set(yaml_doc['packages']))
@@ -327,9 +307,9 @@ def add_lat_packages(img_yaml, packages):
     return True
 
 
-def check_base_os_binaries(repomgr):
-    base_bins_list = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
-                                  'cgcs-root/build-tools/stx/debian-image.inc')
+def check_base_os_binaries(repomgr, distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME):
+    base_bins_list = '{}/cgcs-root/build-tools/stx/{}-{}-image.inc'.format(os.environ.get('MY_REPO_ROOT_DIR'), 
+                                                                           distro, codename)
     if not os.path.exists(base_bins_list):
         logger.error(' '.join(['Base OS packages list', base_bins_list,
                                'does not exist']))
@@ -346,9 +326,8 @@ def check_base_os_binaries(repomgr):
     return True
 
 
-def check_stx_binaries(repomgr, btype='std'):
-    stx_bins_list = ''.join([PKG_LIST_DIR, '/debian/distro/os-', btype,
-                             '.lst'])
+def check_stx_binaries(repomgr, btype='std', distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME):
+    stx_bins_list = '{}{}/{}/distro/os-{}.lst'.format(PKG_LIST_DIR, distro, codename, btype)
     if not os.path.exists(stx_bins_list):
         logger.warning(' '.join(['STX binary packages list', stx_bins_list,
                                 'does not exist']))
@@ -366,9 +345,8 @@ def check_stx_binaries(repomgr, btype='std'):
     return True
 
 
-def check_stx_patched(repomgr, btype='std'):
-    stx_patched_list = ''.join([PKG_LIST_DIR, '/debian/distro/stx-', btype,
-                                '.lst'])
+def check_stx_patched(repomgr, btype='std', distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME):
+    stx_patched_list = '{}{}/{}/distro/stx-{}.lst'.format(PKG_LIST_DIR, distro, codename, btype)
     if not os.path.exists(stx_patched_list):
         logger.warning(''.join(['STX patched packages list', stx_patched_list,
                                 'does not exist']))
@@ -715,7 +693,7 @@ if __name__ == "__main__":
             logger.error('Distro "{}" is not supported. It should be one of: [{}]'.format(
                 args.distro,
                 ','.join(ALL_DISTROS)))
-            logger.error("Please consult: build-pkgs --help")
+            logger.error("Please consult: build-image --help")
             sys.exit(1)
         distro = args.distro
 
@@ -725,7 +703,7 @@ if __name__ == "__main__":
                   args.distro_codename,
                   distro,
                   ','.join(discovery.STX_DISTRO_DICT[distro])))
-              logger.error("Please consult: build-pkgs --help")
+              logger.error("Please consult: build-image --help")
               sys.exit(1)
         distro_codename = args.distro_codename
 
@@ -736,13 +714,17 @@ if __name__ == "__main__":
             key, val = line.partition("=")[::2]
             os_release_dict[key.strip()] = val.strip()
 
-    if distro != os_release_dict['ID'] and distro_codename != os_release_dict['VERSION_CODENAME']:
+    if distro != os_release_dict['ID'] or distro_codename != os_release_dict['VERSION_CODENAME']:
         logger.error('Invalid tooling. You are attempting to build {}/{} with {}/{} containers'.format(
             distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
         sys.exit(1)
     else:
         logger.info('Tooling validated. You are building {}/{} with {}/{} containers'.format(
             distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+
+    # Reset these based on potentially new values
+    ALL_LAYERS = discovery.get_all_layers(distro=distro, codename=distro_codename)
+    ALL_BUILD_TYPES = discovery.get_all_build_types(distro=distro)
 
     if args.rt:
         kernel_type = 'rt'
@@ -760,9 +742,10 @@ if __name__ == "__main__":
     # Upload build repository (deb-local-build) to `aptly`
     # and create a repository URL for it.
     repo_manager.upload_pkg(REPO_BUILD, None)
-    build_repository_url = "deb {}{} bullseye main".format(
+    build_repository_url = "deb {}{} {} main".format(
         os.environ.get("REPOMGR_DEPLOY_URL"),
-        REPO_BUILD
+        REPO_BUILD,
+        distro_codename
     )
 
     # Get binary repositories that contribute binaries to the ISO.
@@ -774,29 +757,30 @@ if __name__ == "__main__":
     for binary_repository in binary_repositories:
         repo_manager.upload_pkg(binary_repository, None)
         binary_repositories_urls.append(
-            "deb {}{} bullseye main".format(
+            "deb {}{} {} main".format(
                 os.environ.get("REPOMGR_DEPLOY_URL"),
-                binary_repository
+                binary_repository,
+                distro_codename
             )
         )
 
     logger.info("\n")
     logger.info("=====Build Image start ......")
     logger.info("checking OS binary packages ......")
-    base_bins_ready = check_base_os_binaries(repo_manager)
+    base_bins_ready = check_base_os_binaries(repo_manager, distro=distro, codename=distro_codename)
 
     logger.info("\nchecking STX binary packages ......")
-    stx_bins_ready = check_stx_binaries(repo_manager, "std")
+    stx_bins_ready = check_stx_binaries(repo_manager, "std", distro=distro, codename=distro_codename)
 
     logger.info("\nchecking STX patched packages ......")
-    stx_patched_ready = check_stx_patched(repo_manager, "std")
+    stx_patched_ready = check_stx_patched(repo_manager, "std", distro=distro, codename=distro_codename)
 
     if not base_bins_ready or not stx_bins_ready or not stx_patched_ready:
         logger.error("Fail to get prepared to build image")
         sys.exit(1)
 
-    base_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-bullseye.yaml')
-    base_initramfs_yaml = os.path.join(PKG_LIST_DIR, 'debian/common/base-initramfs-bullseye.yaml')
+    base_yaml = '{}{}/{}/common/base-{}.yaml'.format(PKG_LIST_DIR, distro, distro_codename, distro_codename)
+    base_initramfs_yaml = '{}{}/{}/common/base-initramfs-{}.yaml'.format(PKG_LIST_DIR, distro, distro_codename, distro_codename)
     os.environ["WORKSPACE_DIR"] = LAT_ROOT
     lat_yaml = os.path.join(LAT_ROOT, "lat.yaml")
     lat_initramfs_yaml = os.path.join(LAT_ROOT, "lat-initramfs.yaml")
@@ -845,7 +829,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     ret = 1
-    if not add_lat_packages(lat_yaml, img_pkgs):
+    if not add_lat_packages(lat_yaml, img_pkgs, distro=distro, codename=distro_codename):
         logger.error("Failed to add packages into image YAML config")
         sys.exit(ret)
 

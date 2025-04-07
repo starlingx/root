@@ -495,7 +495,7 @@ class RepoMgr():
 
     # Construct a repository mirror to an upstream Debian repository
     # kwargs:url: URL of the upstream repo (http://deb.debian.org/debian)
-    # kwargs:distribution: the distribution of the repo (bullseye)
+    # kwargs:distribution: the distribution of the repo (DEBIAN_DISTRIBUTION)
     # kwargs:component: component of the repo (main)
     # kwargs:architecture: architecture of the repo, "all" is always enabled. (amd64)
     # kwargs:with_sources: include source packages, default is False.

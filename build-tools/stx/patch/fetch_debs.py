@@ -15,7 +15,10 @@ sys.path.append('..')
 import debsentry
 import repo_manage
 import utils
+import discovery
 
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+STX_DISTRO_DEBIAN_BULLSEYE = discovery.STX_DISTRO_DEBIAN_BULLSEYE
 BUILD_ROOT = os.environ.get('MY_BUILD_PKG_DIR')
 
 DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
@@ -134,7 +137,7 @@ class FetchDebs(object):
                         pkgs.extend(line.strip() for line in f if line.strip() and not line.startswith('#'))
         return pkgs
 
-    def fetch_external_binaries(self):
+    def fetch_external_binaries(self, codename=STX_DEFAULT_DISTRO_CODENAME):
         '''
         Download all binaries from the build system
         apt_item = apt_item + ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-binary', 'bullseye', 'main\n'])
@@ -146,8 +149,20 @@ class FetchDebs(object):
             return
 
         all_debs = set()
-        package_list = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
-                                    'stx-tools/debian-mirror-tools/config/debian/common/base-bullseye.lst')
+        
+        package_list - Nnoe
+        if codename == STX_DISTRO_DEBIAN_BULLSEYE:
+            package_list = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
+                                        'stx-tools/debian-mirror-tools/config/debian',
+                                        'common',
+                                        base-' + codename + 'bullseye.lst')
+        if package_list is None or not os.path.exists(package_list):
+            package_list = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
+                                        'stx-tools/debian-mirror-tools/config/debian',
+                                        codename,
+                                        'common',
+                                        base-' + codename + 'bullseye.lst')
+
         # find pkgs in the list file
         logger.debug(f'Packages to find {self.need_dl_binary_pkgs}')
         for pkg in self.need_dl_binary_pkgs:

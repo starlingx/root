@@ -98,9 +98,9 @@ def bc_safe_fetch(lst_file, entry_handler=None, entry_handler_arg=None):
         with open(lst_file, 'r') as flist:
             lines = list(line for line in (p.strip() for p in flist) if line)
     except IOError as e:
-        logger.error(str(e))
+        raise e
     except Exception as e:
-        logger.error(str(e))
+        raise e
     else:
         for entry in lines:
             entry = entry.strip()
