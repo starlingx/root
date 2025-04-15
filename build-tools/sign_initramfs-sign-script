@@ -20,6 +20,7 @@
   echo "***Start initramfs-sign-script***"
   SIGNING_SERVER=INPUT_SIGNING_SERVER
   SIGNING_USER=INPUT_SIGNING_USER
+  SIGNING_KEY_NAME=INPUT_SIGNING_KEY_NAME
   INITRAMFS_PATH=/localdisk/deploy/
   INITRAMFS_INIT=$(ls ${INITRAMFS_PATH}/starlingx-initramfs-ostree-image-intel-x86-64-*.rootfs.cpio.gz)
   [ -z ${INITRAMFS_INIT} ] && { echo "No initramfs file!"; exit 1; }
@@ -35,7 +36,7 @@
   scp ${SSH_OPTION_NOCHECKING} ${INITRAMFS_PATH}/${INITRAMFS_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy initramfs file to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${INITRAMFS_FILE} -t grub-gpg \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${INITRAMFS_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME} \
       || { echo "Fail to sign initramfs file!"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${INITRAMFS_FILE}.sig ${INITRAMFS_PATH} \
       || { echo "Fail to copy back initramfs sig file!"; exit 1; }
@@ -45,7 +46,7 @@
   scp ${SSH_OPTION_NOCHECKING} ${INITRD_MINI_PATH}/${INITRD_MINI_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy mini initrd file to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${INITRD_MINI_FILE} -t grub-gpg \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${INITRD_MINI_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME} \
       || { echo "Fail to sign mini initrd file!"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${INITRD_MINI_FILE}.sig ${INITRD_MINI_PATH} \
       || {  echo "Fail to copy back mini initrd sig file!"; exit 1; }
