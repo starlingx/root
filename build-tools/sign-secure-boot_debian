@@ -35,6 +35,12 @@ if [ -z "${SIGNING_USER}" ]; then
     exit 1
 fi
 
+if [ -z "${SIGNING_KEY_NAME}" ]; then
+    SIGNING_KEY_NAME='default'
+    echo "Warning: SIGNING_KEY_NAME no set in your environment, using '${SIGNING_KEY_NAME}'"
+    exit 1
+fi
+
 # Get shim deb version number.
 SHIM_DEB=$(ls ${MY_WORKSPACE}/std/shim/shim-unsigned_*_amd64.deb)
 SHIM_DEB=${SHIM_DEB##*/}
@@ -89,7 +95,7 @@ scp ${SSH_OPTION_NOCHECKING} shimx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPL
     || { echo "Fail to copy shimx64.efi to signing server!"; exit 1; }
 # Sign shimx64.efi
 ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-    sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/shimx64.efi -t shim \
+    sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/shimx64.efi -t shim -k ${SIGNING_KEY_NAME} \
     || { echo "Fail to sign shimx64.efi!"; exit 1; }
 # Copy back signed shimx64.efi which is renamed as bootx64.efi
 sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/bootx64.efi ./ \
@@ -100,7 +106,7 @@ scp ${SSH_OPTION_NOCHECKING} mmx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOA
     || { echo "Fail to copy mmx64.efi to signing server!"; exit 1; }
 # Sign mmx64.efi
 ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-    sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/mmx64.efi -t shimtool \
+    sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/mmx64.efi -t shimtool -k ${SIGNING_KEY_NAME} \
     || { echo "Fail to sign mmx64.efi!"; exit 1; }
 # Copy back signed mmx64.efi (renamed to grubx64.efi by server and need rename it back)
 sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/mmx64.efi.signed ./mmx64.efi \
@@ -133,7 +139,7 @@ scp ${SSH_OPTION_NOCHECKING} grubx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPL
     || { echo "Fail to copy grubx64.efi to signing server!"; exit 1; }
 # Sign grubx64.efi
 ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-    sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/grubx64.efi -t grub \
+    sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/grubx64.efi -t grub -k ${SIGNING_KEY_NAME} \
     || { echo "Fail to sign grubx64.efi!"; exit 1; }
 # Copy back signed grubx64.efi
 sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/grubx64.efi . \
@@ -190,7 +196,9 @@ done
 sed -i "s/2SPACE/  /g" ${YAML_FILE}
 
 # Replace the signing server in the base-bullseye.yaml with the input of this script.
-sed -i -e "s/INPUT_SIGNING_SERVER/${SIGNING_SERVER}/g" -e "s/INPUT_SIGNING_USER/${SIGNING_USER}/g" ${YAML_FILE}
+sed -i -e "s/INPUT_SIGNING_SERVER/${SIGNING_SERVER}/g" \
+       -e "s/INPUT_SIGNING_KEY_NAME/${SIGNING_KEY_NAME}/g" \
+       -e "s/INPUT_SIGNING_USER/${SIGNING_USER}/g" ${YAML_FILE}
 
 echo "***Finish preparing gpg signing***"
 
