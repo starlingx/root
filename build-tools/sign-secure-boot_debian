@@ -38,7 +38,6 @@ fi
 if [ -z "${SIGNING_KEY_NAME}" ]; then
     SIGNING_KEY_NAME='default'
     echo "Warning: SIGNING_KEY_NAME no set in your environment, using '${SIGNING_KEY_NAME}'"
-    exit 1
 fi
 
 # Get shim deb version number.
