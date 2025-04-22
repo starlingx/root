@@ -169,11 +169,7 @@ six===1.16.0
 snowballstemmer===2.1.0
 soupsieve===2.2.1
 Sphinx===3.4.3
-#SQLAlchemy===1.3.22  # on box
-SQLAlchemy===1.2.0  # Temporary workaround for stx/config/sysinv unit tests
-                    # to allow zuul gate to pass
-                    # Remove once BUG 1940281 is fixed
-                    # https://bugs.launchpad.net/starlingx/+bug/1940281
+SQLAlchemy===1.4.47
 sqlparse===0.4.1
 statsd===3.3.0
 #stevedore===3.2.2     # on box
