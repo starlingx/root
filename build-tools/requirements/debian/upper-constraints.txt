@@ -101,7 +101,7 @@ networkx===2.5
 python-neutronclient===7.2.1
 python-novaclient===17.2.1
 numpy===1.19.5
-oauthlib===3.1.0
+oauthlib===3.2.2
 pyOpenSSL===20.0.1
 python-openstackclient===5.4.0
 openstacksdk===0.50.0
