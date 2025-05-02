@@ -44,7 +44,7 @@ TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
 POSTBUILD_REMOVE_PYTHON_PACKAGES="pip"
-POSTBUILD_REMOVE_OS_PACKAGES="python3-pip python-whl"
+POSTBUILD_REMOVE_OS_PACKAGES="python3-pip python-pip-whl"
 DEFAULT_SPICE_REPO="https://gitlab.freedesktop.org/spice/spice-html5"
 declare -a ONLY
 declare -a SKIP
