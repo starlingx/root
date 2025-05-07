@@ -21,6 +21,7 @@
   echo "***Start signing part of rootfs-post-scripts***"
   SIGNING_SERVER=INPUT_SIGNING_SERVER
   SIGNING_USER=INPUT_SIGNING_USER
+  SIGNING_KEY_NAME=INPUT_SIGNING_KEY_NAME
   LOCKD_FILE=LockDown.efi
   LOCKD_PATH=${IMAGE_ROOTFS}/boot/efi/EFI/BOOT/
   LOCKD_INIT=${IMAGE_ROOTFS}/usr/lib/efitools/x86_64-linux-gnu/LockDown.efi
@@ -39,7 +40,7 @@
   scp ${SSH_OPTION_NOCHECKING} ${LOCKD_INIT} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy LockDown.efi to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${LOCKD_FILE} -t grub-gpg \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${LOCKD_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign LockDown.efi!"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${LOCKD_FILE}.sig ${LOCKD_PATH} \
       || { echo "Fail to copy back LockDown.efi sig file!"; exit 1; }
@@ -47,7 +48,7 @@
   scp ${SSH_OPTION_NOCHECKING} ${KERNEL_RT_PATH}/${KERNEL_RT_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy kernel-rt image to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t grub-gpg \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign kernel-rt image!"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_RT_FILE}.sig ${KERNEL_RT_PATH} \
       || { echo "Fail to copy back kernel-rt image sig file!"; exit 1; }
@@ -55,7 +56,7 @@
   scp ${SSH_OPTION_NOCHECKING} ${KERNEL_PATH}/${KERNEL_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy kernel-std image to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_FILE} -t grub-gpg \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign kernel-std image!"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_FILE}.sig ${KERNEL_PATH} \
       || { echo "Fail to copy back kernel-std image sig file"; exit 1; }
