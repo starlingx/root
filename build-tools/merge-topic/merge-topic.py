@@ -315,7 +315,7 @@ def handleRepo(args):
                     if not dargs['dry_run']:
                         output = subprocess.check_output(
                             cmd
-                            , env
+                            , env=env
                             , errors="strict", shell=True).strip()
                         print('Executed: \n{}'.format(output))
             except Exception as e:
