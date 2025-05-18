@@ -133,8 +133,6 @@ def readRepoManifest(repo_root_dir, manifest_file=None):
     manifest['project'] = {}
     manifest['default'] = {}
     for element in root.findall('remote'):
-        if dargs['verbose'] >= 5:
-            print(element.tag, element.attrib)
         remote_name = element.get('name')
         fetch_url = element.get('fetch')
         push_url = element.get('pushurl')
@@ -142,8 +140,6 @@ def readRepoManifest(repo_root_dir, manifest_file=None):
         revision = element.get('revision')
         manifest['remote'][remote_name]={'fetch': fetch_url, 'push_url': push_url, 'review': review, 'revision': revision}
     for element in root.findall('project'):
-        if dargs['verbose'] >= 5:
-            print(element.tag, element.attrib)
         project_name = element.get('name')
         remote_name = element.get('remote')
         path = element.get('path')
