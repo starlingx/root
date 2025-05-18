@@ -245,11 +245,6 @@ def validateHandleRepoArgs(dargs):
     if not os.path.exists(dargs['repo_root_dir']):
         print('{} does not exist'.format(dargs['repo_root_dir']))
         return False
-    print('Using manifest {}'.format(dargs['manifest']))
-    manifest_path = getRepoManifestPath(dargs['repo_root_dir'], dargs['manifest'])
-    if not os.path.exists(manifest_path):
-        print('{} does not exist'.format(manifest_path))
-        return False
     # print('Using gerrit {}'.format(dargs['gerrit']))
     print('Using download strategy {}'.format(dargs['download_strategy']))
     # print('Using review statuses {}'.format(dargs['status']))
