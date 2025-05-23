@@ -71,6 +71,7 @@ gcc-10
 genisoimage
 gettext-base
 gnupg
+gpsd
 grep
 gunicorn
 gzip
@@ -204,6 +205,7 @@ python3-enmerkar
 python3-falcon
 python3-fixtures
 python3-flask-restful
+python3-gps
 python3-ipaddr
 python3-keystonemiddleware
 python3-kubernetes
