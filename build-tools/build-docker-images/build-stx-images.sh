@@ -16,6 +16,7 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
 fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
+source ${MY_SCRIPT_DIR}/docker_utils.sh
 
 # make this process nice
 renice -n 10 -p $$
@@ -397,6 +398,7 @@ function cleanup_loci_failure {
     done
 }
 
+
 function build_image_loci {
     local image_build_file=$1
 
@@ -575,14 +577,9 @@ function build_image_loci {
         BUILD_ARGS+=(--build-arg UPDATE_SYSTEM_ACCOUNT="${UPDATE_SYSTEM_ACCOUNT}")
     fi
 
-    # Disable build cache
-    if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
-        BUILD_ARGS+=("--no-cache")
-    fi
-
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci \
+    docker_build_with_retries ${WORKDIR}/loci \
         "${BUILD_ARGS[@]}" \
         --tag ${build_image_name}  2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -711,12 +708,8 @@ function build_image_docker {
         BASE_BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
     fi
 
-    if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
-        BASE_BUILD_ARGS+=("--no-cache")
-    fi
-
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
-    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
+    docker_build_with_retries ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
