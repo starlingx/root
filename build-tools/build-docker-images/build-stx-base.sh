@@ -11,6 +11,7 @@ MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
 source ${MY_SCRIPT_DIR}/../utils.sh
 source ${MY_SCRIPT_DIR}/../git-utils.sh
+source ${MY_SCRIPT_DIR}/docker_utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -393,15 +394,10 @@ if [ ! -z "$PROXY" ]; then
     BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
 fi
 
-# Don't use docker cache
-if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
-    BUILD_ARGS+=("--no-cache")
-fi
-
 BUILD_ARGS+=(--tag ${IMAGE_NAME} ${BUILDDIR})
 
 # Build base image
-with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
+docker_build_with_retries "${BUILD_ARGS[@]}"
 if [ $? -ne 0 ]; then
     echo "Failed running docker build command" >&2
     exit 1
