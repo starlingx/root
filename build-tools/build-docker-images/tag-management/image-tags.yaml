@@ -148,9 +148,9 @@ images:
     tag: stx.9.0-v2.3.0
     # Tag based on upstream package version
   - name: docker.io/starlingx/telegraf
-    src_build_tag: master-debian-stable-20240603T060000Z.0
-    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/1576a74f18b42355b7d11357954e28c50223c22d
-    tag: stx.10.0-v1.30.2
+    src_build_tag: master-debian-stable-20250618T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/9198974c7c4904ee7cb245e5a8c992f1ab8c11e7
+    tag: stx.11.0-v1.34.4
   - name: docker.io/starlingx/uft
     src_build_tag: master-debian-stable-20230917T060059Z.0
     src_ref: https://opendev.org/starlingx/app-intel-ethernet-operator/commit/fe8b267b30035bb59bf751e961ad37107e91e3d3
