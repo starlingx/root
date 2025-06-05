@@ -261,7 +261,7 @@ def handleRepo(args):
     global REPO_MANIFEST
     dargs = vars(args)
     validateHandleRepoArgs(dargs)
-    tool_cwd = os.getcwd()
+    tool_cwd = os.path.dirname(os.path.abspath(__file__))
     REPO_MANIFEST = readRepoManifest(dargs['repo_root_dir'])
     for project in RepoManifestProjectList(REPO_MANIFEST):
         project_info = RepoManifestProjectInfo(REPO_MANIFEST, project)
