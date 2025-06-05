@@ -104,7 +104,7 @@ def gerritQuery(query):
     if query['verbose'] >= 5:
         print('gerritQuery results:')
         pprint.pprint(data)
-    sorted_data = sorted(data, key=lambda x: truncate_ns_to_us(x["updated"]))
+    sorted_data = sorted(data, key=lambda x: x["_number"])
     if query['verbose'] >= 4:
         print('gerritQuery results:')
         pprint.pprint(sorted_data)
@@ -324,6 +324,7 @@ def handleRepo(args):
                     print('Using merge fixer!')
                     runMergeFixer(dargs, project_path, tool_cwd)
                 else:
+                    print('Check for unresolved merge conflict')
                     return False
     return True
 
