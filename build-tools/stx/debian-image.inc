@@ -189,7 +189,6 @@ puppet-module-barbican
 puppet-module-duritong-sysctl
 puppet-module-puppetlabs-mount-core
 puppet-module-voxpupuli-collectd
-puppet-module-vswitch
 pv
 python3-amqplib
 python3-boto3
