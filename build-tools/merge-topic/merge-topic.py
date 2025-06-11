@@ -322,7 +322,8 @@ def handleRepo(args):
                 pprint.pprint(e)
                 if dargs['merge_fixer'] and not dargs['dry_run']:
                     print('Using merge fixer!')
-                    runMergeFixer(dargs, project_path, tool_cwd)
+                    rc = runMergeFixer(dargs, project_path, tool_cwd)
+                    return rc
                 else:
                     print('Check for unresolved merge conflict')
                     return False
@@ -447,10 +448,14 @@ def main():
     args = parser.parse_args()
 
     if hasattr(args, 'handle'):
-        args.handle(args)
+        rc = args.handle(args)
+        if not rc:
+            return 1
     else:
         parser.print_help()
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    exit_code = main()
+    sys.exit(exit_code)
