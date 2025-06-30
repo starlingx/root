@@ -407,6 +407,7 @@
         <package>syslog-ng-config</package>
         <package>systemd-config</package>
         <package>tuned-config</package>
+        <package>l3-routing-modules-config</package>
         <package>stx-harbor-helm</package>
         <package>stx-vault-helm</package>
         <package>registry-token-server</package>
