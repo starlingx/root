@@ -27,13 +27,13 @@ images:
     # Version determined by running 'git describe --tags' in clone of upstream repo
     tag: stx.4.0-v0.11.0-109-gc48c502
   - name: docker.io/starlingx/stx-ipsec-policy-agent-operator
-    src_build_tag: master-debian-stable-20250610T041000Z.0
-    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/b30a611954b4ec1b82cf0729945632d5cc26e861
-    tag: stx.11.0-v0.1.0
+    src_build_tag: master-debian-stable-20250711T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/ae18b26dbc4f17ef98249cf2b8cd5b907b9eb1e8
+    tag: stx.11.0-v0.2.0
   - name: docker.io/starlingx/stx-ipsec-policy-manager-operator
-    src_build_tag: master-debian-stable-20250610T041000Z.0
-    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/b30a611954b4ec1b82cf0729945632d5cc26e861
-    tag: stx.11.0-v0.1.0
+    src_build_tag: master-debian-stable-20250711T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/ae18b26dbc4f17ef98249cf2b8cd5b907b9eb1e8
+    tag: stx.11.0-v0.2.0
   - name: docker.io/starlingx/stx-oidc-client
     src_build_tag: master-debian-stable-20250625T041000Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/8c5834e71823821ae834d829f19f2fa9e1aba85d
