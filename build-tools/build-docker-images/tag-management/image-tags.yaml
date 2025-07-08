@@ -164,9 +164,9 @@ images:
     src_ref: https://opendev.org/starlingx/app-intel-ethernet-operator/commit/fe8b267b30035bb59bf751e961ad37107e91e3d3
     tag: stx.9.0-v22.07
   - name: docker.io/starlingx/metrics-exporter-api
-    src_build_tag: master-debian-stable-20240712T060056Z.0
-    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/3eec69ac37ec9c518a61d1e9ee690a80e7cac831
-    tag: stx.10.0-v1.0.2
+    src_build_tag: master-debian-stable-20250706T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/38d4c9b752ac197db2f220d8ac441ad015e676fd
+    tag: stx.11.0-v1.0.0
   - name: docker.io/starlingx/stx-ceph-manager
     src_build_tag: master-debian-stable-20250312T040100Z.0
     src_ref: https://opendev.org/starlingx/utilities/commit/8fe98e2cc74be799c108d2b5e2de90b83b859198
