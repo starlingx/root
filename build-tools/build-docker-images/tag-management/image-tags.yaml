@@ -16,16 +16,36 @@ images:
     src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
     # Version determined by running 'git describe --tags' in clone of upstream repo
     tag: stx.4.0-v0.11.0-103-g4f28657
+  - name: docker.io/starlingx/intel-deviceplugin-operator
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/e9960eab74b227c060cb740b4b564bf5b690978e
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1
+  - name: docker.io/starlingx/intel-dsa-plugin
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/e9960eab74b227c060cb740b4b564bf5b690978e
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1
+  - name: docker.io/starlingx/intel-gpu-initcontainer
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/e9960eab74b227c060cb740b4b564bf5b690978e
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1
   - name: docker.io/starlingx/intel-gpu-plugin
-    src_build_tag: master-distroless-stable-20191203T153530Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
-    # Version determined by running 'git describe --tags' in clone of upstream repo
-    tag: stx.4.0-v0.11.0-103-g4f28657
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/e9960eab74b227c060cb740b4b564bf5b690978e
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1
+  - name: docker.io/starlingx/intel-idxd-config-initcontainer
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/e9960eab74b227c060cb740b4b564bf5b690978e
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1
   - name: docker.io/starlingx/intel-qat-plugin
-    src_build_tag: master-distroless-stable-20191203T153530Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/d9d92a6997f939cb1ec41813dbf2d72d0b80d79c
-    # Version determined by running 'git describe --tags' in clone of upstream repo
-    tag: stx.4.0-v0.11.0-109-gc48c502
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/e9960eab74b227c060cb740b4b564bf5b690978e
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1
   - name: docker.io/starlingx/stx-ipsec-policy-agent-operator
     src_build_tag: master-debian-stable-20250610T041000Z.0
     src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/b30a611954b4ec1b82cf0729945632d5cc26e861
