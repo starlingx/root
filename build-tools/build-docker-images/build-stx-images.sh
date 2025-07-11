@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2019,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -44,6 +44,8 @@ export USE_DOCKER_CACHE=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
+POSTBUILD_REMOVE_PYTHON_PACKAGES="pip"
+POSTBUILD_REMOVE_OS_PACKAGES="python3-pip python-pip-whl"
 DEFAULT_SPICE_REPO="https://gitlab.freedesktop.org/spice/spice-html5"
 declare -a ONLY
 declare -a SKIP
@@ -308,6 +310,21 @@ function post_build {
 
     local IMAGE_TAG_VERSIONED="${IMAGE_TAG}.${IMAGE_UPDATE_VER}"
 
+    # POSTBUILD_REMOVE_OS_PACKAGES
+    # POSTBUILD_REMOVE_PYTHON_PACKAGES
+    # POSTBUILD_COMMAND
+    local remove_python_packages
+    remove_python_packages=$(
+        source ${image_build_file} && echo ${POSTBUILD_REMOVE_PYTHON_PACKAGES}
+    )
+    local remove_os_packages
+    remove_os_packages=$(
+        source ${image_build_file} && echo ${POSTBUILD_REMOVE_OS_PACKAGES}
+    )
+    local postbuild_command
+    postbuild_command=$(
+        source ${image_build_file} && echo -n "${POSTBUILD_COMMAND}"
+    )
 
     if [ -n "${CUSTOMIZATION}" ]; then
         local -a PROXY_ARGS=
@@ -348,6 +365,25 @@ function post_build {
             > ${WORKDIR}/${LABEL}-${OS_LABEL}-${BUILD_STREAM}.rpmlst
         docker run --entrypoint /bin/bash --rm ${build_image_name} -c 'pip freeze 2>/dev/null | sort' \
             > ${WORKDIR}/${LABEL}-${OS_LABEL}-${BUILD_STREAM}.piplst
+    fi
+
+    if [[ -n "${remove_python_packages}" || -n "${remove_os_packages}" || -n "${postbuild_command}" ]] ; then
+        local postbuild_workdir="$WORKDIR/${LABEL}-${OS_LABEL}-${BUILD_STREAM}-postbuild"
+        rm -rf "$postbuild_workdir"
+        mkdir -p "$postbuild_workdir" || return 1
+        "$MY_SCRIPT_DIR"/docker-image-postbuild.sh \
+            --work-dir="${postbuild_workdir}" \
+            --tmp-image="${build_image_name}-postbuild" \
+            --tmp-container="${LABEL}-postbuild" \
+            --remove-python-packages="${remove_python_packages}" \
+            --remove-os-packages="${remove_os_packages}" \
+            --command="${postbuild_command}" \
+            "${build_image_name}"
+        if [[ $? -ne 0 ]] ; then
+            echo "Failed to remove OS packages from ${build_image_name} ... Aborting"
+            RESULTS_FAILED+=(${LABEL})
+            return 1
+        fi
     fi
 
     RESULTS_BUILT+=(${build_image_name})

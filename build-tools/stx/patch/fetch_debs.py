@@ -48,13 +48,13 @@ class FetchDebs(object):
             subdebs_std = debsentry.get_subdebs(debs_clue_std, pkg, logger)
             subdebs_rt = debsentry.get_subdebs(debs_clue_rt, pkg, logger)
             if not subdebs_std and not subdebs_rt:
-                logger.warning('Failed to get subdebs for %s with local debsentry cache', pkg)
-                continue
-            else:
-                if subdebs_std:
-                    all_debs.update(set(subdebs_std))
-                if subdebs_rt:
-                    all_debs.update(set(subdebs_rt))
+                logger.error(f"Failed to get subdebs for package {pkg} from local debsentry cache")
+                sys.exit(1)
+
+            if subdebs_std:
+                all_debs.update(set(subdebs_std))
+            if subdebs_rt:
+                all_debs.update(set(subdebs_rt))
 
         return all_debs
 
@@ -85,7 +85,7 @@ class FetchDebs(object):
         '''
         dl_debs = self.get_all_debs()
         if not dl_debs:
-            logger.warn('No STX packages were found')
+            logger.warning('No STX packages were found')
             return
         else:
             dl_debs_dict = {}
@@ -94,7 +94,7 @@ class FetchDebs(object):
                 name, version = deb.split('_')
                 if name not in dl_debs_dict:
                     dl_debs_dict[name] = version
-            logger.debug('##dldebs:%s', dl_debs_dict)
+            logger.debug('Debs found: %s', dl_debs_dict)
 
         # filter list based on stx-std.lst - Depecrated on master, replaced by debian_iso_image.inc on each repo
         stx_pkg_list_file = self.get_debian_pkg_iso_list()
@@ -126,7 +126,7 @@ class FetchDebs(object):
         pkgs = []
         cgcs_root_dir = os.environ.get('MY_REPO')
         package_file_name = 'debian_iso_image.inc'
-        print(cgcs_root_dir)
+
         for root, dirs, files in os.walk(cgcs_root_dir):
             for file in files:
                 if file == package_file_name:
@@ -161,7 +161,8 @@ class FetchDebs(object):
                         all_debs.add(pkg_entry)
                         break
                 else:
-                    logger.warning(f"Package '{pkg}' not found in the package list")
+                    logger.error(f"Package '{pkg}' not found in the package list")
+                    sys.exit(1)
 
         logger.debug('Binary packages to download:%s', all_debs)
         fetch_ret = self.download(all_debs)

@@ -302,11 +302,8 @@ class DebDownloader(BaseDownloader):
             logger.info("Successfully created repository %s", repo)
         return True
 
-    def download(self, _name, _version, url=None, retries=3):
-        if url != None:
-            # The "+" in url is converted to "%2B", so convert
-            # it back to "+" in save file.
-            dl_file = os.path.basename(url).replace("%2B", "+")
+    def download(self, _name, _version, dl_file, url=None, retries=3):
+        if url is not None:
             ret = os.path.join(self.dl_dir, dl_file)
             tmp_file = ".".join([ret, "tmp"])
             utils.run_shell_cmd(["rm", "-rf", tmp_file], logger)
@@ -350,9 +347,9 @@ class DebDownloader(BaseDownloader):
                 return None
 
             package.candidate = candidate
-            deb_name = _name + '_' + _version
-            logger.info ('Downloading %s from %s', deb_name, package.candidate.uri)
+            logger.info ('Downloading %s from %s', dl_file, package.candidate.uri)
             ret = package.candidate.fetch_binary(self.dl_dir)
+            assert os.path.basename(ret) == dl_file
             if ret:
                 return ret
         except Exception as e:
@@ -497,7 +494,7 @@ class DebDownloader(BaseDownloader):
             debnames = pname_epoch_arch.split('_')
             deb_name = debnames[0]
 
-            ret = self.download(debnames[0], debnames[1], url)
+            ret = self.download(debnames[0], debnames[1], pname_arch, url)
             if ret:
                 self.save_dl_file_names([os.path.basename (ret)])
                 deb_ver = debnames[1].split(":")[-1]
