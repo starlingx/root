@@ -118,9 +118,9 @@ images:
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/bc716822f27050c00a8616e3e1f14e7cf86417f5
     tag: stx.11.0-v2.3.2
   - name: docker.io/starlingx/stx-audit
-    src_build_tag: master-debian-stable-20240723T060000Z.0
-    src_ref: https://opendev.org/starlingx/audit-armada-app/commit/73f896784e955cc5e8eda781d1c13ab49dac8242
-    tag: stx.10.0-v1.0.5
+    src_build_tag: master-debian-stable-20250714T164052Z.0
+    src_ref: https://opendev.org/starlingx/audit-armada-app/commit/a1aa989cdc561ccc370df04b059616314730f28a
+    tag: stx.11.0-v1.0.0
   - name: docker.io/starlingx/stx-centos-dev
     src_build_tag: master-centos-stable-20220503T014529Z.0
     src_ref: https://opendev.org/starlingx/utilities/commit/55873d66ff3b80f0853e83b7aa080833350d8d7e
