@@ -35,12 +35,6 @@ import yaml
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
 DIST = os.environ.get('STX_DIST')
 
-# dpanech 2025-07-24: these appear unused
-#OS_MIRROR_BASE = None
-#OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
-#if OS_MIRROR_URL is not None: 
-#    OS_MIRROR_DL_PATH = 'debian/'
-#    OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DL_PATH)
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
 if STX_MIRROR_STRATEGY is None:
     STX_MIRROR_STRATEGY = "stx_mirror_first"

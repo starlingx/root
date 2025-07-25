@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 
 OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
-OS_MIRROR_DL_PATH = 'debian/'
+OS_MIRROR_DL_PATH = os.environ.get('OS_MIRROR_DL_PATH', 'debian/')
 if OS_MIRROR_URL:
     OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DL_PATH)
 
