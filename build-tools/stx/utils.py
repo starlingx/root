@@ -22,9 +22,9 @@ import urllib.parse
 import urllib.request
 
 OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
-OS_MIRROR_DIST_PATH = os.environ.get('OS_MIRROR_DIST_PATH')
+OS_MIRROR_DL_PATH = 'debian/'
 if OS_MIRROR_URL:
-    OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DIST_PATH)
+    OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DL_PATH)
 
 log_levels = {
     'debug': logging.DEBUG,
