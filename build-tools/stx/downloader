@@ -337,9 +337,8 @@ class DebDownloader(BaseDownloader):
                 logger.error('package.versions: %s', str(package.versions))
                 return None
 
-            package.candidate = candidate
-            logger.info ('Downloading %s from %s', dl_file, package.candidate.uri)
-            ret = package.candidate.fetch_binary(self.dl_dir)
+            logger.info ('Downloading %s from %s', dl_file, candidate.uri)
+            ret = candidate.fetch_binary(self.dl_dir)
             assert os.path.basename(ret) == dl_file
             if ret:
                 return ret
