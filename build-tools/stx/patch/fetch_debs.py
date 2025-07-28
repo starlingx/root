@@ -161,7 +161,7 @@ class FetchDebs(object):
                                         'stx-tools/debian-mirror-tools/config/debian',
                                         codename,
                                         'common',
-                                        base-' + codename + 'bullseye.lst')
+                                        'base-' + codename + 'bullseye.lst')
 
         # find pkgs in the list file
         logger.debug(f'Packages to find {self.need_dl_binary_pkgs}')
