@@ -8,6 +8,7 @@
 Builds a Debian patch
 '''
 
+import click
 import hashlib
 import logging
 import os
@@ -17,47 +18,69 @@ import sys
 import tarfile
 import tempfile
 
-import click
+import constants
 import fetch_debs
 import metadata
 from signing.patch_signing import sign_files
 
-import constants
-
 sys.path.append('..')
 import utils
 import discovery
+
 
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
 STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
 STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
 
+# Patch signature files
+DETACHED_SIGNATURE_FILENAME = "signature.v2"
+MD5SUM_SIGNATURE_FILENAME = "signature"
+
+# Default patch output directory
+DEPLOY_DIR = "/localdisk/deploy"
+DEFAULT_PATCH_OUTPUT_DIR = os.path.join(DEPLOY_DIR, "patch_output")
+
+
 logger = logging.getLogger('patch_builder')
 utils.set_logger(logger)
 
-# Patch signature files
-detached_signature_file = "signature.v2"
-mdsum_signature_file = "signature"
-
-# Signing server variables
-signing_server = os.getenv('SIGNING_SERVER', '')
-signing_user = os.getenv('SIGNING_USER', '')
-
-# Patch output directory
-DEPLOY_DIR = "/localdisk/deploy"
-PATCH_OUTPUT = os.path.join(DEPLOY_DIR, "patch_output")
 
 class PatchBuilder(object):
-    def __init__(self, patch_recipe_file, file_name=None, sign_remote=False, codename=STX_DEFAULT_DISTRO_CODENAME):
+
+    def __init__(self,
+                 patch_recipe_file,
+                 file_name=None,
+                 sign_remote=False,
+                 codename=STX_DEFAULT_DISTRO_CODENAME):
+
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
+
         self.fetch_debs = fetch_debs.FetchDebs()
         self.fetch_debs.need_dl_stx_pkgs = self.metadata.stx_packages
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
+
         self.patch_name = f'{self.metadata.patch_id}.patch' if file_name == None else file_name
+
         self.sign_remote = sign_remote
+        self.signing_server = os.environ.get('SIGNING_SERVER')
+        self.signing_user = os.environ.get('SIGNING_USER')
+
         self.distro_codename = codename
+
+        self.validate_inputs()
+
+
+    def validate_inputs(self):
+        """Raise errors if any input is invalid"""
+
+        if self.sign_remote and \
+           (self.signing_server == None or self.signing_user == None):
+            msg = "Cannot sign patch without signing server info"
+            logger.error(msg)
+            raise Exception(msg)
+
 
     def get_md5(self, path):
         '''
@@ -70,6 +93,7 @@ class PatchBuilder(object):
             for chunk in iter(lambda: f.read(block_size), b''):
                 md5.update(chunk)
         return int(md5.hexdigest(), 16)
+
 
     def build_patch(self):
         logger.info(f"Generating patch {self.patch_name}")
@@ -147,6 +171,7 @@ class PatchBuilder(object):
         # Pack .patch file
         self.__sign_and_pack(self.patch_name)
 
+
     def copy_rename_script(self, path_to_script, script_type=None, rename=True):
         '''
         Copy the script to the directory we are in and rename based
@@ -158,12 +183,18 @@ class PatchBuilder(object):
 
         '''
         if not os.path.isfile(path_to_script):
-            erro_msg = f"Install script {path_to_script} not found"
-            logger.error(erro_msg)
-            raise FileNotFoundError(erro_msg)
+            msg = f"Patch script not found: {path_to_script}"
+            logger.error(msg)
+            raise FileNotFoundError(msg)
 
         # check if need a rename or not
         if rename:
+
+            if script_type == None or script_type not in constants.PATCH_SCRIPTS.keys():
+                msg = f"Not a valid script type: {script_type}"
+                logger.error(msg)
+                raise FileNotFoundError(msg)
+
             # We check the type to correctly rename the file to a expected value
             script_name = constants.PATCH_SCRIPTS.get(script_type, None)
 
@@ -175,6 +206,7 @@ class PatchBuilder(object):
         else:
             logger.info(f"Copying {path_to_script}...")
             shutil.copy(path_to_script, "./")
+
 
     def get_files_from_deb(self, download_dir, tmp_folder, package_name, files):
         '''
@@ -231,6 +263,7 @@ class PatchBuilder(object):
 
         return paths
 
+
     def __sign_and_pack(self, patch_file):
         """
         Generates the patch signatures and pack the .patch file
@@ -250,7 +283,7 @@ class PatchBuilder(object):
         for f in filelist:
             sig ^= self.get_md5(f)
 
-        sigfile = open(mdsum_signature_file, "w")
+        sigfile = open(MD5SUM_SIGNATURE_FILENAME, "w")
         sigfile.write("%x" % sig)
         sigfile.close()
 
@@ -262,7 +295,7 @@ class PatchBuilder(object):
         #    need_resign_with_formal is set to True.
         need_resign_with_formal = sign_files(
             filelist,
-            detached_signature_file,
+            DETACHED_SIGNATURE_FILENAME,
             cert_type=None)
 
         logger.info(f"Formal signing status: {need_resign_with_formal}")
@@ -270,9 +303,9 @@ class PatchBuilder(object):
         # Save files into .patch
         files = [f for f in os.listdir('.') if os.path.isfile(f)]
 
-        if not os.path.exists(PATCH_OUTPUT):
-            os.makedirs(PATCH_OUTPUT)
-        patch_full_path = os.path.join(PATCH_OUTPUT, patch_file)
+        if not os.path.exists(DEFAULT_PATCH_OUTPUT_DIR):
+            os.makedirs(DEFAULT_PATCH_OUTPUT_DIR)
+        patch_full_path = os.path.join(DEFAULT_PATCH_OUTPUT_DIR, patch_file)
         tar = tarfile.open(patch_full_path, "w:gz")
         for file in files:
             logger.info(f"Saving file {file}")
@@ -282,6 +315,7 @@ class PatchBuilder(object):
         if self.sign_remote:
             self.__sign_patch_remotely(patch_full_path)
 
+
     def __sign_patch_remotely(self, patch_file):
         """
         Send the patch file to be signed remotely by a signing server
@@ -290,14 +324,14 @@ class PatchBuilder(object):
         """
         logger.info("Starting remote signing for: %s", patch_file)
 
-        if not signing_server:
+        if not self.signing_server:
             logger.exception("SIGNING_SERVER variable not set, unable to continue.")
             sys.exit(1)
-        if not signing_user:
+        if not self.signing_user:
             logger.exception("SIGNING_USER variable not set, unable to continue.")
             sys.exit(1)
         try:
-            conn_string = f"{signing_user}@{signing_server}"
+            conn_string = f"{self.signing_user}@{self.signing_server}"
             patch_basename = os.path.basename(patch_file)
 
             # First we get the upload path from the signing server, it should return something
@@ -358,9 +392,11 @@ class PatchBuilder(object):
             is_flag=True,
             required=False)
 
+
 def build(recipe, name=None, remote_sign=False, codename=STX_DEFAULT_DISTRO_CODENAME):
     patch_builder = PatchBuilder(recipe, name, remote_sign, codename=codename)
     patch_builder.build_patch()
+
 
 if __name__ == '__main__':
     build()
