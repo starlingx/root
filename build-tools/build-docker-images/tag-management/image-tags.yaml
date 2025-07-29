@@ -106,9 +106,9 @@ images:
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/bc716822f27050c00a8616e3e1f14e7cf86417f5
     tag: stx.11.0-v2.2.7
   - name: docker.io/starlingx/notificationservice-base-v2
-    src_build_tag: master-debian-stable-20250701T041000Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/b836363fc73f38575e0c0cfbec525094731d73a2
-    tag: stx.11.0-v2.4.1
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/e8295f536deeeb49333e5dfd009346e8b788aec6
+    tag: stx.11.0-v2.4.2
   - name: docker.io/starlingx/locationservice-base
     src_build_tag: master-debian-stable-20250509T040101Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/bc716822f27050c00a8616e3e1f14e7cf86417f5
