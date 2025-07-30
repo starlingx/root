@@ -26,7 +26,7 @@ import constants
 
 sys.path.append('..')
 import utils
-import discover
+import discovery
 
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
