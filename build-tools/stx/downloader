@@ -40,14 +40,14 @@ REPO_BIN = 'deb-local-binary'
 mirror_root = os.environ.get('OS_MIRROR')
 stx_src_mirror = os.path.join(mirror_root, 'sources')
 stx_bin_mirror = os.path.join(mirror_root, 'binaries')
-DEBIAN_DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
-all_binary_lists = ['base-' + DEBIAN_DISTRIBUTION + '.lst', 'os-std.lst', 'os-rt.lst']
-
-logger = logging.getLogger('downloader')
-utils.set_logger(logger)
 
 STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+DIST_CODENAME = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
+all_binary_lists = ['base-' + DIST_CODENAME + '.lst', 'os-std.lst', 'os-rt.lst']
+
+logger = logging.getLogger('downloader')
+utils.set_logger(logger)
 
 ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME)
@@ -118,7 +118,7 @@ def get_all_stx_pkgs():
 def get_all_binary_list(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME, layers=None,
                         build_types=None):
     """
-    Return all binary packages listed in base-${DEBIAN_DISTRIBUTION}.lst,
+    Return all binary packages listed in base-${DIST_CODENAME}.lst,
     os-std.lst,os-rt.lst
     """
     layer_binaries = {}
@@ -560,7 +560,7 @@ class DebDownloader(BaseDownloader):
 
     def start(self):
         """Here define:
-        the complete set of binaries = base_${DEBIAN_DISTRIBUTION}.lst
+        the complete set of binaries = base_${DIST_CODENAME}.lst
                                      + <layer>/os-std.lst
                                      + <layer>/os-rt.lst
         """

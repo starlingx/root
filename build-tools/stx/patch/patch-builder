@@ -32,6 +32,7 @@ STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
 STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
 STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
 STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
+DIST_CODENAME = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
 
 # Patch signature files
 DETACHED_SIGNATURE_FILENAME = "signature.v2"
@@ -57,7 +58,7 @@ class PatchBuilder(object):
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
 
-        self.fetch_debs = fetch_debs.FetchDebs()
+        self.fetch_debs = fetch_debs.FetchDebs(codename=codename)
         self.fetch_debs.need_dl_stx_pkgs = self.metadata.stx_packages
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
 
@@ -399,4 +400,4 @@ def build(recipe, name=None, remote_sign=False, codename=STX_DEFAULT_DISTRO_CODE
 
 
 if __name__ == '__main__':
-    build()
+    build(codename=DIST_CODENAME)

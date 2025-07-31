@@ -43,6 +43,12 @@ pid = os.getpid()
 os.setpriority(os.PRIO_PROCESS, 0, 15)
 subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
 
+STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+STX_DISTRO_DEBIAN_BULLSEYE = discovery.STX_DISTRO_DEBIAN_BULLSEYE
+STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
+STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
+
 BUILDER_URL = os.environ.get('BUILDER_URL')
 REPOMGR_URL = os.environ.get('REPOMGR_URL')
 REPOMGR_ORIGIN = os.environ.get('REPOMGR_ORIGIN')
@@ -51,7 +57,8 @@ STX_ROOT = os.environ.get('MY_REPO_ROOT_DIR')
 PKGBUILDER_ROOT = "/localdisk/pkgbuilder"
 USER = os.environ.get('MYUNAME')
 PROJECT = os.environ.get('PROJECT')
-DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
+DIST_ID = os.environ.get('DIST_ID', STX_DEFAULT_DISTRO)
+DIST_CODENAME = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
 STX_ARCH = 'amd64'
 STX_META_NAME = 'stx-meta'
 STX_META_PKG = 'stx-meta_1.0.orig.tar.gz'
@@ -132,15 +139,9 @@ STX_SOURCE_REPOS = [
     'vault-armada-app',
 ]
 
-STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
-STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
-STX_DISTRO_DEBIAN_BULLSEYE = discovery.STX_DISTRO_DEBIAN_BULLSEYE
-STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
-STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
-
 ALL_DISTROS = discovery.get_all_distros()
-ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME)
-ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
+ALL_LAYERS = discovery.get_all_layers(distro=DIST_ID, codename=DIST_CODENAME)
+ALL_BUILD_TYPES = discovery.get_all_build_types(distro=DIST_ID)
 
 logger = logging.getLogger('debcontroller')
 utils.set_logger(logger)
@@ -684,7 +685,7 @@ class BuildController():
             return False
         logger.debug("Reuse is enabled, the reused source repository is %s", reuse_src_url)
 
-        kwargs = {'url': reuse_url, 'distribution': DISTRIBUTION, 'component': 'main',
+        kwargs = {'url': reuse_url, 'distribution': DIST_CODENAME, 'component': 'main',
                   'architectures': STX_ARCH}
         try:
             logger.info("Creating reused mirror with the shared URL, please wait...")
@@ -705,7 +706,7 @@ class BuildController():
         meta_dir = os.path.join(BUILD_ROOT, 'stx-meta')
         os.makedirs(meta_dir, exist_ok=True)
         try:
-            ret = get_shared_source(reuse_src_url, STX_META_NAME, DISTRIBUTION, meta_dir)
+            ret = get_shared_source(reuse_src_url, STX_META_NAME, DIST_CODENAME, meta_dir)
         except Exception as e:
             logger.error(str(e))
             logger.error("Failed to download stx-meta to reuse")
@@ -978,7 +979,7 @@ class BuildController():
 
         ret = req_chroots_action('addchroot', extra_req)
         if 'creating' in ret:
-            key_string = "Successfully set up " + DISTRIBUTION + " chroot"
+            key_string = "Successfully set up " + DIST_CODENAME + " chroot"
             state = show_task_log(os.path.join(PKGBUILDER_ROOT, USER, PROJECT, 'chroot.log'),
                                   10, key_string, "E: ")
             if 'success' in state:
@@ -2179,8 +2180,8 @@ def bc_reg_signal_handler():
 
 
 if __name__ == "__main__":
-    distro = STX_DEFAULT_DISTRO
-    distro_codename = STX_DEFAULT_DISTRO_CODENAME
+    distro = DIST_ID
+    distro_codename = DIST_CODENAME
     layers = None
     build_types = None
     packages = None
