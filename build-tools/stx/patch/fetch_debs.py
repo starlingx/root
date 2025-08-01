@@ -19,11 +19,6 @@ import discovery
 
 
 STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
-STX_DISTRO_DEBIAN_BULLSEYE = discovery.STX_DISTRO_DEBIAN_BULLSEYE
-
-DIST_CODENAME = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
-
-DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
 
 
 logger = logging.getLogger('fetch_debs')
@@ -32,24 +27,32 @@ utils.set_logger(logger)
 
 class FetchDebs(object):
 
-    def __init__(self, need_dl_stx_pkgs=None, need_dl_binary_pkgs=None,
-                 codename=DIST_CODENAME):
+    def __init__(self,
+                 need_dl_stx_pkgs=None,
+                 need_dl_binary_pkgs=None):
 
         self.need_dl_stx_pkgs = need_dl_stx_pkgs if need_dl_stx_pkgs else []
         self.need_dl_binary_pkgs = need_dl_binary_pkgs if need_dl_binary_pkgs else []
 
-        self.build_root = utils.get_env_variable('MY_BUILD_PKG_DIR')
-        self.output_dir = os.path.join(self.build_root, 'dl_debs')
-        self.apt_src_file = os.path.join(self.build_root, 'aptsrc')
+        # In general: /localdisk/designer/<USER>/<PROJECT>
+        self.designer_root = utils.get_env_variable('MY_REPO_ROOT_DIR')
 
-        self.setup_apt_source(codename=codename)
+        # In general: /localdisk/loadbuild/<USER>/<PROJECT>
+        self.loadbuild_root = utils.get_env_variable('MY_BUILD_PKG_DIR')
+
+        self.output_dir = os.path.join(self.loadbuild_root, 'dl_debs')
+        self.apt_src_file = os.path.join(self.loadbuild_root, 'aptsrc')
+
+        self.dist_codename = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
+
+        self.setup_apt_source()
         self.debs_fetcher = repo_manage.AptFetch(logger, self.apt_src_file, self.output_dir)
 
 
     def get_debs_clue(self, btype):
         if btype != 'rt':
             btype = 'std'
-        return os.path.join(self.build_root, 'caches', btype + '_debsentry.pkl')
+        return os.path.join(self.loadbuild_root, 'caches', btype + '_debsentry.pkl')
 
 
     def get_all_debs(self):
@@ -70,7 +73,7 @@ class FetchDebs(object):
 
         return all_debs
 
-    def setup_apt_source(self, codename=DIST_CODENAME):
+    def setup_apt_source(self):
         # clean up the output dir
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
@@ -78,13 +81,13 @@ class FetchDebs(object):
         os.makedirs(self.output_dir, exist_ok=True)
 
         try:
-            with open(self.apt_src_file, 'w') as f:
+            with open(self.apt_src_file, 'w') as file:
                 repo_url = utils.get_env_variable('REPOMGR_DEPLOY_URL')
 
-                apt_item = ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-build', codename, 'main\n'])
-                f.write(apt_item)
-                apt_item = ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-binary', codename, 'main\n'])
-                f.write(apt_item)
+                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-build {self.dist_codename} main\n"
+                file.write(apt_repo)
+                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-binary {self.dist_codename} main\n"
+                file.write(apt_repo)
 
                 logger.debug(f'Created apt source file {self.apt_src_file} to download debs')
         except Exception as e:
@@ -150,39 +153,37 @@ class FetchDebs(object):
                         pkgs.extend(line.strip() for line in f if line.strip() and not line.startswith('#'))
         return pkgs
 
-    def fetch_external_binaries(self, codename=DIST_CODENAME):
+    def fetch_external_binaries(self):
         '''
         Download all binaries from the build system
         apt_item = apt_item + ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-binary', codename, 'main\n'])
         '''
-        # Get debs from base-bullseye.lst, or base-<codename>.lst
-        # https://opendev.org/starlingx/tools/src/branch/master/debian-mirror-tools/config/debian/common/base-bullseye.lst
+        # Get debs from base-<dist_codename>.lst
+        # Example:
+        # https://opendev.org/starlingx/tools/src/branch/master/debian-mirror-tools/config/debian/bullseye/common/base-bullseye.lst
         if not self.need_dl_binary_pkgs:
             logger.debug("No binary packages to download")
             return
 
         all_debs = set()
 
-        package_list = None
+        external_binaries_list = os.path.join(
+            self.designer_root,
+            "stx-tools",
+            "debian-mirror-tools", "config", "debian",
+            self.dist_codename,
+            "common",
+            "base-" + self.dist_codename + ".lst")
 
-        if codename == STX_DISTRO_DEBIAN_BULLSEYE:
-            package_list = os.path.join(self.build_root,
-                                        'stx-tools/debian-mirror-tools/config/debian',
-                                        'common',
-                                        'base-' + codename + '.lst')
-
-        if package_list is None or not os.path.exists(package_list):
-            package_list = os.path.join(self.build_root,
-                                        'stx-tools/debian-mirror-tools/config/debian',
-                                        codename,
-                                        'common',
-                                        'base-' + codename + '.lst')
+        if not os.path.isfile(external_binaries_list):
+            msg = f"Could not find external binaries list: {external_binaries_list}"
+            raise Exception(msg)
 
         # find pkgs in the list file
         logger.debug(f'Packages to find {self.need_dl_binary_pkgs}')
         for pkg in self.need_dl_binary_pkgs:
             logger.debug(f'checking {pkg}')
-            with open(package_list, 'r') as f:
+            with open(external_binaries_list, 'r') as f:
                 for line in f.readlines():
                     if pkg == line.split()[0]:
                         logger.debug(f'Line for package {pkg} found')
@@ -220,7 +221,6 @@ if __name__ == '__main__':
     fetch_debs = FetchDebs(
         need_dl_stx_pkgs = ['sysinv'],
         need_dl_binary_pkgs = ['tzdata', 'curl', 'apache2'],
-        codename = DIST_CODENAME
     )
 
     fetch_debs.fetch_stx_packages()

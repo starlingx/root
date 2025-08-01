@@ -25,14 +25,6 @@ from signing.patch_signing import sign_files
 
 sys.path.append('..')
 import utils
-import discovery
-
-
-STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
-STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
-STX_DEFAULT_BUILD_TYPE = discovery.STX_DEFAULT_BUILD_TYPE
-STX_DEFAULT_BUILD_TYPE_LIST = discovery.STX_DEFAULT_BUILD_TYPE_LIST
-DIST_CODENAME = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
 
 # Patch signature files
 DETACHED_SIGNATURE_FILENAME = "signature.v2"
@@ -52,13 +44,12 @@ class PatchBuilder(object):
     def __init__(self,
                  patch_recipe_file,
                  file_name=None,
-                 sign_remote=False,
-                 codename=STX_DEFAULT_DISTRO_CODENAME):
+                 sign_remote=False):
 
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
 
-        self.fetch_debs = fetch_debs.FetchDebs(codename=codename)
+        self.fetch_debs = fetch_debs.FetchDebs()
         self.fetch_debs.need_dl_stx_pkgs = self.metadata.stx_packages
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
 
@@ -67,8 +58,6 @@ class PatchBuilder(object):
         self.sign_remote = sign_remote
         self.signing_server = os.environ.get('SIGNING_SERVER')
         self.signing_user = os.environ.get('SIGNING_USER')
-
-        self.distro_codename = codename
 
         self.validate_inputs()
 
@@ -103,7 +92,7 @@ class PatchBuilder(object):
         # Create a temporary working directory
         logger.debug("Fetching debs...")
         self.fetch_debs.fetch_stx_packages()
-        self.fetch_debs.fetch_external_binaries(codename=self.distro_codename)
+        self.fetch_debs.fetch_external_binaries()
         # verify if dir is not empty
         dl_dir = os.path.join(self.fetch_debs.output_dir, "downloads", "binary")
         if not os.listdir(dl_dir):
@@ -380,7 +369,7 @@ class PatchBuilder(object):
 @click.command()
 @click.option(
             '--recipe',
-            help='Patch recipe input XML file, examples are available under EXAMLES directory',
+            help='Patch recipe input XML file, examples are available under EXAMPLES directory',
             required=True)
 @click.option(
             '--name',
@@ -394,10 +383,10 @@ class PatchBuilder(object):
             required=False)
 
 
-def build(recipe, name=None, remote_sign=False, codename=STX_DEFAULT_DISTRO_CODENAME):
-    patch_builder = PatchBuilder(recipe, name, remote_sign, codename=codename)
+def build(recipe, name=None, remote_sign=False):
+    patch_builder = PatchBuilder(recipe, name, remote_sign)
     patch_builder.build_patch()
 
 
 if __name__ == '__main__':
-    build(codename=DIST_CODENAME)
+    build()
