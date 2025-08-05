@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 from lxml import etree
 from xml.dom import minidom
 
-import constants
+from constants import PATCH_SCRIPTS
 
 logger = logging.getLogger('metadata_parser')
 utils.set_logger(logger)
@@ -36,8 +36,6 @@ DESCRIPTION = 'description'
 INSTALL_INSTRUCTIONS = 'install_instructions'
 WARNINGS = 'warnings'
 REBOOT_REQUIRED = 'reboot_required'
-PRE_INSTALL = 'pre_install'
-POST_INSTALL = 'post_install'
 UNREMOVABLE = 'unremovable'
 REQUIRES = 'requires'
 REQUIRES_PATCH_ID = 'req_patch_id'
@@ -128,17 +126,12 @@ class PatchMetadata(object):
         for req_patch in sorted(self.requires):
             self.__add_text_tag_to_xml(requires_atg, REQUIRES_PATCH_ID, req_patch)
 
-        if self.pre_install:
-            self.__add_text_tag_to_xml(top_tag, PRE_INSTALL,
-                                       constants.PATCH_SCRIPTS['PRE_INSTALL'])
-        else:
-            self.__add_text_tag_to_xml(top_tag, PRE_INSTALL, "")
+        for script_id, script_path in self.patch_script_paths.items():
+            script_name = ""
+            if script_path != None:
+                script_name = PATCH_SCRIPTS[script_id]
 
-        if self.post_install:
-            self.__add_text_tag_to_xml(top_tag, POST_INSTALL,
-                                       constants.PATCH_SCRIPTS['POST_INSTALL'])
-        else:
-            self.__add_text_tag_to_xml(top_tag, POST_INSTALL, "")
+            self.__add_text_tag_to_xml(top_tag, script_id, script_name)
 
         if self.activation_scripts:
             activation_scripts_tag = ET.SubElement(top_tag, ACTIVATION_SCRIPTS)
@@ -187,8 +180,13 @@ class PatchMetadata(object):
         self.install_instructions = patch_recipe[INSTALL_INSTRUCTIONS]
         self.warnings = patch_recipe[WARNINGS]
         self.reboot_required = patch_recipe[REBOOT_REQUIRED]
-        self.pre_install = self.check_script_path(patch_recipe[PRE_INSTALL])
-        self.post_install = self.check_script_path(patch_recipe[POST_INSTALL])
+
+        # For each patch script, validate the path provided
+        self.patch_script_paths = {
+            script_id: self.check_script_path(patch_recipe[script_id])
+            for script_id in PATCH_SCRIPTS.keys()
+        }
+
         self.unremovable = patch_recipe[UNREMOVABLE]
         self.status = patch_recipe[STATUS]
         if 'id' in patch_recipe[REQUIRES]:
