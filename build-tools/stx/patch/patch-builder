@@ -315,10 +315,10 @@ class PatchBuilder(object):
         logger.info("Starting remote signing for: %s", patch_file)
 
         if not self.signing_server:
-            logger.exception("SIGNING_SERVER variable not set, unable to continue.")
+            logger.error("SIGNING_SERVER variable not set, unable to continue.")
             sys.exit(1)
         if not self.signing_user:
-            logger.exception("SIGNING_USER variable not set, unable to continue.")
+            logger.error("SIGNING_USER variable not set, unable to continue.")
             sys.exit(1)
         try:
             conn_string = f"{self.signing_user}@{self.signing_server}"
