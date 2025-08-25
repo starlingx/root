@@ -187,9 +187,15 @@ def download(url, savepath, logger):
     logger.info(f"Download {url} to {savepath}")
 
     # Need to avoid using the shell as the URL may include '&' characters.
-    run_shell_cmd(["curl", "--fail", "--location", "--connect-timeout", "15",
-        "--speed-time", "15", "--speed-limit", "1", "--retry", "5",
-        "-o", savepath, url], logger)
+    # Remove stale partial files from previous sessions, but allow resume within current session
+    if os.savepath.exists(savepath):
+       os.remove(savepath)
+       logger.info(f"Removed existing file to ensure clean state: {savepath}")
+
+    run_shell_cmd(["curl", "--fail", "--location", "--connect-timeout", "30",
+    "--speed-time", "30", "--speed-limit", "1", "--retry", "5",
+    "--retry-delay", "3", "--retry-max-time", "120", "--limit-rate", "500K",
+    "-C", "-", "-o", savepath, url], logger)
 
     return True
 
