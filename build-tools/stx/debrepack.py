@@ -188,7 +188,7 @@ def download(url, savepath, logger):
 
     # Need to avoid using the shell as the URL may include '&' characters.
     # Remove stale partial files from previous sessions, but allow resume within current session
-    if os.savepath.exists(savepath):
+    if os.path.exists(savepath):
        os.remove(savepath)
        logger.info(f"Removed existing file to ensure clean state: {savepath}")
 
