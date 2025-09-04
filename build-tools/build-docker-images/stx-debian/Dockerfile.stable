@@ -121,6 +121,8 @@ RUN apt-get update -y && \
 # FIXME: uncomment once qemu is ported to debian (starlingx/integ)
 #        qemu-utils \
         && \
+    apt-get remove -y gcc-9-base && \
+# gcc-9-base ends up unused since in bullseye the default gcc is gcc-10
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
