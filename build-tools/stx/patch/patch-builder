@@ -18,6 +18,8 @@ import sys
 import tarfile
 import tempfile
 
+from exceptions import FetchDebsError
+
 import constants
 import fetch_debs
 import metadata
@@ -384,8 +386,13 @@ class PatchBuilder(object):
 
 
 def build(recipe, name=None, remote_sign=False):
-    patch_builder = PatchBuilder(recipe, name, remote_sign)
-    patch_builder.build_patch()
+    try:
+        patch_builder = PatchBuilder(recipe, name, remote_sign)
+        patch_builder.build_patch()
+
+    except FetchDebsError as e:
+        logger.exception(e)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

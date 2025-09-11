@@ -11,6 +11,8 @@ import sys
 import logging
 import shutil
 
+from exceptions import FetchDebsError
+
 sys.path.append('..')
 import debsentry
 import repo_manage
@@ -129,16 +131,13 @@ class FetchDebs(object):
             if deb not in self.need_dl_stx_pkgs:
                 dl_debs_dict.pop(deb)
 
-        logger.debug(f'Package list after filtering:{dl_debs_dict}')
+        logger.debug(f'STX package list after filtering: {dl_debs_dict}')
 
-        logger.info(f'Total debs need to be downloaded: {len(dl_debs_dict)}')
+        dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
+
+        logger.info(f'Fetching STX debs to {dl_bin_debs_dir} \n')
         dl_debs_with_ver = [f'{k} {v}' for k, v in dl_debs_dict.items()]
         fetch_ret = self.download(dl_debs_with_ver)
-        dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
-        if len(fetch_ret['deb-failed']) == 0:
-            logger.info(f'Successfully downloaded STX debs to {dl_bin_debs_dir}')
-        else:
-            logger.error(f'Failed to downloaded STX debs to {dl_bin_debs_dir}')
 
 
     def get_debian_pkg_iso_list(self):
@@ -195,24 +194,32 @@ class FetchDebs(object):
                     logger.error(f"Package '{pkg}' not found in the package list")
                     sys.exit(1)
 
-        logger.debug('Binary packages to download:%s', all_debs)
-        fetch_ret = self.download(all_debs)
+        logger.debug('Third-party binaries to fetch:%s', all_debs)
+
         dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
-        if len(fetch_ret['deb-failed']) == 0:
-            logger.info(f'Successfully downloaded external debs to {dl_bin_debs_dir} \n')
-        else:
-            logger.info(f'Failed to downloaded external debs to {dl_bin_debs_dir} \n')
+
+        logger.info(f'Fetching debs to {dl_bin_debs_dir} \n')
+        fetch_ret = self.download(all_debs)
 
 
     def download(self, all_debs):
+        "Fetch pkgs from aptly"
+
+        logger.debug('Fetching debs from aptly...')
+
         try:
-            logger.debug('Downloading debs...')
-            fetch_ret = self.debs_fetcher.fetch_pkg_list(all_debs)
+            result = self.debs_fetcher.fetch_pkg_list(all_debs)
+
         except Exception as e:
-            logger.error(str(e))
-            logger.error('Exception has when fetching debs with repo_manage')
-            sys.exit(1)
-        return fetch_ret
+            logger.exception(f"Exception fetching debs: {str(e)}")
+            raise
+
+        failed_fetches = result["deb-failed"] + result["dsc-failed"]
+
+        if failed_fetches:
+            raise FetchDebsError(f"Failed to fetch: {failed_fetches}")
+
+        return result
 
 
 if __name__ == '__main__':
