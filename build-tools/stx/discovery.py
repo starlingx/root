@@ -160,6 +160,10 @@ def get_pkg_dirs_files (layer='all', distro=STX_DEFAULT_DISTRO,
             files_list = glob.glob("{}/{}_pkg_dirs*".format(proj_dir,distro))
         if not files_list:
             files_list = glob.glob("{}/{}_{}_pkg_dirs*".format(proj_dir,distro,codename))
+        if not files_list:
+            # Final chance ... perhaps this repo hasn't converted to the new configuration
+            # so try the old
+            files_list = glob.glob("{}/{}_pkg_dirs*".format(proj_dir,distro))
         pkg_dirs_list.extend(files_list)
     return pkg_dirs_list
 

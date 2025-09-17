@@ -21,10 +21,11 @@
 # Realization of its real RESTAPI(go)
 # https://github.com/molior-dbs/aptly
 from aptly_api import Client
+from aptly_api.parts.tasks import Task
 from debian import debian_support
 import os
 import time
-from typing import Optional
+from typing import Optional, NamedTuple
 
 PREFIX_LOCAL = 'deb-local-'
 PREFIX_REMOTE = 'deb-remote-'
@@ -282,6 +283,12 @@ class Deb_aptly():
     # Return: SUCCEEDED, FAILED, TIMEOUTED, EINVAL
     def __wait_for_task(self, task, count=DEFAULT_TIMEOUT_COUNT):
         '''Wait for an aptly task for one or more minutes'''
+        # Some functions return object that are not of type 'Task' when the job completed successfully
+        if not isinstance(task, Task):
+            return 'SUCCEEDED'
+        # Perhaps the job completed immediately, without spawning a task
+        if task.state == 'SUCCEEDED' or task.state == 'FAILED':
+            return task.state
         if count not in range(1, 30):
             self.logger.error('Requested wait of % minutes is greater than 30 minutes max wait.', count)
             return 'EINVAL'
@@ -337,7 +344,7 @@ class Deb_aptly():
 
     # Publish a snap called "name" with prefix as name, DEBIAN_DISTRIBUTION as the distribution
     # Return None or prefix/distribution
-    def __publish_snap(self, name):
+    def __publish_snap(self, name, distribution=DEBIAN_DISTRIBUTION):
         '''Deploy a snapshot.'''
         # Remove a same name publish if exists
         publish_list = self.aptly.publish.list()
@@ -369,7 +376,7 @@ class Deb_aptly():
         else:
             # Only support binary_amd64 and source packages
             extra_param['architectures'] = ['amd64', 'source']
-            extra_param['distribution'] = None
+            extra_param['distribution'] = distribution
             extra_param['origin'] = self.origin
 
         extra_param['source_kind'] = 'snapshot'
@@ -422,7 +429,12 @@ class Deb_aptly():
     def list_remotes(self, quiet=False):
         '''List all remote repositories/mirrors.'''
         r_list = []
-        remote_list = self.aptly.mirrors.list()
+        try:
+            remote_list = self.aptly.mirrors.list()
+        except Exception as e:
+            if not str(e).startswith('404 Not Found'):
+                self.logger.error('Error: %s' % e)
+            remote_list = []
         if not len(remote_list):
             if not quiet:
                 self.logger.info('No remote repo')
@@ -432,7 +444,14 @@ class Deb_aptly():
         for remote in remote_list:
             r_list.append(remote.name)
             if not quiet:
-                self.logger.info('%s : %s : %s', remote.name, remote.archive_root, remote.distribution)
+                if 'archive_root' in remote:
+                    # Old api
+                    self.logger.info('%s : %s : %s', remote.name,
+                                     remote.archive_root, remote.distribution)
+                else:
+                    self.logger.info('%s : %s : %s : %s : %s', remote.name,
+                                     remote.archiveurl, remote.distribution,
+                                     remote.components, remote.architectures)
         return r_list
 
     # find and remove a remote
@@ -593,7 +612,7 @@ class Deb_aptly():
             query = pkg_name + ' (' + pkg_version + ')'
         # If we want more detailed info, add "detailed=True, with_deps=True" for search_packages.
         search_result = self.aptly.repos.search_packages(local_repo, query=query)
-        self.logger.debug('delete_pkg_local find %d packages.' % len(search_result))
+        self.logger.debug('delete_pkg_local found %d packages.' % len(search_result))
         for pkg in search_result:
             if (pkg_type == 'source' and pkg.key.split()[0] == 'Psource') or \
                 (pkg_type != 'source' and pkg.key.split()[0] != 'Psource'):
@@ -770,7 +789,7 @@ class Deb_aptly():
         repo_find = False
         for repo in repo_list:
             if name == repo.name:
-                self.logger.debug('%s find, can be used', name)
+                self.logger.debug('repo %s found, can be used', name)
                 repo_find = True
                 break
         if not repo_find:
@@ -839,14 +858,16 @@ class Deb_aptly():
         pub_list = self.aptly.publish.list()
         self.logger.info('%d publish', len(pub_list))
         for pub in pub_list:
+            self.logger.info('Drop publish %s : %s', pub.prefix, pub.distribution)
             task = self.aptly.publish.drop(prefix=pub.prefix, distribution=pub.distribution, force_delete=True)
             task_state = self.__wait_for_task(task)
             if task_state != 'SUCCEEDED':
-                self.logger.warning('Drop publish failed %s : %s', pub.frepix, task_state)
+                self.logger.warning('Drop publish failed %s : %s', pub.prefix, task_state)
         # clean snapshots
         snap_list = self.aptly.snapshots.list()
         self.logger.info('%d snapshot', len(snap_list))
         for snap in snap_list:
+            self.logger.info('Drop snapshot %s', snap.name)
             task = self.aptly.snapshots.delete(snapshotname=snap.name, force=True)
             task_state = self.__wait_for_task(task)
             if task_state != 'SUCCEEDED':

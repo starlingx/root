@@ -14,7 +14,8 @@
 #
 # Copyright (C) 2021-2022 Wind River Systems,Inc
 
-import apt
+# import apt
+import apt_pkg
 import argparse
 import debrepack
 import discovery
@@ -49,6 +50,9 @@ all_binary_lists = ['base-' + DIST_CODENAME + '.lst', 'os-std.lst', 'os-rt.lst']
 logger = logging.getLogger('downloader')
 utils.set_logger(logger)
 
+rlogger = logging.getLogger('repo_manager')
+utils.set_logger(rlogger)
+
 ALL_DISTROS = discovery.get_all_distros()
 ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
@@ -56,6 +60,107 @@ ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
 if STX_MIRROR_STRATEGY is None:
     STX_MIRROR_STRATEGY = "stx_mirror_first"
+
+apt_rootdir = '/usr/local/apt-chroot'
+
+apt_conf_content = f"""\
+Dir "/";
+Dir::State "/var/lib/apt";
+Dir::State::Lists "/var/lib/apt/lists";
+Dir::Cache "/var/cache/apt";
+Dir::Cache::Archives "/var/cache/apt/archives";
+Dir::Etc "/etc/apt";
+Dir::Etc::Trusted "/etc/apt/trusted.gpg";
+Dir::Etc::TrustedParts "/etc/apt/trusted.gpg.d";
+Acquire::Check-Valid-Until "false";
+"""
+
+apt_conf_chroot_content = f"""\
+Dir "{apt_rootdir}";
+Dir::State "{apt_rootdir}/var/lib/apt";
+Dir::State::Lists "{apt_rootdir}/var/lib/apt/lists";
+Dir::Cache "{apt_rootdir}/var/cache/apt";
+Dir::Cache::Archives "{apt_rootdir}/var/cache/apt/archives";
+Dir::Etc "{apt_rootdir}/etc/apt";
+Dir::Etc::Trusted "{apt_rootdir}/etc/apt/trusted.gpg";
+Dir::Etc::TrustedParts "{apt_rootdir}/etc/apt/trusted.gpg.d";
+Acquire::Check-Valid-Until "false";
+"""
+
+apt_required_paths = [
+    "/etc/apt",
+    "/var/lib/apt",
+]
+
+
+def get_version(pkg, version_str):
+    """
+    Given an apt_pkg.Package object, return a apt_pkg.version objectmatching version_str
+    """
+    for ver in pkg.version_list:
+        if version_str is None:
+            return ver
+        if ver.ver_str == version_str:
+            return ver
+    return None
+
+def get_avail_versions(pkg):
+    """
+    Given an apt_pkg.Package object, return a list of version strings
+    """
+    vers = []
+    for ver in pkg.version_list:
+        vers.append(ver.ver_str)
+    return vers
+
+def parse_packages_file(file_path, target_package, target_version):
+    with open(file_path, 'r') as f:
+        entry = {}
+        for line in f:
+            line = line.strip()
+            if not line:
+                # End of entry
+                if entry.get("Package") == target_package and entry.get("Version") == target_version:
+                    return entry
+                entry = {}
+            elif ": " in line:
+                key, value = line.split(": ", 1)
+                entry[key] = value
+            elif line.startswith(" ") and entry:
+                # Multi-line value continuation
+                last_key = list(entry.keys())[-1]
+                entry[last_key] += "\n" + line.strip()
+    return None
+
+def get_download_urls(pkg_name, target_version, version):
+    """
+    Given an apt_pkg.Version object, return a list of full .deb download URLs.
+    """
+    urls = []
+    lists_dir = os.path.join(apt_rootdir, "var/lib/apt/lists")
+    #
+    for pkg_file_tuple in version.file_list:
+        pkg_file_obj, _ = pkg_file_tuple
+        # site = pkg_file_obj.site  # e.g. 'stx-master-deb-stx-repomgr:80'
+        # label = pkg_file_obj.label    # e.g. 'deb-local-binary trixie'
+        # archive = pkg_file_obj.archive  # e.g. 'trixie'
+        # component = pkg_file_obj.component  # e.g. 'main'
+        # arch = pkg_file_obj.architecture  # e.g. 'main'
+        index_path = pkg_file_obj.filename  # e.g. '/tmp/downloader/var/lib/apt/lists/stx-master-deb-stx-repomgr:80_deb-local-binary_dists_trixie_main_binary-amd64_Packages'
+        #
+        # Construct the base URL (example, adjust if your repo structure differs)
+        base=os.path.relpath(index_path, lists_dir).replace('_','/').split("/dists/", 1)[0]
+        base_url = f"http://{base}"
+        #
+        if os.path.exists(index_path):
+            entry = parse_packages_file(index_path, pkg_name, target_version)
+            if entry and "Filename" in entry:
+                relpath = entry["Filename"].lstrip("/")
+                final_url = f"{base_url}/{relpath}"
+                urls.append(final_url)
+    #
+    return urls
+
 
 def get_downloaded(dl_dir, dl_type):
     """
@@ -176,27 +281,230 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_C
     )
     return layer_binaries
 
-def update_apt():
+            
+def run_in_chroot(cmd):
+    """Run a shell command inside the chroot"""
+    full_cmd = ["sudo", "chroot", apt_rootdir] + cmd
+    print(f"Running inside chroot: {' '.join(cmd)}")
+    subprocess.run(full_cmd, check=True)
+
+def run_in_chroot_capture(cmd):
+    """Run command in chroot and capture output"""
+    full_cmd = ["sudo", "chroot", apt_rootdir] + cmd
+    result = subprocess.run(full_cmd, check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+def kill_gpg_agent_in_chroot():
     try:
-        cache = apt.Cache(rootdir='/')
-        cache.update()
+        run_in_chroot(["pkill", "-u", "root", "gpg-agent"])
+        run_in_chroot(["pkill", "-u", "root", "dirmngr"])
+        print("gpg-agent inside chroot killed.")
+    except subprocess.CalledProcessError:
+        print("No gpg-agent process found inside chroot (or already exited).")
 
-        # Reopen the cache to reflect the updates
-        cache.open(None)
-        logger.info("apt update done")
+def extract_and_split_keys_in_chroot(combined_keyring, output_dir):
+    # Temporary keyring inside chroot
+    temp_keyring = "/tmp/temp.gpg"
 
-        if cache._depcache.broken_count == 0:
-            logger.info("No apt packages broken")
-        else:
-            logger.error("Broken apt dependencies were found")
+    # Import combined keyring into temp keyring
+    run_in_chroot([
+        "gpg", "--no-default-keyring",
+        "--keyring", temp_keyring,
+        "--import", combined_keyring
+    ])
 
-    except apt.cache.FetchFailedException as e:
-        logger.error(f"Failed to fetch apt packages {e} before downloader")
-    except Exception as e:
-        if "Failed to lock directory" in str(e):
-            logger.info("Suppressed harmless apt lock error")
-        else:
-            logger.error(f" An unexpected error occurred {e}")
+    # List keys from temp keyring
+    output = run_in_chroot_capture([
+        "gpg", "--no-default-keyring",
+        "--keyring", temp_keyring,
+        "--list-keys", "--with-colons"
+    ])
+
+    # Extract key fingerprints from 'pub' lines
+    key_ids = [line.split(":")[4] for line in output.splitlines() if line.startswith("pub")]
+
+    for keyid in key_ids:
+        keyfile = os.path.join(output_dir, f"{keyid}.gpg")
+        if os.path.isfile(f"{apt_rootdir}{keyfile}"):
+            continue
+        print(f"Exporting key {keyid} to {keyfile} inside chroot...")
+        # Export key and write to file inside chroot
+        with open(f"{apt_rootdir}{keyfile}", "wb") as f:
+            export_proc = subprocess.run(
+                ["sudo", "chroot", apt_rootdir,
+                 "gpg", "--no-default-keyring",
+                 "--keyring", temp_keyring,
+                 "--export", keyid],
+                check=True, stdout=subprocess.PIPE
+            )
+            f.write(export_proc.stdout)
+        os.chmod(f"{apt_rootdir}{keyfile}", 0o644)
+
+    # Clean up temp keyring file inside chroot
+    run_in_chroot(["rm", "-f", temp_keyring])
+    kill_gpg_agent_in_chroot()
+    print("Key export inside chroot complete.")
+
+def combine_keys_in_chroot():
+    # Temporary keyring inside chroot
+    temp_keyring = "/tmp/temp.gpg"
+    combined_keyring = "/etc/apt/trusted.gpg"
+    partial_keyring_dir = "/etc/apt/trusted.gpg.d"
+
+    # Clean up temp keyring file inside chroot
+    run_in_chroot(["rm", "-f", temp_keyring])
+
+    # Import combined keyring into temp keyring
+    run_in_chroot([
+        "bash", "-c",
+        "for f in /etc/apt/trusted.gpg.d/*.gpg; do " +
+        "gpg --no-default-keyring --keyring $f --export >> " + temp_keyring + "; " +
+        "done"
+    ])
+
+    # Copy temp keyring into legacy location for apt unified key
+    run_in_chroot(["mv", "-f", temp_keyring, combined_keyring])
+
+    # Set ownership of combined keyring
+    run_in_chroot(["chown", "root:root", "-R", combined_keyring, partial_keyring_dir])
+
+    # make sure there is no gpg_agent process left running in chroot that might prevent umount
+    kill_gpg_agent_in_chroot()
+    print("Key preperation inside chroot complete.")
+
+def create_apt_chroot():
+    # Step 0: clean previous chroot
+    if os.path.exists(apt_rootdir):
+        for path in [ "/proc", ]:
+            mount_path = os.path.join(apt_rootdir, path.lstrip("/"))
+            if not os.path.ismount(mount_path):
+               subprocess.run([
+                  "sudo", "mount", "-o", "bind", path, os.path.join(apt_rootdir, path.lstrip("/"))
+               ], check=True)
+        kill_gpg_agent_in_chroot()
+        for path in [
+            "/proc",
+            "/sys",
+            "/dev/pts",
+            "/dev",
+            "/etc/resolv.conf"
+            ]:
+            mount_path = os.path.join(apt_rootdir, path.lstrip("/"))
+            if os.path.ismount(mount_path):
+                subprocess.run([
+                    "sudo", "umount", mount_path
+                ], check=True)
+        for path in [
+            "var/lib/apt/lists/partial",
+            "var/cache/apt/archives/partial"
+            ]:
+            path = os.path.join(apt_rootdir, path.lstrip("/"))
+            if os.path.exists(path):
+                subprocess.run([
+                    "sudo", "chown", str(os.getuid()), path
+                ], check=True)
+
+
+
+    # if os.path.isdir(apt_rootdir):
+    #     subprocess.run([
+    #         "sudo", "rm", "-rf", apt_rootdir
+    #     ])
+
+    # Step 1: If missing apt_rootdir (running on an old container) then run debootstrap
+    if not os.path.exists(apt_rootdir):
+        os.makedirs(apt_rootdir)
+        subprocess.run([
+            "fakeroot", "debootstrap", "--variant=minbase", "--include=ca-certificates,debian-archive-keyring,gnupg,procps", "--foreign", DIST_CODENAME, apt_rootdir, "http://deb.debian.org/debian"
+        ], check=True)
+
+    # Step 2: Copy current system's APT sources into chroot
+    etc_apt = "/etc/apt"
+    key_src_dir = "/usr/share/keyrings"
+    key_dst_dir = "/etc/apt/trusted.gpg.d"
+    chroot_etc_apt = os.path.join(apt_rootdir, etc_apt.lstrip('/'))
+
+    for path in [
+        "var/lib/apt/lists/partial",
+        "var/cache/apt/archives/partial",
+        "etc/apt"
+        ]:
+        # os.makedirs(os.path.join(apt_rootdir, path.lstrip("/")), exist_ok=True)
+        subprocess.run([
+            "sudo", "mkdir", "-p", os.path.join(apt_rootdir, path.lstrip("/"))
+        ], check=True)
+
+    for path in [
+        etc_apt,
+        key_dst_dir
+        ]:
+        subprocess.run([
+            "sudo", "chown", str(os.getuid()), os.path.join(apt_rootdir, path.lstrip("/"))
+        ], check=True)
+
+    # Copy /etc/apt/sources.list
+    if os.path.exists("/etc/apt/sources.list"):
+        shutil.copy("/etc/apt/sources.list", chroot_etc_apt)
+
+    # Copy /etc/apt/sources.list.d/
+    src_list_d = "/etc/apt/sources.list.d"
+    dest_list_d = os.path.join(chroot_etc_apt, "sources.list.d")
+    if os.path.exists(src_list_d):
+        shutil.copytree(src_list_d, dest_list_d, dirs_exist_ok=True)
+
+    # Create apt.conf for the non-standard location
+    apt_config = os.path.join(chroot_etc_apt, 'apt.conf')
+    apt_config_chroot = os.path.join(chroot_etc_apt, 'apt_chroot.conf')
+    apt_config_d = os.path.join(etc_apt, 'apt.conf.d')
+    apt_source_d = os.path.join(etc_apt, 'sources.list.d')
+
+    with open(apt_config, "w") as f:
+        f.write(apt_conf_content)
+    with open(apt_config_chroot, "w") as f:
+        f.write(apt_conf_chroot_content)
+
+    for path in [
+        "/proc",
+        "/sys",
+        "/dev",
+        "/etc/resolv.conf"
+        ]:
+        subprocess.run([
+           "sudo", "mount", "-o", "bind", path, os.path.join(apt_rootdir, path.lstrip("/"))
+        ], check=True)
+
+    subprocess.run([
+        "sudo", "mount", "-t", "devpts", "devpts", os.path.join(apt_rootdir, "dev/pts")
+    ], check=True)
+
+    run_in_chroot(["rm", "-rf", apt_config_d])
+    run_in_chroot(["rm", "-rf", apt_source_d])
+
+    missing_keys = [ "debian-archive-keyring.gpg", "debian-archive-removed-keys.gpg" ]
+    for missing_key in missing_keys:
+        key_src = os.path.join(apt_rootdir, key_src_dir.lstrip('/'), missing_key)
+        key_dst = os.path.join(apt_rootdir, key_dst_dir.lstrip('/'), missing_key)
+        if not os.path.isfile(key_dst) and os.path.isfile(key_src):
+            shutil.copy2(key_src, key_dst)
+
+        extract_and_split_keys_in_chroot(os.path.join('/', key_dst_dir, missing_key),
+                                         os.path.join('/', key_dst_dir))
+    combine_keys_in_chroot()
+
+    os.environ['APT_CONFIG'] = apt_config
+    os.environ["DIR"] = apt_rootdir
+    os.environ["DIR::State"] = os.path.join(apt_rootdir, "var/lib/apt")
+    os.environ["DIR::Cache"] = os.path.join(apt_rootdir, "var/cache/apt")
+    os.environ["DIR::Etc"] = os.path.join(apt_rootdir, "etc/apt")
+
+    print("Chroot created and APT sources synced.")
+
+def apt_update_inside_chroot():
+    # run_in_chroot([ "apt-get", "update" ])
+    subprocess.run([
+        "sudo", "chroot", apt_rootdir, "apt-get", "update"
+    ])
+
 
 class BaseDownloader():
     def __init__(self, arch, _dl_dir, dl_list_file, clean):
@@ -206,8 +514,6 @@ class BaseDownloader():
         self.dl_need = []
         self.dl_success = []
         self.dl_failed = []
-        rlogger = logging.getLogger('repo_manager')
-        utils.set_logger(rlogger)
         self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
                                            '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
                                            rlogger)
@@ -268,7 +574,10 @@ class DebDownloader(BaseDownloader):
         self.downloaded = []
         self.need_upload = []
         self.layer_binaries = _layer_binaries
-        self.apt_cache = apt.cache.Cache()
+        apt_pkg.config.set("Dir::Root", apt_rootdir)
+        apt_pkg.config.set("Dir::Etc::main", apt_rootdir + '/etc/apt/apt_chroot.conf')
+        apt_pkg.init()
+        self.apt_cache = apt_pkg.Cache()
 
     def _get_layer_binaries_repository(self, layer: str):
         repo = REPO_BIN
@@ -293,7 +602,21 @@ class DebDownloader(BaseDownloader):
             logger.info("Successfully created repository %s", repo)
         return True
 
+    
+    def get_arch_of_version(self, ver):
+        """
+        """
+        apt_records = apt_pkg.PackageRecords(self.apt_cache)
+        apt_records.lookup(ver.file_list[0])
+        record_str = apt_records.record
+        fields = dict(
+            line.split(": ", 1) for line in record_str.strip().split("\n") if ": " in line
+        )
+        arch = fields['Architecture']
+        return arch
+
     def download(self, _name, _version, dl_file, url=None, retries=3):
+        logger.info ('download _name=%s _version=%s dl_file=%s url=%s retries=%s', _name, _version, dl_file, str(url), retries)
         if url is not None:
             ret = os.path.join(self.dl_dir, dl_file)
             tmp_file = ".".join([ret, "tmp"])
@@ -328,23 +651,33 @@ class DebDownloader(BaseDownloader):
 
         try:
             package = self.apt_cache[_name]
-            candidate = package.versions.get(_version)
+            if not package:
+                logger.error(' '.join(['Failed to find', _name,
+                             'in available sources']))
+                logger.error('You may need to update the package list file')
+
+            candidate = get_version(package, _version)
             if not candidate:
-                logger.error(' '.join(['Fail to download', _name,
+                logger.error(' '.join(['Failed to download', _name,
                              'with wrong version', _version, '?']))
-                logger.error('May need to update the package list file')
+                logger.error('You may need to update the package list file')
                 logger.error('package: %s', str(package))
-                logger.error('package.versions: %s', str(package.versions))
+                logger.error('Available versions: %s', str(get_avail_versions(package)))
                 return None
 
-            logger.info ('Downloading %s from %s', dl_file, candidate.uri)
-            ret = candidate.fetch_binary(self.dl_dir)
+            urls = get_download_urls(_name, _version, candidate)
+            logger.info ('Downloading %s from %s', dl_file, str(urls))
+            # ret = candidate.fetch_binary(self.dl_dir)
+            for url in urls:
+                ret = self.download(_name, _version, dl_file, url=url, retries=retries)
+                if ret:
+                    break
             assert os.path.basename(ret) == dl_file
             if ret:
                 return ret
         except Exception as e:
             deb_name = _name + '_' + _version
-            logger.debug("Fail to fetch binary %s", deb_name)
+            logger.debug("Failed to fetch binary %s", deb_name)
             logger.debug(str(e))
             '''
             Sometimes the target deb is created in dl_dir, but actually it is
@@ -417,10 +750,13 @@ class DebDownloader(BaseDownloader):
                             url = None
                             try:
                                 package = self.apt_cache[pkg_name]
+                                candidate = get_version(package, pkg_ver)
+                                if candidate is None:
+                                    candidate = get_version(package, None)
+                                arch = self.get_arch_of_version(candidate)
                             except Exception as e:
                                 logger.error(str(e))
                                 sys.exit(1)
-                            arch = package.candidate.architecture
 
                         pkg_dict={'name':pkg_name, 'ver':pkg_ver, 'epoch':pkg_epoch, 'arch':arch, 'url':url, 'repo':repo}
                         pkg_data.append(pkg_dict)
@@ -498,7 +834,7 @@ class DebDownloader(BaseDownloader):
                         del_ret = self.repomgr.delete_pkg(repo, deb_name, 'binary', deb_ver)
                         logger.debug("deleted the old %s from repo %s, ret %d", deb_name, repo, del_ret)
                     except Exception as e:
-                        logger.error(str(e))
+                        logger.error(str(e), exc_info=True)
                         logger.error("Exception on deleting %s from %s", deb_name, repo)
             else:
                 self.dl_failed.append(pname_epoch_arch)
@@ -523,7 +859,7 @@ class DebDownloader(BaseDownloader):
                         continue
             if delete_me:
                 del_ver = prev_upload_dict['ver']
-                logger.debug("Deleting pkg %s_%s freom %s", del_name, del_ver, repo)
+                logger.debug("Deleting pkg %s_%s from %s", del_name, del_ver, repo)
                 try:
                     del_ret = self.repomgr.delete_pkg(repo, del_name, 'binary', del_ver)
                 except Exception as e:
@@ -787,7 +1123,11 @@ if __name__ == "__main__":
         args.download_binary = True
         args.download_source = True
 
-    update_apt()
+    logger.info('Setting up apt cache')
+    
+    create_apt_chroot()
+    apt_update_inside_chroot()
+    logger.info('Apt cache is ready')
 
     dl_list_dir = '%s/required_downloads' % os.environ['MY_WORKSPACE']
     if os.path.isdir(dl_list_dir):
@@ -823,7 +1163,7 @@ if __name__ == "__main__":
             cmd = 'file="%s" && sort -u "$file" >"$file".tmp && mv -f "$file".tmp "$file"' % dl_list_file
             utils.run_shell_cmd(cmd, logger)
 
-    logger.info('Required downloads\' file names are in %s/', dl_list_dir)
+    logger.info('Required download file names are in %s/', dl_list_dir)
 
     logger.info("Verifying downloader return status")
     if binary_ret != 0:

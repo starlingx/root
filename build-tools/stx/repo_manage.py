@@ -109,11 +109,12 @@ class AptFetch():
     def fetch_deb(self, pkg_name, pkg_version):
         '''Download a binary package'''
 
+        if not pkg_name or not pkg_version:
+            ret = 'DEB-F missing parameter'
+            return ret
+
         # Default return is a "download failed" message
         ret = ' '.join(['DEB-F', pkg_name, pkg_version]).strip()
-
-        if not pkg_name or not pkg_version:
-            return ret
 
         self.logger.info("Current downloading:%s:%s", pkg_name, pkg_version)
         destdir = os.path.join(self.workdir, 'downloads', 'binary')
@@ -136,7 +137,7 @@ class AptFetch():
                         candidate = default_candidate
                 if not candidate:
                     self.aptlock.release()
-                    self.logger.error("Failed to find the matched version %s for %s", pkg_version, pkg_name)
+                    self.logger.error("Failed to find a matching version for %s %s", pkg_name, pkg_version)
                     return ret
         except Exception as e:
             self.aptlock.release()
@@ -814,7 +815,6 @@ class RepoMgr():
 
 # Simple example on using this class.
 applogger = logging.getLogger('repomgr')
-utils.set_logger(applogger)
 
 
 def _handleDownload(args):
@@ -961,6 +961,8 @@ def subcmd_copy_pkg(subparsers):
     copy_pkg_parser.set_defaults(handle=_handleCopyPkg)
 
 def main():
+    utils.set_logger(applogger)
+
     # command line arguments
     parser = argparse.ArgumentParser(add_help=True,
                                      description='Repository management Tool',

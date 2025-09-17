@@ -33,7 +33,8 @@ import yaml
 
 
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
-DIST = os.environ.get('STX_DIST')
+STX_DIST = os.environ.get('STX_DIST')
+DIST = os.environ.get('DIST')
 
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
 if STX_MIRROR_STRATEGY is None:
@@ -205,6 +206,25 @@ def is_git_repo(path):
         _ = git.Repo(path).git_dir
         return True
     except git.exc.InvalidGitRepositoryError:
+        return False
+
+
+def is_python_debmake():
+    try:
+        # Check what the debmake binary points to
+        result = subprocess.run(
+            ['head', '-n', '1', '/usr/bin/debmake'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        first_line = result.stdout.strip()
+
+        # Python version has this shebang
+        return first_line.startswith('#!') and 'python' in first_line.lower()
+
+    except Exception as e:
+        # Default to False if anything fails
         return False
 
 
@@ -974,7 +994,7 @@ class Parser():
         src = run_shell_cmd('dpkg-parsechangelog -l %s --show-field source' % changelog, self.logger)
         ver = run_shell_cmd('dpkg-parsechangelog -l %s --show-field version' % changelog, self.logger)
         ver += self.set_revision()
-        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (self.pkginfo["srcdir"], ver, RELEASENOTES), self.logger)
+        run_shell_cmd('cd %s; dch -p -D %s -v %s %s' % (self.pkginfo["srcdir"], DIST, ver, RELEASENOTES), self.logger)
         # strip epoch
         ver = ver.split(":")[-1]
 
@@ -998,6 +1018,7 @@ class Parser():
 
         return files
 
+
     def dummy_package(self, pkgfiles, pkgname, pkgver="1.0-1"):
 
         for pfile in pkgfiles:
@@ -1019,8 +1040,12 @@ class Parser():
         for pfile in pkgfiles:
             run_shell_cmd('mkdir -p %s; cp %s %s' % (srcdir, pfile, srcdir), self.logger)
         run_shell_cmd('tar czvf %s %s; rm -rf %s' % (tarfile, srcdir, srcdir), self.logger)
-        run_shell_cmd('debmake -a %s' % tarfile, self.logger)
-        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (srcdir, pkgver, RELEASENOTES), self.logger)
+
+        extra_args = ''
+        if is_python_debmake():
+            extra_args = '--targz=tar.gz'
+        run_shell_cmd('debmake -a %s %s' % (tarfile, extra_args), self.logger)
+        run_shell_cmd('cd %s; dch -p -D %s -v %s %s' % (srcdir, DIST, pkgver, RELEASENOTES), self.logger)
         run_shell_cmd('cd %s; dpkg-buildpackage -nc -us -uc -S -d' % srcdir, self.logger)
         # strip epoch
         ver = pkgver.split(":")[-1]

@@ -417,7 +417,7 @@ def req_chroots_action(action, extra_params):
     if extra_params:
         req_params.update(extra_params)
     try:
-        resp = requests.get(BUILDER_URL + action, data=req_params)
+        resp = requests.get(BUILDER_URL + action, params=req_params)
         resp.raise_for_status()
     except requests.RequestException as e:
         print(e)
@@ -822,7 +822,11 @@ class BuildController():
             return False
         # load the persistent chroot on shared volume
         logger.info("Loading chroot")
-        req_chroots_action('loadchroot', None)
+        ret = req_chroots_action('loadchroot', None)
+        if 'fail' in ret:
+            logger.error("Failed to loaded chroot")
+            return False
+ 
         logger.info("Successfully loaded chroot")
         return True
 
@@ -978,6 +982,10 @@ class BuildController():
             extra_req['mirror'] = mirror
 
         ret = req_chroots_action('addchroot', extra_req)
+
+        if 'fail' in ret:
+            logger.error('Failed to add chroot, please consult the log')
+
         if 'creating' in ret:
             key_string = "Successfully set up " + DIST_CODENAME + " chroot"
             state = show_task_log(os.path.join(PKGBUILDER_ROOT, USER, PROJECT, 'chroot.log'),
@@ -999,6 +1007,7 @@ class BuildController():
             ret_status = req_chroots_action('clonechroot', extra_args)
             if not 'success' == ret_status:
                 logger.error("Failed to clone children chroots")
+                ret = 'fail'
             else:
                 logger.info("Successfully cloned children chroots")
 
@@ -1009,17 +1018,19 @@ class BuildController():
         if 'success' in ret:
             logger.debug('Successfully freed tmpfs chroots')
         if 'fail' in ret:
-            logger.debug('Failed to free tmpfs chroots')
+            logger.error('Failed to free tmpfs chroots')
 
     def clone_chroots(self):
         ret = req_chroots_action('clonechroot', None)
         if 'success' in ret:
             logger.debug('Successfully cloned chroots')
         if 'fail' in ret:
-            logger.debug('Failed to clone chroots')
+            logger.error('Failed to clone chroots')
 
     def refresh_chroots(self):
         ret = req_chroots_action('refreshchroots', None)
+        if 'fail' in ret:
+            logger.error("Failed to refresh chroots")
         return ret
 
     def publish_repo(self, repo_name, suffix=None):
@@ -1212,7 +1223,7 @@ class BuildController():
             req_params['dsc'] = dsc
 
         try:
-            resp = requests.get(BUILDER_URL + 'killtask', data=req_params)
+            resp = requests.get(BUILDER_URL + 'killtask', params=req_params)
             resp.raise_for_status()
         except requests.RequestException as e:
             print(e)
@@ -1227,7 +1238,7 @@ class BuildController():
         req_params['mode'] = self.attrs['mode']
 
         try:
-            resp = requests.get(BUILDER_URL + 'stoptask', data=req_params)
+            resp = requests.get(BUILDER_URL + 'stoptask', params=req_params)
             resp.raise_for_status()
         except requests.RequestException as e:
             print(e)
@@ -1760,7 +1771,8 @@ class BuildController():
 
         if not pkg_dirs:
             logger.debug('Found no buildable packages matching selection criteria '
-                         'in build_type build_type of layer {}'.format(layer))
+                         'in build_type %s of layer %s of %s %s',
+                         build_type, layer, self.attrs['distro'], self.attrs['codename'])
             return
 
         logger.info(' '.join(['Start to build', word, 'packages in',
