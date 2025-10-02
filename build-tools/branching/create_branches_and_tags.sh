@@ -418,7 +418,7 @@ for subgit in $SUBGITS; do
         echo "Tag '$tag' already exists in ${subgit}"
     fi
 
-    update_gitreview ${subgit} || exit 1
+    update_gitreview ${subgit} ${review_method} || exit 1
     ) || exit 1
 done
 ) || exit 1

@@ -488,7 +488,10 @@ git_remote_branch () {
     # Before we can select a remote branch, we need to know which remote.
     remote=$($git_remote_fp)
     if [ $? -ne 0 ] || [ "$remote" == "" ]; then
-        return 1
+        remote=$(git_remote)
+        if [ $? -ne 0 ] || [ "$remote" == "" ]; then
+            return 1
+        fi
     fi
 
     # Find 'nearest' remote branch that we detached from and/or added commits to
