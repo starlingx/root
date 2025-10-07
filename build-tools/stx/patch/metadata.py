@@ -44,6 +44,7 @@ STX_PACKAGES = 'stx_packages'
 BINARY_PACKAGES = 'binary_packages'
 SEMANTICS = 'semantics'
 ACTIVATION_SCRIPTS = 'activation_scripts'
+EXTRA_CONTENT = 'extra_content'
 
 
 class PatchMetadata(object):
@@ -53,6 +54,7 @@ class PatchMetadata(object):
         self.binary_packages = []
         self.requires = []
         self.activation_scripts = []
+        self.extra_content = []
 
         # Verify if the path to the patch builder folder is set
         if not PATCH_BUILDER_PATH:
@@ -140,6 +142,13 @@ class PatchMetadata(object):
         else:
             self.__add_text_tag_to_xml(top_tag, ACTIVATION_SCRIPTS, "")
 
+        if self.extra_content:
+            extra_content_tag = ET.SubElement(top_tag, EXTRA_CONTENT)
+            for item in self.extra_content:
+                self.__add_text_tag_to_xml(extra_content_tag, "item", item.split('/')[-1])
+        else:
+            self.__add_text_tag_to_xml(top_tag, EXTRA_CONTENT, "")
+
         packages_tag = ET.SubElement(top_tag, PACKAGES)
         for package in sorted(self.debs):
             self.__add_text_tag_to_xml(packages_tag, "deb", package)
@@ -154,6 +163,9 @@ class PatchMetadata(object):
             return [tag_content]
         return tag_content
 
+
+    # TODO: The feature of searching for content in MY_REPO_ROOT_DIR needs to
+    # be implemented for activation scripts as well.
     def _validate_activation_script(self, script_list):
         '''
         Validate if scripts filename start with an integer
@@ -166,6 +178,7 @@ class PatchMetadata(object):
                 logger.error("Error while parsing the activation script:")
                 logger.error("Filename '%s' doesn't start with an integer." % fullpath_script)
                 sys.exit(1)
+
 
     def parse_metadata(self, patch_recipe):
         self.patch_id = f"{patch_recipe[COMPONENT]}-{patch_recipe[SW_VERSION]}"
@@ -192,6 +205,7 @@ class PatchMetadata(object):
         if 'id' in patch_recipe[REQUIRES]:
             self.requires = self.__tag_to_list(patch_recipe[REQUIRES]['id'])
         self.semantics = patch_recipe[SEMANTICS]
+
         if ACTIVATION_SCRIPTS in patch_recipe and 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
             # the xml parser transform the 'script' value in string or in
             # array depending on how much elements we add.
@@ -203,12 +217,57 @@ class PatchMetadata(object):
                     scripts_lst.append(self.check_script_path(script))
             self._validate_activation_script(scripts_lst)
             self.activation_scripts = scripts_lst
+
+        if EXTRA_CONTENT in patch_recipe and 'item' in patch_recipe[EXTRA_CONTENT]:
+            # the xml parser transform the 'script' value in string or in
+            # array depending on how much elements we add.
+            if isinstance(patch_recipe[EXTRA_CONTENT]['item'], str):
+                extra_content_input = [patch_recipe[EXTRA_CONTENT]['item']]
+            else:
+                extra_content_input = patch_recipe[EXTRA_CONTENT]['item']
+
+            for item in extra_content_input:
+                candidate_item = self.validate_extra_content(item)
+                if candidate_item is not None:
+                    self.extra_content.append(candidate_item)
+
         self.debs = []
 
         if self.status != 'DEV' and self.status != 'REL':
             raise Exception('Supported status are DEV and REL, selected')
 
         logger.debug("Metadata parsed: %s", self)
+
+
+    # TODO: This funtion is very similar to check_script_path()
+    # This code can be refactored to use just one of them.
+    # It's worth refactoring input validation in general.
+    def validate_extra_content(self, item):
+        """ Check if item corresponds to existing file/dir
+
+        If path is relative, look for content using as parent dir
+        the current directory, then fallback to MY_REPO_ROOT_DIR
+        (ie.: /localdisk/designer/USER/PROJECT/)
+        """
+        if not item:
+            # No input provided
+            return None
+
+        # Cases: Absolute path and path relative to curdir
+        candidate = os.path.abspath(item)
+        if os.path.exists(candidate):
+            return candidate
+
+        # Case: Path relative to MY_REPO_ROOT_DIR
+        parent = utils.get_env_variable('MY_REPO_ROOT_DIR')
+        candidate = os.path.join(parent, item)
+        if os.path.exists(candidate):
+            return candidate
+
+        msg = f"Extra content not found: {item}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
 
     def parse_input_xml_data(self):
         # Parse and validate the XML
