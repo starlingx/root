@@ -103,18 +103,23 @@ class FetchDebs(object):
         Download all debs and subdebs from the build system
         Save the files to ${BUILD_ROOT}/dl_debs
         '''
+
+        if not self.need_dl_stx_pkgs:
+            logger.warning("No STX packages to download")
+            return
+
         dl_debs = self.get_all_debs()
         if not dl_debs:
-            logger.warning('No STX packages were found')
-            return
-        else:
-            dl_debs_dict = {}
-            for deb in dl_debs:
-                # dl_debs_with_ver.append(deb.replace('_', ' '))
-                name, version = deb.split('_')
-                if name not in dl_debs_dict:
-                    dl_debs_dict[name] = version
-            logger.debug('Debs found: %s', dl_debs_dict)
+            msg = f"No STX binaries were found that matched source pkgs: {self.need_dl_stx_pkgs}"
+            raise Exception(msg)
+
+        dl_debs_dict = {}
+        for deb in dl_debs:
+            # dl_debs_with_ver.append(deb.replace('_', ' '))
+            name, version = deb.split('_')
+            if name not in dl_debs_dict:
+                dl_debs_dict[name] = version
+        logger.debug('Debs found: %s', dl_debs_dict)
 
         # filter list based on stx-std.lst - Depecrated on master, replaced by debian_iso_image.inc on each repo
         stx_pkg_list_file = self.get_debian_pkg_iso_list()

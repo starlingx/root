@@ -20,6 +20,8 @@
           </xs:complexType>
         </xs:element>
         <xs:element name="semantics" type="xs:string"/>
+        <xs:element name="pre_start" type="xs:string"/>
+        <xs:element name="post_start" type="xs:string"/>
         <xs:element name="pre_install" type="xs:string"/>
         <xs:element name="post_install" type="xs:string"/>
         <xs:element name="activation_scripts">
