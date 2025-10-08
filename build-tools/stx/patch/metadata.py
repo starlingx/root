@@ -238,19 +238,32 @@ class PatchMetadata(object):
 
 
     def check_script_path(self, script_path):
+        """ Process and validate script path
+
+        Check if path points to an existing file.
+        If path is relative, look for the script using as parent dir
+        the current directory, then fallback to MY_REPO_ROOT_DIR
+        (ie.: /localdisk/designer/USER/PROJECT/)
+        """
+
+        # Case: No input provided
         if not script_path:
-            # No scripts provided
             return None
 
-        if not os.path.isabs(script_path):
-            script_path = os.path.join(os.getcwd(), script_path)
+        # Cases: Absolute path and path relative to curdir
+        candidate = os.path.abspath(script_path)
+        if os.path.isfile(candidate):
+            return candidate
 
-        if not os.path.isfile(script_path):
-            erro_msg = f"Install script {script_path} not found"
-            logger.error(erro_msg)
-            raise FileNotFoundError(erro_msg)
+        # Case: Path relative to MY_REPO_ROOT_DIR
+        parent = utils.get_env_variable('MY_REPO_ROOT_DIR')
+        candidate = os.path.join(parent, script_path)
+        if os.path.isfile(candidate):
+            return candidate
 
-        return script_path
+        msg = f"Script not found: {script_path}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
 
 
 if __name__ == "__main__":
