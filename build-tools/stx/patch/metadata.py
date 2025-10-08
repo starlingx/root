@@ -183,7 +183,7 @@ class PatchMetadata(object):
 
         # For each patch script, validate the path provided
         self.patch_script_paths = {
-            script_id: self.check_script_path(patch_recipe[script_id])
+            script_id: self.check_script_path(patch_recipe.get(script_id, None))
             for script_id in PATCH_SCRIPTS.keys()
         }
 
@@ -192,7 +192,7 @@ class PatchMetadata(object):
         if 'id' in patch_recipe[REQUIRES]:
             self.requires = self.__tag_to_list(patch_recipe[REQUIRES]['id'])
         self.semantics = patch_recipe[SEMANTICS]
-        if 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
+        if ACTIVATION_SCRIPTS in patch_recipe and 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
             # the xml parser transform the 'script' value in string or in
             # array depending on how much elements we add.
             scripts_lst = []

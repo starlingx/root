@@ -20,11 +20,11 @@
           </xs:complexType>
         </xs:element>
         <xs:element name="semantics" type="xs:string"/>
-        <xs:element name="pre_start" type="xs:string"/>
-        <xs:element name="post_start" type="xs:string"/>
-        <xs:element name="pre_install" type="xs:string"/>
-        <xs:element name="post_install" type="xs:string"/>
-        <xs:element name="activation_scripts">
+        <xs:element name="pre_start" type="xs:string" minOccurs="0"/>
+        <xs:element name="post_start" type="xs:string" minOccurs="0"/>
+        <xs:element name="pre_install" type="xs:string" minOccurs="0"/>
+        <xs:element name="post_install" type="xs:string" minOccurs="0"/>
+        <xs:element name="activation_scripts" minOccurs="0">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="script" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
