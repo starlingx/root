@@ -42,6 +42,7 @@ class FetchDebs(object):
         # In general: /localdisk/loadbuild/<USER>/<PROJECT>
         self.loadbuild_root = utils.get_env_variable('MY_BUILD_PKG_DIR')
 
+        # TODO: These directories should be inputs, not hardcoded.
         self.output_dir = os.path.join(self.loadbuild_root, 'dl_debs')
         self.apt_src_file = os.path.join(self.loadbuild_root, 'aptsrc')
 

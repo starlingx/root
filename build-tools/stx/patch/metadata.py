@@ -45,6 +45,7 @@ BINARY_PACKAGES = 'binary_packages'
 SEMANTICS = 'semantics'
 ACTIVATION_SCRIPTS = 'activation_scripts'
 EXTRA_CONTENT = 'extra_content'
+PRECHECK_SCRIPTS_FLAG = 'precheck_scripts'
 
 
 class PatchMetadata(object):
@@ -122,6 +123,11 @@ class PatchMetadata(object):
         else:
             raise Exception('Supported values for "Reboot Required" are Y or N, for "Yes" or "No" respectively')
 
+        if self.precheck_scripts_flag.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, PRECHECK_SCRIPTS_FLAG, self.precheck_scripts_flag.upper())
+        else:
+            raise Exception('Supported values for "Precheck Scripts" are Y or N, for "Yes" or "No" respectively')
+
         self.__add_text_tag_to_xml(top_tag, SEMANTICS, self.semantics)
 
         requires_atg = ET.SubElement(top_tag, REQUIRES)
@@ -193,6 +199,10 @@ class PatchMetadata(object):
         self.install_instructions = patch_recipe[INSTALL_INSTRUCTIONS]
         self.warnings = patch_recipe[WARNINGS]
         self.reboot_required = patch_recipe[REBOOT_REQUIRED]
+
+        self.precheck_scripts_flag = 'N'
+        if PRECHECK_SCRIPTS_FLAG in patch_recipe:
+            self.precheck_scripts_flag = patch_recipe[PRECHECK_SCRIPTS_FLAG]
 
         # For each patch script, validate the path provided
         self.patch_script_paths = {

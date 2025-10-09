@@ -135,13 +135,19 @@ class PatchBuilder(object):
                     logger.info(f"Adding: {item}")
                     extra_tar.add(item, arcname=os.path.join("extra", os.path.basename(item)))
 
-        # if the patch includes the 'software' package we need to make deploy-precheck
-        # and upgrade_utils.py from .deb file accessible directly from patch file
-        if 'software' in self.metadata.stx_packages:
-            logger.info(f"Patch includes the software package, getting scripts from deb file...")
+        # Precheck Scripts:
+        # If the patch includes the 'software' package or
+        # if the patch XML has the 'precheck_scripts' flag set to 'Y',
+        # extract precheck scripts from software.deb and put them in the patch file
+        if 'software' in self.metadata.stx_packages or \
+            self.metadata.precheck_scripts_flag == 'Y':
+            logger.info(f"Adding precheck scripts...")
 
             # create temporary folder to hold our files until we copy them to the patch
             tmp_folder = tempfile.mkdtemp(prefix='deb_')
+
+            # Fetch software deb
+            fetch_debs.FetchDebs(need_dl_stx_pkgs = ['software']).fetch_stx_packages()
 
             # Collect files
             files_to_get = [constants.PRECHECK_SCRIPTS["DEPLOY_PRECHECK"],
