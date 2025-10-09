@@ -95,14 +95,13 @@ class PatchBuilder(object):
 
 
     def build_patch(self):
-        logger.info(f"Generating patch {self.patch_name}")
+        logger.info(f"Patch patch: {self.patch_name}")
 
         logger.debug("Fetching debs...")
         self.fetch_debs.fetch_stx_packages()
         self.fetch_debs.fetch_external_binaries()
 
-        logger.info("################ PATCH BUILD ################")
-        logger.info("Download completed, building our patch")
+        logger.info("Building patch...")
 
         tmpdir = tempfile.mkdtemp(prefix="patch_")
         os.chdir(tmpdir)
@@ -127,6 +126,14 @@ class PatchBuilder(object):
         if self.metadata.activation_scripts:
             for script in self.metadata.activation_scripts:
                 self.copy_rename_script(path_to_script=script, rename=False)
+
+        # Extra content
+        if self.metadata.extra_content:
+            logger.info("Adding in extra content...")
+            with tarfile.open("extra.tar", "w") as extra_tar:
+                for item in self.metadata.extra_content:
+                    logger.info(f"Adding: {item}")
+                    extra_tar.add(item, arcname=os.path.join("extra", os.path.basename(item)))
 
         # if the patch includes the 'software' package we need to make deploy-precheck
         # and upgrade_utils.py from .deb file accessible directly from patch file
@@ -255,7 +262,8 @@ class PatchBuilder(object):
         """
         filelist = ["metadata.tar", "software.tar"]
 
-        ### PROCESS EXTRA.TAR HERE
+        if self.metadata.extra_content:
+            filelist.append("extra.tar")
 
         for script_id, script_path in self.patch_script_paths.items():
             if script_path is not None:
