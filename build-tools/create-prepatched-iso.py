@@ -415,6 +415,8 @@ def add_tag_xml(parent: ET.Element, name: str, text: str) -> None:
     tag.text = text
 
 
+# TODO: Some hardcoded values in this function. These should be put in
+#       a constants file.
 def update_metadata_info(metadata_xml_path: str, iso_path: str) -> None:
     """Update ISO's metadata
 
@@ -467,13 +469,22 @@ def update_metadata_info(metadata_xml_path: str, iso_path: str) -> None:
     logger.info(f"Set: ostree.commit1.checksum = '{checksum}'")
     add_tag_xml(element_commit1, "checksum", checksum)
 
+    # A pre-patched ISO is always Reboot Required
+    logger.info("Set: reboot_required = Y")
+    element_reboot_required = root.find('reboot_required')
+    if element_reboot_required is not None:
+        element_reboot_required.text = 'Y'
+    else:
+        msg = "Patch metadata does not contain 'reboot_required' field"
+        raise Exception(msg)
+
     logger.info("Remove: requires")
     requires = root.find("requires")
     if requires is not None:
         requires.clear()
 
     logger.info("Saving metadata XML changes...")
-    tree.write(metadata_xml_path)
+    tree.write(metadata_xml_path, encoding='utf-8', xml_declaration=True)
 
 
 def get_ostree_history(ostree_repo: str, filtered: bool = True) -> str:
