@@ -8,6 +8,7 @@
 installer-prebuilt
 /ansible-playbooks
 /app-dell-storage
+/app-distributed-cloud
 /app-harbor
 /app-gen-tool
 /app-intel-ethernet-operator
