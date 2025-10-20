@@ -484,7 +484,7 @@ def update_metadata_info(metadata_xml_path: str, iso_path: str) -> None:
         requires.clear()
 
     logger.info("Saving metadata XML changes...")
-    tree.write(metadata_xml_path, encoding='utf-8', xml_declaration=True)
+    tree.write(metadata_xml_path)
 
 
 def get_ostree_history(ostree_repo: str, filtered: bool = True) -> str:
