@@ -43,14 +43,34 @@ DEFAULT_CIRCULAR_CONFIG = os.path.join(os.environ.get('MY_BUILD_TOOLS_DIR'), 'st
 # Use /etc/apt/sources.list of the host
 USE_HOST_RESOURCE = True
 
+apt_required_paths = [
+    "/etc/apt",
+    "/var/lib/apt",
+    "/var/cache/apt",
+]
+            
+def apt_copy(src, dest):
+    # Copy required system APT data into temp root
+    for path in apt_required_paths:
+        try:
+            if os.path.isdir(src):
+                shutil.copytree(src, dest, symlinks=True)
+            elif os.path.isfile(src):
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy2(src, dest)
+        except PermissionError as e:
+            print(f"Permission denied: {src} — skipping (run as sudo if needed)")
+        except Exception as e:
+            print(f"Error copying {src}: {e}")
+
+    # Step 3: Create missing directories expected by apt
+    partial_path = os.path.join(dest, "var/lib/apt/lists/partial")
+    os.makedirs(partial_path, exist_ok=True)
 
 def get_aptcache(rootdir):
     '''
     `apt update` for specified Debian repositories.
     '''
-    if USE_HOST_RESOURCE:
-        apt_cache = apt.Cache(rootdir='/')
-        return apt_cache
     try:
         if os.path.exists(rootdir):
             if os.path.isdir(rootdir):
@@ -59,13 +79,18 @@ def get_aptcache(rootdir):
                 os.remove(rootdir)
 
         os.makedirs(rootdir + '/etc/apt')
-        f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
-        for mirror in mirrors:
-            f_sources.write('deb [trusted=yes] ' + mirror + '\n')
-        f_sources.close()
+
+        if USE_HOST_RESOURCE:
+            apt_copy('/', rootdir)
+        else:
+            f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
+            for mirror in mirrors:
+                f_sources.write('deb [trusted=yes] ' + mirror + '\n')
+            f_sources.close()
     except Exception as e:
         print(e)
         raise Exception('APT root dir build error')
+
     try:
         apt_cache = apt.Cache(rootdir=rootdir)
         ret = apt_cache.update()
