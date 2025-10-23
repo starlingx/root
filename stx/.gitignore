@@ -11,7 +11,6 @@ installer-prebuilt
 /app-distributed-cloud
 /app-harbor
 /app-gen-tool
-/app-intel-ethernet-operator
 /app-intel-device-plugins
 /app-ipsec-policy-operator
 /app-istio
