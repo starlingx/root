@@ -22,6 +22,7 @@
 # https://github.com/molior-dbs/aptly
 from aptly_api import Client
 from aptly_api.parts.tasks import Task
+from aptly_api.parts.packages import Package
 from debian import debian_support
 import os
 import time
@@ -630,8 +631,10 @@ class Deb_aptly():
                 pkgs_raw = self.aptly.repos.search_packages(repo_name, query=query)
                 pkgs_key = [pkg.key for pkg in pkgs_raw]
             elif repo_name.startswith(PREFIX_REMOTE):
-                pkgs_key = self.aptly.mirrors.packages(repo_name)
+                pkgs_key = self.aptly.mirrors.list_packages(repo_name)
             for key in pkgs_key:
+                if isinstance(key, Package):
+                    key = key.key
                 pkg_name = key.split()[1]
                 pkg_ver = key.split()[2]
                 pkg_arch = key.split()[0][1:]
@@ -665,14 +668,16 @@ class Deb_aptly():
                         self.logger.debug('pkg_exist find package %s in %s.', pkg_name, repo_name)
                         return True
             elif repo_name.startswith(PREFIX_REMOTE):
-                pkgs = self.aptly.mirrors.packages(repo_name)
+                pkgs = self.aptly.mirrors.list_packages(repo_name)
                 for pkg in pkgs:
+                    if isinstance(pkg, Package):
+                        pkg = pkg.key
                     if pkg.split()[1] == pkg_name:
                         if architecture != 'source' and pkg.split()[0] != 'Psource' and (not pkg_version or pkg_version == pkg.split()[2]):
-                            self.logger.debug('pkg_exist find package %s in %s.', pkg_name, repo_name)
+                            self.logger.debug('pkg_exist found package %s in %s.', pkg_name, repo_name)
                             return True
                         if architecture == 'source' and pkg.split()[0] == 'Psource' and (not pkg_version or pkg_version == pkg.split()[2]):
-                            self.logger.debug('pkg_exist find package %s in %s.', pkg_name, repo_name)
+                            self.logger.debug('pkg_exist found package %s in %s.', pkg_name, repo_name)
                             return True
         return False
 
@@ -708,7 +713,7 @@ class Deb_aptly():
             for repo in self.aptly.mirrors.list():
                 if source == repo.name:
                     source_exist = True
-                    src_pkg_keys = self.aptly.mirrors.packages(source)
+                    src_pkg_keys = self.aptly.mirrors.list_packages(source)
                     break
         if not source_exist:
             self.logger.warning('Source repository %s dose not exist.', source)
@@ -716,6 +721,8 @@ class Deb_aptly():
         del_keys = list()
         add_keys = list()
         for key in src_pkg_keys:
+            if isinstance(key, Package):
+                key = key.key
             package_name = key.split()[1]
             package_type = key.split()[0]
             if package_name not in pkg_list:
