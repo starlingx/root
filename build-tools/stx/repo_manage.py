@@ -744,15 +744,20 @@ class RepoMgr():
     def search_pkg(self, repo_name, pkg_name, pkg_version=None, binary=True):
         '''Find a package from a specified repo.'''
         repo_find = False
+        repo_list = []
         repo = None
+
         r_list = self.repo.list_local(quiet=True)
         for repo in r_list:
-            if repo == repo_name:
+            if not repo_name or repo == repo_name:
+                repo_list.append(repo)
                 repo_find = True
         r_list = self.repo.list_remotes(quiet=True)
         for repo in r_list:
-            if repo == repo_name:
+            if not repo_name or repo == repo_name:
+                repo_list.append(repo)
                 repo_find = True
+
         if not repo_find:
             self.logger.error('Search package, repository does not exist.')
             return False
@@ -761,7 +766,8 @@ class RepoMgr():
             pkg_type = 'binary'
         else:
             pkg_type = 'source'
-        if not self.repo.pkg_exist([repo_name], pkg_name, pkg_type, pkg_version):
+
+        if not self.repo.pkg_exist(repo_list, pkg_name, pkg_type, pkg_version):
             self.logger.info('Search %s package %s, not found.' % (pkg_type, pkg_name))
             return False
         return True
