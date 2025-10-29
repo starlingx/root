@@ -171,7 +171,7 @@ ndisc6
 netcat-openbsd
 nfs-kernel-server
 nftables
-ntp
+ntpsec
 nvme-cli
 open-iscsi
 openssh-server
@@ -183,7 +183,7 @@ pipexec
 postgresql-17
 psmisc
 puppet-module-adrienthebo-filemapper
-puppet-module-asciiduck-sssd
+# puppet-module-asciiduck-sssd
 puppet-module-barbican
 puppet-module-duritong-sysctl
 puppet-module-puppetlabs-mount-core
