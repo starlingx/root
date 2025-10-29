@@ -29,19 +29,12 @@ import copy
 import os
 import re
 import shutil
+import stx_apt_cache
 from debian import deb822
 
 DEBIAN_DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
 
-# Debian repository. You can also choose a nearby mirror site, see web page below:
-# https://www.debian.org/mirror/list
-mirror_0 = 'http://deb.debian.org/debian/ ' + DEBIAN_DISTRIBUTION + ' main contrib'
-mirror_1 = 'http://security.debian.org/debian-security ' + DEBIAN_DISTRIBUTION + '-security main contrib'
-mirrors = [mirror_0, mirror_1]
-apt_rootdir = '/tmp/dsc_depend'
 DEFAULT_CIRCULAR_CONFIG = os.path.join(os.environ.get('MY_BUILD_TOOLS_DIR'), 'stx/circular_dep.conf')
-# Use /etc/apt/sources.list of the host
-USE_HOST_RESOURCE = True
 
 apt_required_paths = [
     "/etc/apt",
@@ -67,38 +60,22 @@ def apt_copy(src, dest):
     partial_path = os.path.join(dest, "var/lib/apt/lists/partial")
     os.makedirs(partial_path, exist_ok=True)
 
-def get_aptcache(rootdir):
+def get_aptcache():
     '''
     `apt update` for specified Debian repositories.
     '''
     try:
-        if os.path.exists(rootdir):
-            if os.path.isdir(rootdir):
-                shutil.rmtree(rootdir)
-            else:
-                os.remove(rootdir)
-
-        os.makedirs(rootdir + '/etc/apt')
-
-        if USE_HOST_RESOURCE:
-            apt_copy('/', rootdir)
-        else:
-            f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
-            for mirror in mirrors:
-                f_sources.write('deb [trusted=yes] ' + mirror + '\n')
-            f_sources.close()
+        stx_apt_cache.create_apt_chroot()
+        stx_apt_cache.apt_update_inside_chroot()
     except Exception as e:
         print(e)
         raise Exception('APT root dir build error')
 
     try:
-        apt_cache = apt.Cache(rootdir=rootdir)
-        ret = apt_cache.update()
+        apt_cache = apt.Cache(rootdir=stx_apt_cache.apt_rootdir)
     except Exception as e:
         print(e)
         raise Exception('APT update failed')
-    if not ret:
-        raise Exception('APT update error')
     apt_cache.open()
     return apt_cache
 
@@ -954,7 +931,7 @@ class Dsc_build_order(Circular_break):
         Construct the build relationship of all those dsc files in "dsc_list"
         '''
         self.logger = logger
-        self.aptcache = get_aptcache(apt_rootdir)
+        self.aptcache = get_aptcache()
         self.meta_info = [dict(), dict()]
         # information from file debian/control, for runtime depend relationship:
         # self.ctl_info[A] = {B, C} Binary package A runtime depend on B and C.
@@ -1175,7 +1152,7 @@ class Pkg_build(Circular_break):
         '''
         self.logger = logger
         self.meta_info = [dict(), dict()]
-        self.aptcache = get_aptcache(apt_rootdir)
+        self.aptcache = get_aptcache()
         self.__get_meta_info(meta_info, set(target_pkgs))
         super().__init__(logger, self.meta_info, circular_conf_file)
 
