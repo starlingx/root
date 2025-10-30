@@ -12,6 +12,7 @@ bind9-host
 bsdextrautils
 bsdutils
 busybox
+ca-certificates
 cdebconf
 cloud-init
 cluster-glue
