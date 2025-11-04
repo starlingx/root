@@ -282,10 +282,13 @@ def package_dir_list (distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_COD
             if not os.path.isfile(pkg_file):
                 # Look for the codenamed new-style file configuration for a build type
                 pkg_file = '{}/{}_{}_pkg_dirs_{}'.format(proj_dir, distro, codename, build_type)
-                if not os.path.isfile(pkg_file) and build_type == "std":
-                    # Look for the non-codenamed old-style file configuration without build_type (is allowed)
-                    pkg_file = '{}/{}_pkg_dirs'.format(proj_dir, distro)
-                    if not os.path.isfile(pkg_file):
+                if not os.path.isfile(pkg_file):
+                    if build_type == "std":
+                        # Look for the non-codenamed old-style file configuration without build_type (is allowed)
+                        pkg_file = '{}/{}_pkg_dirs'.format(proj_dir, distro)
+                        if not os.path.isfile(pkg_file):
+                            continue
+                    else:
                         continue
         else:
             # Require a consistent format for all new distro/codename combos
