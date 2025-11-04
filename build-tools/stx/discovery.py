@@ -287,8 +287,6 @@ def package_dir_list (distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_COD
                     pkg_file = '{}/{}_pkg_dirs'.format(proj_dir, distro)
                     if not os.path.isfile(pkg_file):
                         continue
-                else:
-                    continue
         else:
             # Require a consistent format for all new distro/codename combos
             pkg_file = '{}/{}_{}_pkg_dirs_{}'.format(proj_dir, distro, codename, build_type)
