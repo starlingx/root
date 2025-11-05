@@ -187,16 +187,35 @@ def checksum(dl_file, checksum, cmd, logger):
 def download(url, savepath, logger):
     logger.info(f"Download {url} to {savepath}")
 
-    # Need to avoid using the shell as the URL may include '&' characters.
-    # Remove stale partial files from previous sessions, but allow resume within current session
-    if os.path.exists(savepath):
-       os.remove(savepath)
-       logger.info(f"Removed existing file to ensure clean state: {savepath}")
+    # Use temporary file to enable resume capability without corrupting final file
+    temp_file = f"{savepath}.tmp.{os.getpid()}"
 
-    run_shell_cmd(["curl", "--fail", "--location", "--connect-timeout", "30",
-    "--speed-time", "30", "--speed-limit", "1", "--retry", "5",
-    "--retry-delay", "3", "--retry-max-time", "120", "--limit-rate", "500K",
-    "-C", "-", "-o", savepath, url], logger)
+    # Clean any stale temp files from previous crashed sessions
+    if os.path.exists(temp_file):
+        os.remove(temp_file)
+        logger.debug(f"Removed stale temp file: {temp_file}")
+
+    try:
+        # Need to avoid using the shell as the URL may include '&' characters.
+        run_shell_cmd(["curl", "--fail", "--location",
+            "--connect-timeout", "30",
+            "--speed-time", "30",
+            "--speed-limit", "1",
+            "--retry", "3",
+            "--retry-delay", "3",
+            "-C", "-",
+            "-o", temp_file, url], logger)
+
+        # Atomic rename ensures final file only exists if download succeeded
+        os.rename(temp_file, savepath)
+        logger.info(f"Download complete: {savepath}")
+
+    except Exception as e:
+        # Clean up failed temporary file
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+            logger.debug(f"Removed failed temp file: {temp_file}")
+        raise e
 
     return True
 
