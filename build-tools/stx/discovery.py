@@ -253,13 +253,14 @@ def package_iso_list (distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_COD
             if not os.path.isfile(iso_file):
                 # Look for the codenamed new-style file configuration for a build type
                 iso_file = '{}/{}_{}_iso_image_{}.inc'.format(proj_dir, distro, codename, build_type)
-                if not os.path.isfile(iso_file) and build_type == "std":
-                    # Look for the non-codenamed old-style file configuration without build_type (is allowed)
-                    iso_file = '{}/{}_iso_image.inc'.format(proj_dir, distro)
-                    if not os.path.isfile(iso_file):
+                if not os.path.isfile(iso_file):
+                    if build_type == "std":
+                        # Look for the non-codenamed old-style file configuration without build_type (is allowed)
+                        iso_file = '{}/{}_iso_image.inc'.format(proj_dir, distro)
+                        if not os.path.isfile(iso_file):
+                            continue
+                    else:
                         continue
-                else:
-                    continue
         else:
             # Require a consistent format for all new distro/codename combos
             iso_file = '{}/{}_{}_iso_image_{}.inc'.format(proj_dir, distro, codename, build_type)
