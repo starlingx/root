@@ -59,20 +59,31 @@ class FetchDebs(object):
 
 
     def get_all_debs(self):
-        all_debs = set()
+        all_debs = []
+        failed_pkgs = []
         debs_clue_std = self.get_debs_clue('std')
         debs_clue_rt = self.get_debs_clue('rt')
+
+        logger.debug("Binaries found for each STX source pkg:")
         for pkg in self.need_dl_stx_pkgs:
+            subdebs = []
             subdebs_std = debsentry.get_subdebs(debs_clue_std, pkg, logger)
             subdebs_rt = debsentry.get_subdebs(debs_clue_rt, pkg, logger)
             if not subdebs_std and not subdebs_rt:
-                logger.error(f"Failed to get subdebs for package {pkg} from local debsentry cache")
-                sys.exit(1)
+                failed_pkgs.append(pkg)
+                continue
 
             if subdebs_std:
-                all_debs.update(set(subdebs_std))
+                subdebs.extend(subdebs_std)
             if subdebs_rt:
-                all_debs.update(set(subdebs_rt))
+                subdebs.extend(subdebs_rt)
+
+            logger.debug("%s: %s", pkg, ', '.join(subdebs))
+            all_debs.extend(set(subdebs))
+
+        if failed_pkgs:
+            logger.error("Failed to get binaries for STX source packages: %s", ", ".join(failed_pkgs))
+            sys.exit(1)
 
         return all_debs
 
@@ -120,7 +131,6 @@ class FetchDebs(object):
             name, version = deb.split('_')
             if name not in dl_debs_dict:
                 dl_debs_dict[name] = version
-        logger.debug('Debs found: %s', dl_debs_dict)
 
         # filter list based on stx-std.lst - Depecrated on master, replaced by debian_iso_image.inc on each repo
         stx_pkg_list_file = self.get_debian_pkg_iso_list()
@@ -137,7 +147,9 @@ class FetchDebs(object):
             if deb not in self.need_dl_stx_pkgs:
                 dl_debs_dict.pop(deb)
 
-        logger.debug(f'STX package list after filtering: {dl_debs_dict}')
+        logger.info(f'STX packages selected:')
+        for name,version in dl_debs_dict.items():
+            logger.info('%s  %s', name, version)
 
         dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
 
