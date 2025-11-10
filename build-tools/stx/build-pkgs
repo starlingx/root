@@ -344,7 +344,17 @@ def get_pkgname_ver_with_deb(deb_name):
 
 
 def get_aptcache(rootdir, repo_url, rtype, distribution):
-    os.makedirs(rootdir + '/etc/apt', exist_ok=True)
+    os.makedirs(rootdir + '/etc/apt/apt.conf.d', exist_ok=True)
+    os.makedirs(rootdir + '/etc/apt/sources.list.d', exist_ok=True)
+    cachedir = rootdir + '/var/cache/apt'
+    os.makedirs(cachedir + '/archives/partial', exist_ok=True)
+    os.makedirs(cachedir + '/lists/partial', exist_ok=True)
+    subprocess.run([
+                   "sudo", "chmod", "777",
+                   cachedir + '/archives',
+                   cachedir + '/lists'
+    ], check=True)
+    
     try:
         f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
         if rtype == 'source':
@@ -354,16 +364,68 @@ def get_aptcache(rootdir, repo_url, rtype, distribution):
         f_sources.write(repo_line)
         f_sources.close()
     except Exception as e:
-        logger.error(e)
+        logger.error(str(e))
         return None
+    try:
+       apt_pkg.config.clear("True")
+    except TypeError:
+        try:
+            apt_pkg.config.clear("True")
+        except TypeError:
+            try:
+                apt_pkg.config.clear()  # fallback for old API
+            except Exception:
+                logger.error(str(e))
+                pass
+    os.environ["APT_CONFIG"] = "/dev/null"
+    os.environ["DIR"] = rootdir
+    apt_pkg.config.set("Dir::Etc", rootdir + "/etc/apt")
+    apt_pkg.config.set("Dir::Etc::main", "apt.conf")
+    apt_pkg.config.set("Dir::Etc::parts", "apt.conf.d")
+    apt_pkg.config.set("Dir::Etc::sourceparts", "sources.list.d")
+    apt_pkg.config.set("Dir::Etc::sourcelist", "sources.list")
+    apt_pkg.config.set("Dir::State::lists", cachedir + "/lists")
+    apt_pkg.config.set("Dir::Cache::archives/list", cachedir + "/archives/list")
+    apt_pkg.config.set("Dir::Cache::archives", cachedir + "/archives")
+    apt_pkg.config.set("Dir::Cache::archives/partial", cachedir + "/archives/partial")
+    apt_pkg.config.set("Dir::Cache::srcpkgcache", "")
+    apt_pkg.config.set("Dir::Cache::pkgcache", "")
+    apt_pkg.config.set("APT::Clean-Installed", "false")
+    apt_pkg.config.set("Dir::Cache::pkgcache", "")
+    apt_pkg.config.set("Dir::Cache::srcpkgcache", "")
+    apt_pkg.config.set("APT::Get::AllowUnauthenticated", "true")
+    apt_pkg.config.set("Dir", rootdir) 
 
     try:
         apt_cache = apt.Cache(rootdir=rootdir, memonly=True)
-        ret = apt_cache.update()
+        apt_cache.close()
+        # ret = apt_cache.update(fetch_progress=None)
+        subprocess.run([
+                       "sudo", "mount", "--bind",
+                       cachedir + '/archives',
+                       '/var/cache/apt/archives'
+        ], check=True)
+        subprocess.run([
+            "apt-get", "update",
+            f"-o", f"Dir={rootdir}",
+            f"-o", f"Dir::Etc::sourcelist={rootdir}/etc/apt/sources.list",
+            f"-o", f"Dir::Etc::sourceparts={rootdir}/etc/apt/sources.list.d",
+            f"-o", f"Dir::State::lists={cachedir}/lists",
+            f"-o", f"Dir::Cache::archives={cachedir}/archives",
+            "-o Acquire::AllowInsecureRepositories=true",
+            "-o Acquire::AllowDowngradeToInsecureRepositories=true"
+        ], check=True)
+        subprocess.run([
+                       "sudo", "umount",
+                       '/var/cache/apt/archives'
+        ], check=True)
+        apt_cache = apt.Cache(rootdir=rootdir, memonly=True)
     except Exception as e:
         logger.error(e)
-        return None
-    if not ret:
+        subprocess.run([
+                       "sudo", "umount",
+                       '/var/cache/apt/archives'
+        ])
         return None
     apt_cache.open()
     return apt_cache
