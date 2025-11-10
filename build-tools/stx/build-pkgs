@@ -178,7 +178,7 @@ def get_pkg_build_size(dsc_file):
         logger.error(str(e))
         logger.error("Failed to parse dsc %s", dsc_file)
         return 1
-    
+
 def get_build_depends(dsc_file, all_debs):
         '''
         Get package's build depends with its dsc file
@@ -354,7 +354,7 @@ def get_aptcache(rootdir, repo_url, rtype, distribution):
                    cachedir + '/archives',
                    cachedir + '/lists'
     ], check=True)
-    
+
     try:
         f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
         if rtype == 'source':
@@ -394,7 +394,7 @@ def get_aptcache(rootdir, repo_url, rtype, distribution):
     apt_pkg.config.set("Dir::Cache::pkgcache", "")
     apt_pkg.config.set("Dir::Cache::srcpkgcache", "")
     apt_pkg.config.set("APT::Get::AllowUnauthenticated", "true")
-    apt_pkg.config.set("Dir", rootdir) 
+    apt_pkg.config.set("Dir", rootdir)
 
     try:
         apt_cache = apt.Cache(rootdir=rootdir, memonly=True)
@@ -709,6 +709,12 @@ class BuildController():
         self.attrs['avoid'] = avoid
 
     def reuse_shared_repo(self):
+        """Clone content from reuse mirror to local aptly's build repo
+
+        Clean up aptly repo with local build output 'deb-local-build',
+        then copy all pkgs from reuse mirror 'deb-remote-reuse' into it.
+        """
+
         try:
             ret = self.kits['repo_mgr'].remove_repo('deb-local-build')
             if ret:
@@ -888,7 +894,7 @@ class BuildController():
         if 'fail' in ret:
             logger.error("Failed to loaded chroot")
             return False
- 
+
         logger.info("Successfully loaded chroot")
         return True
 
@@ -1813,7 +1819,7 @@ class BuildController():
             return
 
         pkg_dirs = discovery.package_dir_list(distro=self.attrs['distro'],
-                                              codename=self.attrs['codename'], 
+                                              codename=self.attrs['codename'],
                                               layer=layer,
                                               build_type=build_type)
         layer_pkg_dirs = pkg_dirs
@@ -1842,7 +1848,7 @@ class BuildController():
                               'of layer', layer]))
 
         packages = discovery.package_dirs_to_package_names(pkg_dirs,
-                                                           distro=self.attrs['distro'], 
+                                                           distro=self.attrs['distro'],
                                                            codename=self.attrs['codename'])
         logger.debug(' '.join(['Building packages:',
                                ','.join(packages)]))
@@ -1877,7 +1883,7 @@ class BuildController():
 
         # sort the build_type list so we build in the proper order
         build_types = discovery.sort_build_type_list(build_types,
-                                                     layer, 
+                                                     layer,
                                                      distro=self.attrs['distro'],
                                                      codename=self.attrs['codename'])
 
@@ -1974,7 +1980,7 @@ class BuildController():
         # layer_pkg_dirs contains all STX packages of this layer
         for pkg_dir in layer_pkg_dirs:
             dsc_file = ""
-            pkg_name = discovery.package_dir_to_package_name(pkg_dir, 
+            pkg_name = discovery.package_dir_to_package_name(pkg_dir,
                                                              distro=self.attrs['distro'],
                                                              codename=self.attrs['codename'])
             pkgs_dirs_map[pkg_name] = pkg_dir
@@ -2050,14 +2056,21 @@ class BuildController():
                     logger.debug("%s is removed from reused list for dependency chain", rpkg_name)
                 else:
                     logger.debug("%s is not in reuse list", rpkg_dir)
-            # If 'reuse_shared_repo' is enabled, only need to replace the local debentry
-            # with the remote debentry in stx-meta
+
             stx_meta_dir = os.path.join(STX_META_NAME, STX_META_NAME + '-1.0')
             remote_debsentry = os.path.join(BUILD_ROOT, stx_meta_dir, build_type + '_debsentry.pkl')
-            local_debsentry = get_debs_clue(build_type)
-            if not self.attrs['reuse_shared_repo']:
-                logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
-                for pkgname in self.lists['reuse_pkgname_' + build_type]:
+
+            logger.info("The reused pkgs:%s", ','.join(self.lists['reuse_pkgname_' + build_type]))
+            for pkgname in self.lists['reuse_pkgname_' + build_type]:
+
+                if self.attrs['reuse_shared_repo']:
+                    # If full overwrite of local build repo with remote repo is enabled,
+                    # replace pkg entry in local debsentry with the one from remote debsentry.
+                    local_debsentry = get_debs_clue(build_type)
+                    debs_list = debsentry.get_subdebs(remote_debsentry, pkgname, logger)
+                    debsentry.set_subdebs(local_debsentry, pkgname, debs_list, logger)
+
+                else:
                     logger.debug("First try to remove all subdebs from %s for %s", REPO_BUILD, pkgname)
                     self.remove_pkg_debs(pkgname, build_type)
                     logger.debug("Then try to copy all subdebs of %s from mirror to %s", pkgname, REPO_BUILD)
@@ -2122,9 +2135,6 @@ class BuildController():
                                     if fdsc_file:
                                         fdsc_file.close()
                                     return
-            # reuse_shared_repo directly is enabled, need not the above time consuming work
-            else:
-                os.system('cp -f ' + remote_debsentry + ' ' + local_debsentry)
 
         # Start to build
         target_pkgdir_dscs = need_build
@@ -2176,7 +2186,7 @@ class BuildController():
             if success_number > 0:
                 logger.info("Successfully built: %d", success_number)
                 for pkg_dir in sorted(success_list):
-                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, 
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir,
                                                                      distro=self.attrs['distro'],
                                                                      codename=self.attrs['codename'])
                     logger.info(pkg_name)
@@ -2186,7 +2196,7 @@ class BuildController():
             if real_build_number > 0:
                 logger.info("Successfully built in pkgbuilder: %d", real_build_number)
                 for pkg_dir in sorted(real_build_list):
-                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, 
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir,
                                                                      distro=self.attrs['distro'],
                                                                      codename=self.attrs['codename'])
                     logger.info(pkg_name)
@@ -2196,7 +2206,7 @@ class BuildController():
             if success_depends_number > 0:
                 logger.info("Successfully built depended packages: %d", success_depends_number)
                 for pkg_dir in sorted(success_depends_list):
-                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, 
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir,
                                                                      distro=self.attrs['distro'],
                                                                      codename=self.attrs['codename'])
                     logger.info(pkg_name)
@@ -2207,7 +2217,7 @@ class BuildController():
                 ret_val = 1
                 logger.error("Failed to build: %d", failed_number)
                 for pkg_dir in sorted(failed_pkg_dirs):
-                    pkg_name = discovery.package_dir_to_package_name(pkg_dir, 
+                    pkg_name = discovery.package_dir_to_package_name(pkg_dir,
                                                                      distro=self.attrs['distro'],
                                                                      codename=self.attrs['codename'])
                     logger.error(pkg_name)
@@ -2316,7 +2326,7 @@ if __name__ == "__main__":
         if args.distro_codename not in discovery.STX_DISTRO_DICT[distro]:
               logger.error('Distro codname "{}" is not supported for {}. It should be one of: [{}]'.format(
                   args.distro_codename,
-                  distro, 
+                  distro,
                   ','.join(discovery.STX_DISTRO_DICT[distro])))
               logger.error("Please consult: build-pkgs --help")
               sys.exit(1)
