@@ -84,6 +84,7 @@ inotify-tools
 install-info
 iperf3
 ipmitool
+ipset
 iptables-persistent
 ipxe-qemu
 iscsiuio
