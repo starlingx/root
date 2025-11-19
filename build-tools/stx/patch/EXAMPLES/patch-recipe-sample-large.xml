@@ -149,8 +149,6 @@
         <package>python-osc-lib-doc</package>
         <package>python3-osc-lib</package>
         <package>python3-oslo.messaging</package>
-        <package>python-pankoclient-doc</package>
-        <package>python3-pankoclient</package>
         <package>python3-wsme</package>
         <package>rabbitmq-server</package>
         <package>stx-portieris-helm</package>
