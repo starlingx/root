@@ -1046,7 +1046,7 @@ function find_image_build_files {
     local image_build_inc_file image_build_dir image_build_file
     local -A all_labels
 
-    for image_build_inc_file in $(find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_docker_images.inc"); do
+    for image_build_inc_file in $(find ${GIT_LIST} \! -path "$(git_ctx_root_dir)/do-not-build/*" -maxdepth 1 -name "${OS}_${BUILD_STREAM}_docker_images.inc"); do
         basedir=$(dirname ${image_build_inc_file})
         for image_build_dir in $(sed -e 's/#.*//' ${image_build_inc_file} | sort -u); do
             for image_build_file in ${basedir}/${image_build_dir}/${OS}/*.${BUILD_STREAM}_docker_image; do
