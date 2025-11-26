@@ -23,7 +23,9 @@ renice -n 10 -p $$
 ionice -c 3 -p $$
 
 SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=
+OS_CODENAME=
 OS_LABEL=
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
@@ -64,6 +66,7 @@ $(basename $0)
 
 Options:
     --os:            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-codename:   Specify base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
     --os-label:      Use this string as part of image tags, log file names and
                        image record file names, in place of OS, eg:
                        "--os distroless --os-label debian" would look for
@@ -859,7 +862,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o hN -l help,os:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
+OPTS=$(getopt -o hN -l help,os:,os-codename:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -880,6 +883,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-codename)
+            OS_CODENAME=$2
             shift 2
             ;;
         --os-label)
@@ -1005,8 +1012,32 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+if [ -z "$OS_CODENAME" ] ; then
+    if [[ ! -z "$DEBIAN_DISTRIBUTION" ]]; then
+        OS_CODENAME="$DEBIAN_DISTRIBUTION"
+    else
+        OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    fi
+    if [[ -z "$OS_CODENAME" ]] ; then
+        echo "Unable to determine OS_CODENAME, please re-run with \`--os-codename' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_CODENAME=1
+for supported_os_codename in ${SUPPORTED_OS_CODENAME_ARGS[@]}; do
+    if [ "$OS_CODENAME" = "${supported_os_codename}" ]; then
+        VALID_OS_CODENAME=0
+        break
+    fi
+done
+if [ ${VALID_OS_CODENAME} -ne 0 ]; then
+    echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
+    echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
+
 if [[ -z "$OS_LABEL" ]] ; then
-    OS_LABEL="$OS"
+    OS_LABEL="${OS}-${OS_CODENAME}"
 fi
 
 if [ -z "${BASE}" ]; then
@@ -1046,11 +1077,22 @@ function find_image_build_files {
     local image_build_inc_file image_build_dir image_build_file
     local -A all_labels
 
-    for image_build_inc_file in $(find ${GIT_LIST} \! -path "$(git_ctx_root_dir)/do-not-build/*" -maxdepth 1 -name "${OS}_${BUILD_STREAM}_docker_images.inc"); do
+    for image_build_inc_file in $(find ${GIT_LIST} -maxdepth 1 \! -path "$(git_ctx_root_dir)/do-not-build/*" \
+                                                   -name "${OS}_${BUILD_STREAM}_docker_images.inc" \
+                                                   -o -name "${OS}_${OS_CODENAME}_${BUILD_STREAM}_docker_images.inc"); do
         basedir=$(dirname ${image_build_inc_file})
         for image_build_dir in $(sed -e 's/#.*//' ${image_build_inc_file} | sort -u); do
-            for image_build_file in ${basedir}/${image_build_dir}/${OS}/*.${BUILD_STREAM}_docker_image; do
-
+            final_build_dir="${basedir}/${image_build_dir}/${OS}"
+            if [ "${OS}" != "centos" ]; then
+                if [ -d "${final_build_dir}/${OS_CODENAME}" ]; then
+                    final_build_dir="${final_build_dir}/${OS_CODENAME}"
+                elif [ -d "${final_build_dir}/all" ]; then
+                    final_build_dir="${final_build_dir}/all"
+                elif [ "${OS_CODENAME}" != "bullseye" ]; then
+                    continue
+                fi
+            fi
+            for image_build_file in ${final_build_dir}/*.${BUILD_STREAM}_docker_image; do
                 # Make sure image exists
                 if [[ ! -f "$image_build_file" ]] ; then
                     echo "ERROR: $image_build_file: file not found" >&2
