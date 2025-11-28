@@ -359,7 +359,6 @@ mkdir -p "${DOCKER_BUILD_PATH}"
 # Replace "@...@" vars in apt/*.in files
 if [[ "${OS}" == "debian" ]] ; then
     (
-        set -x
         # These are normally defined by the helm chart of stx tools
         for var in REPOMGR_DEPLOY_URL DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION ; do
             if [[ -z "${!var}" ]] ; then
