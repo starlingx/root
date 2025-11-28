@@ -20,7 +20,7 @@ fi
 
 KEEP_IMAGE=no
 KEEP_CONTAINER=no
-SUPPORTED_OS_LIST=( 'debian' )
+SUPPORTED_OS_ARGS=( 'debian' )
 SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=
 OS_CODENAME=
@@ -195,8 +195,8 @@ DOCKER_FILE=${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}/Dockerfile
 
 if [ ! -f ${DOCKER_FILE} ]; then
     echo "Unsupported OS/CODENAME specified: ${OS}/${OS_CODENAME}" >&2
-    echo "Supported OS options: ${SUPPORTED_OS_LIST[@]}" >&2
-    echo "Supported OS CODENAME options: ${SUPPORTED_OS_CODENAME_LIST[@]}" >&2
+    echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
+    echo "Supported OS CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
     exit 1
 fi
 
