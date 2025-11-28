@@ -8,6 +8,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ARG BUILD_STREAM=stable
 
+ARG OS_CODENAME=trixie
+
 # Install latest ca-certificates
 RUN apt-get -y update && \
     apt-get -y --no-install-recommends --no-install-suggests install ca-certificates
@@ -16,9 +18,9 @@ RUN apt-get -y update && \
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.disabled
 
 # Install apt repos
-COPY debian/apt/debian.sources.list /etc/apt/sources.list.d/debian.list
-COPY debian/apt/stx.sources.list /etc/apt/sources.list.d/stx.list
-COPY debian/apt/stx.preferences /etc/apt/preferences.d/stx
+COPY debian-${OS_CODENAME}/apt/debian.sources.list /etc/apt/sources.list.d/debian.list
+COPY debian-${OS_CODENAME}/apt/stx.sources.list /etc/apt/sources.list.d/stx.list
+COPY debian-${OS_CODENAME}/apt/stx.preferences /etc/apt/preferences.d/stx
 
 # Clean apt cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -102,6 +104,6 @@ RUN apt-get clean && \
 
 # Copy local files
 COPY docker-common/docker-build-wheel.sh /
-COPY debian/${BUILD_STREAM}-wheels.cfg /wheels.cfg
-COPY debian/${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
+COPY debian-${OS_CODENAME}/${BUILD_STREAM}-wheels.cfg /wheels.cfg
+COPY debian-${OS_CODENAME}/${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
 

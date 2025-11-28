@@ -359,6 +359,7 @@ mkdir -p "${DOCKER_BUILD_PATH}"
 # Replace "@...@" vars in apt/*.in files
 if [[ "${OS}" == "debian" ]] ; then
     (
+        set -x
         # These are normally defined by the helm chart of stx tools
         for var in REPOMGR_DEPLOY_URL DEBIAN_SNAPSHOT DEBIAN_SECURITY_SNAPSHOT DEBIAN_DISTRIBUTION ; do
             if [[ -z "${!var}" ]] ; then
@@ -385,7 +386,8 @@ print (urlparse (sys.argv[1]).hostname)
 
         # replace @...@ vars in apt/*.in files
         count=0
-        for src in "${DOCKER_BUILD_PATH}/${OS}/apt"/*.in ; do
+        for src in "${DOCKER_BUILD_PATH}/${OS}-${OS_CODENAME}/apt"/*.in ; do
+            stat "$src" >/dev/null || exit 1
             dst="${src%.in}"
             sed -e "s#@REPOMGR_DEPLOY_URL@#$REPOMGR_DEPLOY_URL#g" \
                 -e "s#@REPOMGR_HOST@#$REPOMGR_HOST#g" \
@@ -396,7 +398,7 @@ print (urlparse (sys.argv[1]).hostname)
             let ++count
         done
         if [[ $count -eq 0 ]] ; then
-            echo "No *.in files found in ${DOCKER_BUILD_PATH}/${OS}/apt !" >&2
+            echo "No *.in files found in ${DOCKER_BUILD_PATH}/${OS}-${OS_CODENAME}/apt !" >&2
             exit 1
         fi
     ) || exit 1
@@ -427,7 +429,7 @@ if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
 fi
 
 BUILD_ARGS+=(-t ${BUILD_IMAGE_NAME})
-BUILD_ARGS+=(-f ${DOCKER_BUILD_PATH}/${OS}/Dockerfile ${DOCKER_BUILD_PATH})
+BUILD_ARGS+=(-f ${DOCKER_BUILD_PATH}/${OS}-${OS_CODENAME}/Dockerfile ${DOCKER_BUILD_PATH})
 
 # Build image
 with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"

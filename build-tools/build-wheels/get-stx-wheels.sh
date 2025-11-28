@@ -124,9 +124,9 @@ fi
 source ${MY_REPO}/build-tools/git-utils.sh
 
 function get_wheels_files {
-    find ${GIT_LIST} -maxdepth 1 -path "$(git_ctx_root_dir)/do-not-build/*" \
-                     -name "${OS}_${BUILD_STREAM}_wheels.inc" \
-                     -o -name "${OS}_${OS_CODENAME}_${BUILD_STREAM}_wheels.inc"
+    find ${GIT_LIST} -maxdepth 1 \! -path "$(git_ctx_root_dir)/do-not-build/*" \
+                     \( -name "${OS}_${BUILD_STREAM}_wheels.inc" \
+                     -o -name "${OS}_${OS_CODENAME}_${BUILD_STREAM}_wheels.inc" \)
 }
 
 function get_lower_layer_wheels_files {
