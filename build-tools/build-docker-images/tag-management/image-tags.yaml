@@ -192,7 +192,7 @@ images:
     src_ref: https://opendev.org/starlingx/openstack-armada-app/commit/fbb747ca744fe2161401c342654b725c374cba84
     tag: stx.10.0-v1.0.0
   - name: docker.io/starlingx/security-profiles-operator
-    src_build_tag: master-debian-stable-20250813T041000Z.0
-    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/deb84a309d2be40601943605e9001d4021a5126f
+    src_build_tag: master-debian-stable-20251201T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/20aaa28c2279bf406520fb74120e9a019fa7c91c
     # Tag based on upstream package version
-    tag: stx.11.0-v0.8.3-1
+    tag: stx.12.0-v0.8.3-1
