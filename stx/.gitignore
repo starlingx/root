@@ -23,6 +23,7 @@ installer-prebuilt
 /apt-ostree
 /app-power-metrics
 /app-rook-ceph
+/app-seaweedfs
 /app-security-profiles-operator
 /app-sriov-fec-operator
 /app-sts-silicom/
