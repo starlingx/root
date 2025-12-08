@@ -207,7 +207,6 @@ python3-flask-restful
 python3-gps
 python3-ipaddr
 python3-keystonemiddleware
-python3-kubernetes
 python3-ldap3
 python3-ldappool
 python3-lz4
