@@ -29,7 +29,6 @@ dconf-gsettings-backend
 debconf-i18n
 diffutils
 dnf
-docker.io
 dosfstools
 eatmydata
 e2fsprogs
