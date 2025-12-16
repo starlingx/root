@@ -85,10 +85,10 @@ images:
     # Tag based on latest kubectl package version used in image
     tag: stx.11.0-v1.32.6
   - name: docker.io/starlingx/stx-openbao-manager
-    src_build_tag: master-debian-stable-20251204T051000Z.0
-    src_ref: https://opendev.org/starlingx/app-openbao/commit/682772aee14b4ef58017b9cd3ca225bdb70ec72d
+    src_build_tag: master-debian-stable-20251216T051000Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/342f87883fc2e4497d2e1cba3267232d9ea45064
     # Tag based on latest kubectl package version used in image
-    tag: stx.12.0-v1.32.10
+    tag: stx.12.0-v1.32.10-1
   - name: docker.io/starlingx/portieris
     src_build_tag: master-centos-stable-20200726T013628Z.0
     src_ref: https://opendev.org/starlingx/portieris-armada-app/commit/a6123ffebb77f23d5182576be17e69d62fd8d701
