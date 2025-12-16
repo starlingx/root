@@ -153,7 +153,6 @@ libusbredirparser1
 libvdeplug2
 libvirglrenderer1
 libyajl2
-linux-cpupower
 locales-all
 logrotate
 lsb-base
