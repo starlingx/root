@@ -967,30 +967,40 @@ def main():
         logger.info('Populate ostree repository with .deb files...')
         patches_data = sorted(patches_data, key=lambda x: x['sw_version'])
         for patch in patches_data:
-            # Scan /debs/ folder and load every patch to the reprepo feed
-            deb_dir = os.scandir(os.path.join(patch["path"], "debs/"))
-            for deb in deb_dir:
-                cmd = ["apt-ostree", "repo", "add", "--feed", PATCHES_FEED_PATH,
-                    "--release", "bullseye", "--component", patch['sw_version'],
-                      os.path.join(f"{patch['path']}/debs/", deb.name)]
+            # Scan /debs/ folder and load each patch onto the reprepo feed
+
+            debs_dir = os.path.join(patch["path"], "debs/")
+            if not os.path.isdir(debs_dir):
+                msg = f"Patch '{patch['sw_version']}' does not contain any deb pkgs. " \
+                      "Skipping creation of corresponding ostree commit."
+                logger.warning(msg)
+                #TODO: Re-evaluate GPG signing for empty patches.
+
+            else:
+                # Populate apt repo
+                debs = os.listdir(debs_dir)
+                for deb in debs:
+                    cmd = ["apt-ostree", "repo", "add", "--feed", PATCHES_FEED_PATH,
+                        "--release", "bullseye", "--component", patch['sw_version'],
+                        os.path.join(f"{patch['path']}/debs/", deb)]
+                    logger.debug('Running command: %s', cmd)
+                    subprocess.check_call(cmd, shell=False)
+
+                # Now with every deb loaded we commit it in the ostree repository
+                # apt-ostree requires an http connection to access the host files
+                # so we give the full http path using the ip
+                full_feed_path = f'\"{HTTP_FULL_ADDR}{PATCHES_FEED_PATH} bullseye\"'
+                cmd = ["apt-ostree", "compose", "install", "--repo", f"{build_tempdir}/ostree_repo"]
+                # If we have ostree setup we will use the gpg key
+                if sign_gpg:
+                    gpg_key = get_value_from_yaml("gpg.ostree.gpgid")
+                    cmd += ["--gpg-key", gpg_key]
+                pkgs = " ".join(patch["packages"])
+                cmd += ["--branch", "starlingx", "--feed", full_feed_path, "--component",
+                    patch['sw_version'], pkgs]
+
                 logger.debug('Running command: %s', cmd)
                 subprocess.check_call(cmd, shell=False)
-
-            # Now with every deb loaded we commit it in the ostree repository
-            # apt-ostree requires an http connection to access the host files
-            # so we give the full http path using the ip
-            full_feed_path = f'\"{HTTP_FULL_ADDR}{PATCHES_FEED_PATH} bullseye\"'
-            cmd = ["apt-ostree", "compose", "install", "--repo", f"{build_tempdir}/ostree_repo"]
-            # If we have ostree setup we will use the gpg key
-            if sign_gpg:
-                gpg_key = get_value_from_yaml("gpg.ostree.gpgid")
-                cmd += ["--gpg-key", gpg_key]
-            pkgs = " ".join(patch["packages"])
-            cmd += ["--branch", "starlingx", "--feed", full_feed_path, "--component",
-                patch['sw_version'], pkgs]
-
-            logger.debug('Running command: %s', cmd)
-            subprocess.check_call(cmd, shell=False)
 
             # Check if patch has precheck scripts, if yes move then to the upgrades folder
             if patch["precheck"]:
