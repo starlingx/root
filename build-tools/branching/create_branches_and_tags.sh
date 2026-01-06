@@ -386,9 +386,12 @@ for subgit in $SUBGITS; do
     fi
 
     extra_args=""
-    if [ "${remote_branch}" != "" ]; then
-        extra_args="-t ${remote}/${remote_branch}"
-    fi
+    # I don't think we ever want to do this.
+    # Certainly not as an automatic behaviour.
+    # We should only branch from the current HEAD by default.
+    # if [ "${remote_branch}" != "" ]; then
+    #     extra_args="-t ${remote}/${remote_branch}"
+    # fi
 
     # check if destination branch already exists
     branch_check=$(git branch -a --list $branch)
@@ -418,7 +421,7 @@ for subgit in $SUBGITS; do
         echo "Tag '$tag' already exists in ${subgit}"
     fi
 
-    update_gitreview ${subgit} || exit 1
+    update_gitreview ${subgit} ${review_method} || exit 1
     ) || exit 1
 done
 ) || exit 1
@@ -468,7 +471,8 @@ if [ $MANIFEST -eq 1 ]; then
     fi
 
     echo "Creating branch '$branch' in ${new_manifest_dir}"
-    git checkout -t ${remote}/${remote_branch} -b $branch
+    # git checkout -t ${remote}/${remote_branch} -b $branch
+    git checkout -b $branch
     if [ $? != 0 ] ; then
         echo_stderr "ERROR: failed to create branch '$branch' in ${new_manifest_dir}"
         exit 1

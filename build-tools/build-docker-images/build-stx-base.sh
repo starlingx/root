@@ -11,6 +11,7 @@ MY_SCRIPT_DIR=$(dirname $(readlink -f $0))
 
 source ${MY_SCRIPT_DIR}/../utils.sh
 source ${MY_SCRIPT_DIR}/../git-utils.sh
+source ${MY_SCRIPT_DIR}/docker_utils.sh
 
 # Required env vars
 if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
@@ -23,7 +24,9 @@ renice -n 10 -p $$
 ionice -c 3 -p $$
 
 SUPPORTED_OS_ARGS=( 'debian' )
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=                      # default: autodetect
+OS_CODENAME=             # default: autodetect
 OS_VERSION=              # default: lookup "ARG RELEASE" in Dockerfile
 BUILD_STREAM=stable
 IMAGE_VERSION=
@@ -51,32 +54,33 @@ Usage:
 $(basename $0)
 
 Options:
-    --os:         Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
-    --os-version: Specify OS version
-    --version:    Specify version for output image
-    --stream:     Build stream, stable or dev (default: stable)
-    --repo:       Software repository, can be specified multiple times
-                    * Debian format: "TYPE [OPTION=VALUE...] URL DISTRO COMPONENTS..."
-                      This will be added to /etc/apt/sources.list as is,
-                      see also sources.list(5) manpage.
-    --local:      Use local build for software repository (cannot be used with --repo)
-    --push:       Push to docker repo
-    --proxy:      Set proxy <URL>:<PORT>
-    --latest:     Add a 'latest' tag when pushing
-    --latest-tag: Use the provided tag when pushing latest.
-    --user:       Docker repo userid
-    --registry:   Docker registry
-    --clean:      Remove image(s) from local registry
-    --hostname:   build repo host
+    --os:          Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-codename: Specify base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
+    --os-version:  Specify OS version
+    --version:     Specify version for output image
+    --stream:      Build stream, stable or dev (default: stable)
+    --repo:        Software repository, can be specified multiple times
+                     * Debian format: "TYPE [OPTION=VALUE...] URL DISTRO COMPONENTS..."
+                       This will be added to /etc/apt/sources.list as is,
+                       see also sources.list(5) manpage.
+    --local:       Use local build for software repository (cannot be used with --repo)
+    --push:        Push to docker repo
+    --proxy:       Set proxy <URL>:<PORT>
+    --latest:      Add a 'latest' tag when pushing
+    --latest-tag:  Use the provided tag when pushing latest.
+    --user:        Docker repo userid
+    --registry:    Docker registry
+    --clean:       Remove image(s) from local registry
+    --hostname:    build repo host
     --attempts <count>
-                  Max attempts, in case of failure (default: 1)
+                   Max attempts, in case of failure (default: 1)
     --retry-delay <seconds>
-                  Sleep this many seconds between retries (default: 30)
-    --config-file:Specify a path to a config file which will specify additional arguments to be passed into the command
+                   Sleep this many seconds between retries (default: 30)
+    --config-file: Specify a path to a config file which will specify additional arguments to be passed into the command
 
-    --cache:      Allow docker to use cached filesystem layers when building
-                    CAUTION: this option may ignore locally-generated packages
-                             and is meant for debugging the build scripts.
+    --cache:       Allow docker to use cached filesystem layers when building
+                     CAUTION: this option may ignore locally-generated packages
+                              and is meant for debugging the build scripts.
 EOF
 }
 
@@ -126,7 +130,7 @@ function get_args_from_file {
     done <"$1"
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -143,6 +147,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-codename)
+            OS_CODENAME=$2
             shift 2
             ;;
         --os-version)
@@ -250,7 +258,31 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
-SRC_DOCKER_DIR="${MY_SCRIPT_DIR}/stx-${OS}"
+if [ -z "$OS_CODENAME" ] ; then
+    if [[ ! -z "$DEBIAN_DISTRIBUTION" ]]; then
+        OS_CODENAME="$DEBIAN_DISTRIBUTION"
+    else
+        OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    fi
+    if [[ -z "$OS_CODENAME" ]] ; then
+        echo "Unable to determine OS_CODENAME, please re-run with \`--os-codename' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_CODENAME=1
+for supported_os_codename in ${SUPPORTED_OS_CODENAME_ARGS[@]}; do
+    if [ "$OS_CODENAME" = "${supported_os_codename}" ]; then
+        VALID_OS_CODENAME=0
+        break
+    fi
+done
+if [ ${VALID_OS_CODENAME} -ne 0 ]; then
+    echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
+    echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
+
+SRC_DOCKER_DIR="${MY_SCRIPT_DIR}/stx-${OS}-${OS_CODENAME}"
 SRC_DOCKERFILE="${SRC_DOCKER_DIR}"/Dockerfile.${BUILD_STREAM}
 if [[ -z "$OS_VERSION" ]]; then
     OS_VERSION=$(
@@ -267,7 +299,7 @@ if [ -z "${IMAGE_VERSION}" ]; then
     IMAGE_VERSION=${OS_VERSION}
 fi
 
-DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE_DIR}/${DEFAULT_CONFIG_FILE_PREFIX}-${OS}-${BUILD_STREAM}.cfg"
+DEFAULT_CONFIG_FILE="${DEFAULT_CONFIG_FILE_DIR}/${DEFAULT_CONFIG_FILE_PREFIX}-${OS}-${OS_CODENAME}-${BUILD_STREAM}.cfg"
 
 # Read additional auguments from config file if it exists.
 if [[ -z "$CONFIG_FILE" ]] && [[ -f ${DEFAULT_CONFIG_FILE} ]]; then
@@ -295,7 +327,7 @@ else
     fi
 fi
 
-BUILDDIR=${MY_WORKSPACE}/std/build-images/stx-${OS}
+BUILDDIR=${MY_WORKSPACE}/std/build-images/stx-${OS}-${OS_CODENAME}
 if [ -d ${BUILDDIR} ]; then
     # Leftover from previous build
     rm -rf ${BUILDDIR}
@@ -393,15 +425,10 @@ if [ ! -z "$PROXY" ]; then
     BUILD_ARGS+=(--build-arg http_proxy=$PROXY)
 fi
 
-# Don't use docker cache
-if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
-    BUILD_ARGS+=("--no-cache")
-fi
-
 BUILD_ARGS+=(--tag ${IMAGE_NAME} ${BUILDDIR})
 
 # Build base image
-with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"
+docker_build_with_retries "${BUILD_ARGS[@]}"
 if [ $? -ne 0 ]; then
     echo "Failed running docker build command" >&2
     exit 1

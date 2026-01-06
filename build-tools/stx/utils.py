@@ -1,18 +1,8 @@
-# Copyright (c) 2021 Wind River Systems, Inc.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Copyright (c) 2021-2025 Wind River Systems, Inc.
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# SPDX-License-Identifier: Apache-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Copyright (C) 2021 Wind River Systems,Inc
 
 import logging
 import os
@@ -21,16 +11,12 @@ import subprocess
 import urllib.parse
 import urllib.request
 
-# The CENGNURL reference is retained for backward compatability 
-# with pre-existing build environmnets.
-CENGNURL = os.environ.get('CENGNURL')
-if CENGNURL:
-    CENGN_BASE = os.path.join(CENGNURL, "debian")
-STX_MIRROR_URL = os.environ.get('STX_MIRROR_URL')
-if STX_MIRROR_URL:
-    STX_MIRROR_BASE = os.path.join(STX_MIRROR_URL, "debian")
-if not STX_MIRROR_BASE:
-    STX_MIRROR_BASE=CENGN_BASE
+
+OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
+OS_MIRROR_DL_PATH = os.environ.get('OS_MIRROR_DL_PATH', 'debian/')
+if OS_MIRROR_URL:
+    OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DL_PATH)
+
 
 log_levels = {
     'debug': logging.DEBUG,
@@ -39,6 +25,7 @@ log_levels = {
     'error': logging.ERROR,
     'crit': logging.CRITICAL
 }
+
 
 def set_logger(logger, log_level='debug'):
     logger.setLevel(log_levels[log_level])
@@ -104,9 +91,9 @@ def bc_safe_fetch(lst_file, entry_handler=None, entry_handler_arg=None):
         with open(lst_file, 'r') as flist:
             lines = list(line for line in (p.strip() for p in flist) if line)
     except IOError as e:
-        logger.error(str(e))
+        raise e
     except Exception as e:
-        logger.error(str(e))
+        raise e
     else:
         for entry in lines:
             entry = entry.strip()
@@ -178,10 +165,12 @@ def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR):
 
     return outs.strip(),errs.strip()
 
+
 def run_shell_cmd(cmd, logger, error_level=logging.ERROR):
     return run_shell_cmd_full(cmd, logger, error_level)[0]
 
-def url_to_stx_mirror(url):
+
+def url_to_os_mirror(url):
 
     url_change = urllib.parse.urlparse(url)
     url_path = pathlib.Path(url_change.path)
@@ -191,23 +180,23 @@ def url_to_stx_mirror(url):
         path = url_path
 
     # FIXME: the ":" in a path is converted to "%25", after
-    # uploading to STX_MIRROR, the "%25" in the path is converted
+    # uploading to OS_MIRROR, the "%25" in the path is converted
     # to "%2525".
-    return os.path.join(STX_MIRROR_BASE, path).replace("%25", "%2525")
+    return os.path.join(OS_MIRROR_BASE, path).replace("%25", "%2525")
 
 
 def get_download_url(url, strategy):
 
     alt_rt_url = None
-    stx_mirror_url = url_to_stx_mirror(url)
+    os_mirror_url = url_to_os_mirror(url)
     if strategy == "stx_mirror":
-        rt_url = stx_mirror_url
+        rt_url = os_mirror_url
     elif strategy == "upstream":
         rt_url = url
     elif strategy == "stx_mirror_first":
         try:
-            urllib.request.urlopen(stx_mirror_url)
-            rt_url = stx_mirror_url
+            urllib.request.urlopen(os_mirror_url)
+            rt_url = os_mirror_url
             alt_rt_url = url
         except:
             rt_url = url
@@ -215,13 +204,14 @@ def get_download_url(url, strategy):
         try:
             urllib.request.urlopen(url)
             rt_url = url
-            alt_rt_url = stx_mirror_url
+            alt_rt_url = os_mirror_url
         except:
-            rt_url = stx_mirror_url
+            rt_url = os_mirror_url
     else:
         raise Exception(f'Invalid value "{strategy}" of STX_MIRROR_STRATEGY')
 
     return (rt_url, alt_rt_url)
+
 
 def deb_file_name_to_dict(deb_file):
     ver_array = []
@@ -242,9 +232,20 @@ def deb_file_name_to_dict(deb_file):
         pkg_epoch = None
     pkg_dict = {'name':pkg_name, 'ver':pkg_ver, 'epoch':pkg_epoch, 'arch':arch, 'url':None}
     return pkg_dict
-    
+
+
 def deb_url_name_to_dict(deb_url):
     deb_file = os.path.basename(dub_url)
     pkg_dict = deb_file_name_to_dict(deb_file)
     pkg_dict['url'] = deb_url
     return pkg_dict
+
+
+def get_env_variable(var: str) -> str:
+    """Get env variable. Raise error if not defined."""
+
+    value = os.environ.get(var)
+    if value == None:
+        raise ValueError(f"Env variable not defined: {var}")
+
+    return value

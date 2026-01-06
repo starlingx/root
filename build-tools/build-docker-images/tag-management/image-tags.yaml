@@ -16,29 +16,57 @@ images:
     src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
     # Version determined by running 'git describe --tags' in clone of upstream repo
     tag: stx.4.0-v0.11.0-103-g4f28657
+  - name: docker.io/starlingx/intel-deviceplugin-operator
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/642489b1a5bf62055635b5fc780125a30cf2db3c
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1-2
+  - name: docker.io/starlingx/intel-dsa-plugin
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/642489b1a5bf62055635b5fc780125a30cf2db3c
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1-1
+  - name: docker.io/starlingx/intel-gpu-initcontainer
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/642489b1a5bf62055635b5fc780125a30cf2db3c
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1-1
   - name: docker.io/starlingx/intel-gpu-plugin
-    src_build_tag: master-distroless-stable-20191203T153530Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/5f72ddb26a38d41fef919060585daaafae677433
-    # Version determined by running 'git describe --tags' in clone of upstream repo
-    tag: stx.4.0-v0.11.0-103-g4f28657
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/642489b1a5bf62055635b5fc780125a30cf2db3c
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1-1
+  - name: docker.io/starlingx/intel-idxd-config-initcontainer
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/642489b1a5bf62055635b5fc780125a30cf2db3c
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1-1
   - name: docker.io/starlingx/intel-qat-plugin
-    src_build_tag: master-distroless-stable-20191203T153530Z.0
-    src_ref: https://opendev.org/starlingx/integ/commit/d9d92a6997f939cb1ec41813dbf2d72d0b80d79c
-    # Version determined by running 'git describe --tags' in clone of upstream repo
-    tag: stx.4.0-v0.11.0-109-gc48c502
+    src_build_tag: master-debian-stable-20250730T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-intel-device-plugins/commit/642489b1a5bf62055635b5fc780125a30cf2db3c
+    # Tag based on upstream package version
+    tag: stx.11.0-v0.32.1-1
+  - name: docker.io/starlingx/stx-ipsec-policy-agent-operator
+    src_build_tag: master-debian-stable-20251203T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/43107bd0e36046b979bd0637ef1e710bbca69680
+    tag: stx.12.0-v1.0.0
+  - name: docker.io/starlingx/stx-ipsec-policy-manager-operator
+    src_build_tag: master-debian-stable-20251203T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/43107bd0e36046b979bd0637ef1e710bbca69680
+    tag: stx.12.0-v1.0.0
   - name: docker.io/starlingx/stx-oidc-client
-    src_build_tag: master-debian-stable-20250209T050101Z.0
-    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/30c54951ce177caf3d1b9dd6ce8112103297c1f8
-    tag: stx.11.0-v1.0.8
+    src_build_tag: master-debian-stable-20251218T051000Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/a5a4e666b89cb0297ac60dd0175761dd4b311722
+    tag: stx.12.0-v1.0.10
   - name: docker.io/starlingx/dex
     src_build_tag: master-centos-stable-20200204T162546Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/5d6701bdf214e77f460f2e3dd2b6f7d3186830c8
     # Tag determined based on release tag associated with upstream commit
     tag: stx.4.0-v2.14.0-1
   - name: docker.io/starlingx/stx-kubevirt-app
-    src_build_tag: master-debian-stable-20240227T070056Z.0
-    src_ref: https://opendev.org/starlingx/app-kubevirt/commit/1f386c34bef7adabb568bb6974132663dd41176f
-    tag: stx.8.0-v1.1.0
+    src_build_tag: master-debian-stable-20250501T040100Z.0
+    src_ref: https://opendev.org/starlingx/app-kubevirt/commit/05d761cd282b0d14911ab6cb163236ae8c708643
+    tag: stx.11.0-v1.5.0
   - name: docker.io/starlingx/n3000-opae
     src_build_tag: master-debian-stable-20220912T060002Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/896bd432a2d934c55a2ec793de8b2190e992f3e3
@@ -48,14 +76,19 @@ images:
     src_ref: https://opendev.org/starlingx/metal/commit/bfbaba57310a03e60f30d44b6dc127de5c77f960
     tag: stx.8.0-v1.0.2
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-debian-stable-20241127T050100Z.0
-    src_ref: https://opendev.org/starlingx/config/commit/d1b4d9c18ae6c017ee33f5f80e8f10215c2657f2
-    tag: stx.10.0-v1.5.18
+    src_build_tag: master-debian-stable-20251207T051000Z.0
+    src_ref: https://opendev.org/starlingx/integ/commit/15d3f6913ecbd774422253e1692b0157a4740f38
+    tag: stx.12.0-v1.0.0
   - name: docker.io/starlingx/stx-vault-manager
-    src_build_tag: master-debian-stable-20240719T060056Z.0
-    src_ref: https://opendev.org/starlingx/vault-armada-app/commit/b253c2a056759140af7b73480dd523eae0f37e17
+    src_build_tag: master-debian-stable-20250710T041000Z.0
+    src_ref: https://opendev.org/starlingx/vault-armada-app/commit/e32714f8823f45ef61e2410bd70274dbe7f67e61
     # Tag based on latest kubectl package version used in image
-    tag: stx.10.0-v1.29.6-1
+    tag: stx.11.0-v1.32.6
+  - name: docker.io/starlingx/stx-openbao-manager
+    src_build_tag: master-debian-stable-20251216T051000Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/342f87883fc2e4497d2e1cba3267232d9ea45064
+    # Tag based on latest kubectl package version used in image
+    tag: stx.12.0-v1.32.10-1
   - name: docker.io/starlingx/portieris
     src_build_tag: master-centos-stable-20200726T013628Z.0
     src_ref: https://opendev.org/starlingx/portieris-armada-app/commit/a6123ffebb77f23d5182576be17e69d62fd8d701
@@ -66,33 +99,33 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/00b9c69cd5bf5a397db66fd1b79be506c3bf10fc
     tag: stx.10.0-v1.0.2
   - name: docker.io/starlingx/stx-fm-subagent
-    src_build_tag: master-debian-stable-20230412T060000Z.0
-    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/8a6171fce0abdc84fc1488bb78b40a5046fdc4ef
-    tag: stx.9.0-v1.0.1
+    src_build_tag: master-debian-stable-20251118T051000Z.0
+    src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b69329a64111d83365433c7adea4eda3cc81bd03
+    tag: stx.11.0-v1.0.2
   - name: docker.io/starlingx/stx-fm-trap-subagent
     src_build_tag: master-debian-stable-20230905T060000Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b9f45f28c48b9ca111ffa0dda89c09333eee6f8c
     tag: stx.9.0-v1.0.2
   - name: docker.io/starlingx/notificationservice-base
-    src_build_tag: master-debian-stable-20250209T050101Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/fc05f7fb4497dd85bae141e3d7d974a16c73537f
-    tag: stx.11.0-v2.2.5
+    src_build_tag: master-debian-stable-20250812T041000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/dcb4d0d66d284953cd5a2f9dc7058ce99cbba097
+    tag: stx.11.0-v2.2.8
   - name: docker.io/starlingx/notificationservice-base-v2
-    src_build_tag: master-debian-stable-20250209T050101Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/fc05f7fb4497dd85bae141e3d7d974a16c73537f
-    tag: stx.11.0-v2.3.1
+    src_build_tag: master-debian-stable-20250905T041000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/b45f7c1bb1de6051979a23122e4720dad5e98ee4
+    tag: stx.11.0-v2.4.5
   - name: docker.io/starlingx/locationservice-base
-    src_build_tag: master-debian-stable-20240904T060000Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/76d515c2907e00a2f11117a8323d26fa3db08392
-    tag: stx.10.0-v2.2.3
+    src_build_tag: master-debian-stable-20250812T041000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/dcb4d0d66d284953cd5a2f9dc7058ce99cbba097
+    tag: stx.11.0-v2.2.6
   - name: docker.io/starlingx/notificationclient-base
-    src_build_tag: master-debian-stable-20241121T050101Z.0
-    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/bbeef9574409b886f1fb9d7b2ba9f7d7f61d4851
-    tag: stx.10.0-v2.3.0
+    src_build_tag: master-debian-stable-20250812T041000Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/dcb4d0d66d284953cd5a2f9dc7058ce99cbba097
+    tag: stx.11.0-v2.3.3
   - name: docker.io/starlingx/stx-audit
-    src_build_tag: master-debian-stable-20240723T060000Z.0
-    src_ref: https://opendev.org/starlingx/audit-armada-app/commit/73f896784e955cc5e8eda781d1c13ab49dac8242
-    tag: stx.10.0-v1.0.5
+    src_build_tag: master-debian-stable-20251207T051000Z.0
+    src_ref: https://opendev.org/starlingx/audit-armada-app/commit/c12c35bcbf7e99093414690de3e07e4404d04027
+    tag: stx.12.0-v1.0.0
   - name: docker.io/starlingx/stx-centos-dev
     src_build_tag: master-centos-stable-20220503T014529Z.0
     src_ref: https://opendev.org/starlingx/utilities/commit/55873d66ff3b80f0853e83b7aa080833350d8d7e
@@ -118,17 +151,17 @@ images:
     src_ref: https://opendev.org/starlingx/integ/commit/0783ec950b424c980658765515a649c846dc5121
     tag: stx.7.0-v1.0.0
   - name: docker.io/starlingx/sriov-fec-operator
-    src_build_tag: master-debian-stable-20250320T040100Z.0
-    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/da9205f3a0724f1412766fb6e9c0c898590225ff
-    tag: stx.11.0-v2.11.1
+    src_build_tag: master-debian-stable-20251202T051005Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/8aec818144699ebe94eadea3eb6ee78efd7303d8
+    tag: stx.12.0-v2.12.0
   - name: docker.io/starlingx/sriov-fec-labeler
-    src_build_tag: master-debian-stable-20250320T040100Z.0
-    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/da9205f3a0724f1412766fb6e9c0c898590225ff
-    tag: stx.11.0-v2.11.1
+    src_build_tag: master-debian-stable-20251202T051005Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/8aec818144699ebe94eadea3eb6ee78efd7303d8
+    tag: stx.12.0-v2.12.0
   - name: docker.io/starlingx/sriov-fec-daemon
-    src_build_tag: master-debian-stable-20250320T040100Z.0
-    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/da9205f3a0724f1412766fb6e9c0c898590225ff
-    tag: stx.11.0-v2.11.1
+    src_build_tag: master-debian-stable-20251202T051005Z.0
+    src_ref: https://opendev.org/starlingx/app-sriov-fec-operator/commit/8aec818144699ebe94eadea3eb6ee78efd7303d8
+    tag: stx.12.0-v2.12.0
   - name: docker.io/starlingx/stx-fm-rest-api
     src_build_tag: master-debian-stable-20231123T070059Z.0
     src_ref: https://opendev.org/starlingx/fault/commit/8596fc8fc5b36028a9a409e6594b3f0bb9ee9cfa
@@ -148,22 +181,23 @@ images:
     tag: stx.9.0-v2.3.0
     # Tag based on upstream package version
   - name: docker.io/starlingx/telegraf
-    src_build_tag: master-debian-stable-20240603T060000Z.0
-    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/1576a74f18b42355b7d11357954e28c50223c22d
-    tag: stx.10.0-v1.30.2
-  - name: docker.io/starlingx/uft
-    src_build_tag: master-debian-stable-20230917T060059Z.0
-    src_ref: https://opendev.org/starlingx/app-intel-ethernet-operator/commit/fe8b267b30035bb59bf751e961ad37107e91e3d3
-    tag: stx.9.0-v22.07
+    src_build_tag: master-debian-stable-20251216T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/40d003f066e58003cc711a317a2a8c7587f08f28
+    tag: stx.12.0-v1.36.4
   - name: docker.io/starlingx/metrics-exporter-api
-    src_build_tag: master-debian-stable-20240712T060056Z.0
-    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/3eec69ac37ec9c518a61d1e9ee690a80e7cac831
-    tag: stx.10.0-v1.0.2
+    src_build_tag: master-debian-stable-20251210T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/b07b6d25455a23c67ea71ce48e0fd345bb98ba18
+    tag: stx.12.0-v1.0.0
   - name: docker.io/starlingx/stx-ceph-manager
-    src_build_tag: master-debian-stable-20250312T040100Z.0
-    src_ref: https://opendev.org/starlingx/utilities/commit/8fe98e2cc74be799c108d2b5e2de90b83b859198
-    tag: stx.11.0-v19.2.1-0
+    src_build_tag: master-debian-stable-20251030T041003Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/ee48f23033fc18acefc596ef38ab84dc2e4a2feb
+    tag: stx.12.0-v18.2.2-0
   - name: docker.io/starlingx/stx-openstackclients
     src_build_tag: master-debian-stable-20240402T160056Z.0
     src_ref: https://opendev.org/starlingx/openstack-armada-app/commit/fbb747ca744fe2161401c342654b725c374cba84
     tag: stx.10.0-v1.0.0
+  - name: docker.io/starlingx/security-profiles-operator
+    src_build_tag: master-debian-stable-20251201T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/20aaa28c2279bf406520fb74120e9a019fa7c91c
+    # Tag based on upstream package version
+    tag: stx.12.0-v0.8.3-1

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,50 +11,79 @@ import sys
 import logging
 import shutil
 
+from exceptions import FetchDebsError
+
 sys.path.append('..')
 import debsentry
 import repo_manage
 import utils
+import discovery
 
-BUILD_ROOT = os.environ.get('MY_BUILD_PKG_DIR')
 
-DEB_CONFIG_DIR = 'stx-tools/debian-mirror-tools/config/'
-PKG_LIST_DIR = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'), DEB_CONFIG_DIR, 'debian/distro')
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+
 
 logger = logging.getLogger('fetch_debs')
 utils.set_logger(logger)
 
 
 class FetchDebs(object):
-    def __init__(self):
-        self.need_dl_stx_pkgs = []
-        self.need_dl_binary_pkgs = []
-        self.output_dir = os.path.join(BUILD_ROOT, 'dl_debs')
-        self.apt_src_file = os.path.join(BUILD_ROOT, 'aptsrc')
+
+    def __init__(self,
+                 need_dl_stx_pkgs=None,
+                 need_dl_binary_pkgs=None):
+
+        self.need_dl_stx_pkgs = need_dl_stx_pkgs if need_dl_stx_pkgs else []
+        self.need_dl_binary_pkgs = need_dl_binary_pkgs if need_dl_binary_pkgs else []
+
+        # In general: /localdisk/designer/<USER>/<PROJECT>
+        self.designer_root = utils.get_env_variable('MY_REPO_ROOT_DIR')
+
+        # In general: /localdisk/loadbuild/<USER>/<PROJECT>
+        self.loadbuild_root = utils.get_env_variable('MY_BUILD_PKG_DIR')
+
+        # TODO: These directories should be inputs, not hardcoded.
+        self.output_dir = os.path.join(self.loadbuild_root, 'dl_debs')
+        self.apt_src_file = os.path.join(self.loadbuild_root, 'aptsrc')
+
+        self.dist_codename = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
 
         self.setup_apt_source()
         self.debs_fetcher = repo_manage.AptFetch(logger, self.apt_src_file, self.output_dir)
 
+
     def get_debs_clue(self, btype):
         if btype != 'rt':
             btype = 'std'
-        return os.path.join(BUILD_ROOT, 'caches', btype + '_debsentry.pkl')
+        return os.path.join(self.loadbuild_root, 'caches', btype + '_debsentry.pkl')
+
 
     def get_all_debs(self):
-        all_debs = set()
+        all_debs = []
+        failed_pkgs = []
         debs_clue_std = self.get_debs_clue('std')
         debs_clue_rt = self.get_debs_clue('rt')
+
+        logger.debug("Binaries found for each STX source pkg:")
         for pkg in self.need_dl_stx_pkgs:
+            subdebs = []
             subdebs_std = debsentry.get_subdebs(debs_clue_std, pkg, logger)
             subdebs_rt = debsentry.get_subdebs(debs_clue_rt, pkg, logger)
             if not subdebs_std and not subdebs_rt:
-                logger.warning('Failed to get subdebs for %s with local debsentry cache', pkg)
+                failed_pkgs.append(pkg)
                 continue
-            else:
-                if subdebs_std:
-                    all_debs.update(set(subdebs_std))
-                if subdebs_rt:
-                    all_debs.update(set(subdebs_rt))
+
+            if subdebs_std:
+                subdebs.extend(subdebs_std)
+            if subdebs_rt:
+                subdebs.extend(subdebs_rt)
+
+            logger.debug("%s: %s", pkg, ', '.join(subdebs))
+            all_debs.extend(set(subdebs))
+
+        if failed_pkgs:
+            logger.error("Failed to get binaries for STX source packages: %s", ", ".join(failed_pkgs))
+            sys.exit(1)
 
         return all_debs
 
@@ -66,35 +95,42 @@ class FetchDebs(object):
         os.makedirs(self.output_dir, exist_ok=True)
 
         try:
-            with open(self.apt_src_file, 'w') as f:
-                repo_url = os.environ.get('REPOMGR_DEPLOY_URL')
-                apt_item = ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-build', 'bullseye', 'main\n'])
-                f.write(apt_item)
-                apt_item = ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-binary', 'bullseye', 'main\n'])
-                f.write(apt_item)
+            with open(self.apt_src_file, 'w') as file:
+                repo_url = utils.get_env_variable('REPOMGR_DEPLOY_URL')
+
+                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-build {self.dist_codename} main\n"
+                file.write(apt_repo)
+                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-binary {self.dist_codename} main\n"
+                file.write(apt_repo)
+
                 logger.debug(f'Created apt source file {self.apt_src_file} to download debs')
         except Exception as e:
             logger.error(str(e))
             logger.error('Failed to create the apt source file')
             sys.exit(1)
 
+
     def fetch_stx_packages(self):
         '''
         Download all debs and subdebs from the build system
-        Save the files to $BUILD_ROOT/dl_debs
+        Save the files to ${BUILD_ROOT}/dl_debs
         '''
+
+        if not self.need_dl_stx_pkgs:
+            logger.warning("No STX packages to download")
+            return
+
         dl_debs = self.get_all_debs()
         if not dl_debs:
-            logger.warn('No STX packages were found')
-            return
-        else:
-            dl_debs_dict = {}
-            for deb in dl_debs:
-                # dl_debs_with_ver.append(deb.replace('_', ' '))
-                name, version = deb.split('_')
-                if name not in dl_debs_dict:
-                    dl_debs_dict[name] = version
-            logger.debug('##dldebs:%s', dl_debs_dict)
+            msg = f"No STX binaries were found that matched source pkgs: {self.need_dl_stx_pkgs}"
+            raise Exception(msg)
+
+        dl_debs_dict = {}
+        for deb in dl_debs:
+            # dl_debs_with_ver.append(deb.replace('_', ' '))
+            name, version = deb.split('_')
+            if name not in dl_debs_dict:
+                dl_debs_dict[name] = version
 
         # filter list based on stx-std.lst - Depecrated on master, replaced by debian_iso_image.inc on each repo
         stx_pkg_list_file = self.get_debian_pkg_iso_list()
@@ -111,22 +147,22 @@ class FetchDebs(object):
             if deb not in self.need_dl_stx_pkgs:
                 dl_debs_dict.pop(deb)
 
-        logger.debug(f'Package list after filtering:{dl_debs_dict}')
+        logger.info(f'STX packages selected:')
+        for name,version in dl_debs_dict.items():
+            logger.info('%s  %s', name, version)
 
-        logger.info(f'Total debs need to be downloaded: {len(dl_debs_dict)}')
+        dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
+
+        logger.info(f'Fetching STX debs to {dl_bin_debs_dir} \n')
         dl_debs_with_ver = [f'{k} {v}' for k, v in dl_debs_dict.items()]
         fetch_ret = self.download(dl_debs_with_ver)
-        dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
-        if len(fetch_ret['deb-failed']) == 0:
-            logger.info(f'Successfully downloaded STX debs to {dl_bin_debs_dir}')
-        else:
-            logger.error(f'Failed to downloaded STX debs to {dl_bin_debs_dir}')
+
 
     def get_debian_pkg_iso_list(self):
         pkgs = []
-        cgcs_root_dir = os.environ.get('MY_REPO')
+        cgcs_root_dir = utils.get_env_variable('MY_REPO')
         package_file_name = 'debian_iso_image.inc'
-        print(cgcs_root_dir)
+
         for root, dirs, files in os.walk(cgcs_root_dir):
             for file in files:
                 if file == package_file_name:
@@ -137,22 +173,34 @@ class FetchDebs(object):
     def fetch_external_binaries(self):
         '''
         Download all binaries from the build system
-        apt_item = apt_item + ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-binary', 'bullseye', 'main\n'])
+        apt_item = apt_item + ' '.join(['deb [trusted=yes]', repo_url + 'deb-local-binary', codename, 'main\n'])
         '''
-        # Get debs from base-bullseye.lst
-        # https://opendev.org/starlingx/tools/src/branch/master/debian-mirror-tools/config/debian/common/base-bullseye.lst
+        # Get debs from base-<dist_codename>.lst
+        # Example:
+        # https://opendev.org/starlingx/tools/src/branch/master/debian-mirror-tools/config/debian/bullseye/common/base-bullseye.lst
         if not self.need_dl_binary_pkgs:
             logger.debug("No binary packages to download")
             return
 
         all_debs = set()
-        package_list = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
-                                    'stx-tools/debian-mirror-tools/config/debian/common/base-bullseye.lst')
+
+        external_binaries_list = os.path.join(
+            self.designer_root,
+            "stx-tools",
+            "debian-mirror-tools", "config", "debian",
+            self.dist_codename,
+            "common",
+            "base-" + self.dist_codename + ".lst")
+
+        if not os.path.isfile(external_binaries_list):
+            msg = f"Could not find external binaries list: {external_binaries_list}"
+            raise Exception(msg)
+
         # find pkgs in the list file
         logger.debug(f'Packages to find {self.need_dl_binary_pkgs}')
         for pkg in self.need_dl_binary_pkgs:
             logger.debug(f'checking {pkg}')
-            with open(package_list, 'r') as f:
+            with open(external_binaries_list, 'r') as f:
                 for line in f.readlines():
                     if pkg == line.split()[0]:
                         logger.debug(f'Line for package {pkg} found')
@@ -161,32 +209,43 @@ class FetchDebs(object):
                         all_debs.add(pkg_entry)
                         break
                 else:
-                    logger.warning(f"Package '{pkg}' not found in the package list")
+                    logger.error(f"Package '{pkg}' not found in the package list")
+                    sys.exit(1)
 
-        logger.debug('Binary packages to download:%s', all_debs)
-        fetch_ret = self.download(all_debs)
+        logger.debug('Third-party binaries to fetch:%s', all_debs)
+
         dl_bin_debs_dir = os.path.join(self.output_dir, 'downloads/binary')
-        if len(fetch_ret['deb-failed']) == 0:
-            logger.info(f'Successfully downloaded external debs to {dl_bin_debs_dir} \n')
-        else:
-            logger.info(f'Failed to downloaded external debs to {dl_bin_debs_dir} \n')
+
+        logger.info(f'Fetching debs to {dl_bin_debs_dir} \n')
+        fetch_ret = self.download(all_debs)
+
 
     def download(self, all_debs):
+        "Fetch pkgs from aptly"
+
+        logger.debug('Fetching debs from aptly...')
+
         try:
-            logger.debug('Downloading debs...')
-            fetch_ret = self.debs_fetcher.fetch_pkg_list(all_debs)
+            result = self.debs_fetcher.fetch_pkg_list(all_debs)
+
         except Exception as e:
-            logger.error(str(e))
-            logger.error('Exception has when fetching debs with repo_manage')
-            sys.exit(1)
-        return fetch_ret
+            logger.exception(f"Exception fetching debs: {str(e)}")
+            raise
+
+        failed_fetches = result["deb-failed"] + result["dsc-failed"]
+
+        if failed_fetches:
+            raise FetchDebsError(f"Failed to fetch: {failed_fetches}")
+
+        return result
 
 
 if __name__ == '__main__':
-    fetch_debs = FetchDebs()
-    # set the packages you want to download
-    fetch_debs.need_dl_std_pkgs = ['sysinv']
-    fetch_debs.need_dl_rt_pkgs = ['']
-    fetch_debs.need_dl_binary_pkgs = ['tzdata', 'curl', 'apache2']
+
+    # Usage: Set the packages you want to download here
+    fetch_debs = FetchDebs(
+        need_dl_stx_pkgs = ['sysinv'],
+        need_dl_binary_pkgs = ['tzdata', 'curl', 'apache2'],
+    )
 
     fetch_debs.fetch_stx_packages()

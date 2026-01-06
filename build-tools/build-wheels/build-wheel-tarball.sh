@@ -23,7 +23,9 @@ renice -n 10 -p $$
 ionice -c 3 -p $$
 
 SUPPORTED_OS_ARGS=( 'debian' )
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=
+OS_CODENAME=
 OS_VERSION=
 BUILD_STREAM=stable
 VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
@@ -71,6 +73,7 @@ $(basename $0)
 
 Options:
     --os:          Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-codename: Specify base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
     --os-version:  Specify OS version
     --stream:      Build stream, stable or dev (default: stable)
     --push:        Push to docker repo
@@ -92,7 +95,7 @@ Options:
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,retry-delay:,python2,extra-wheels-dir:,keep-image,cache -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,os-version:,push,clean,user:,release:,stream:,http_proxy:,https_proxy:,no_proxy:,version:,attempts:,retry-delay:,python2,extra-wheels-dir:,keep-image,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -109,6 +112,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-codename)
+            OS_CODENAME=$2
             shift 2
             ;;
         --os-version)
@@ -208,8 +215,33 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+if [ -z "$OS_CODENAME" ] ; then
+    OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    if [[ ! -z "$DEBIAN_DISTRIBUTION" ]]; then
+        OS_CODENAME="$DEBIAN_DISTRIBUTION"
+    else
+        OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    fi
+    if [[ -z "$OS_CODENAME" ]] ; then
+        echo "Unable to determine OS_CODENAME, please re-run with \`--os-codename' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_CODENAME=1
+for supported_os_codename in ${SUPPORTED_OS_CODENAME_ARGS[@]}; do
+    if [ "$OS_CODENAME" = "${supported_os_codename}" ]; then
+        VALID_OS_CODENAME=0
+        break
+    fi
+done
+if [ ${VALID_OS_CODENAME} -ne 0 ]; then
+    echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
+    echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
+
 # Read openstack URLs
-OPENSTACK_CFG="${MY_SCRIPT_DIR}/$OS/openstack.cfg"
+OPENSTACK_CFG="${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}/openstack.cfg"
 source "$OPENSTACK_CFG" || exit 1
 
 # Set python version-specific variables
@@ -225,7 +257,7 @@ fi
 
 # Build the base wheels and retrieve the StarlingX wheels
 declare -a BUILD_BASE_WL_ARGS
-BUILD_BASE_WL_ARGS+=(--os ${OS} --stream ${BUILD_STREAM})
+BUILD_BASE_WL_ARGS+=(--os ${OS} --os-codename ${OS_CODENAME} --stream ${BUILD_STREAM})
 if [ -n "$OS_VERSION" ]; then
     BUILD_BASE_WL_ARGS+=(--os-version "${OS_VERSION}")
 fi
@@ -255,13 +287,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-${MY_SCRIPT_DIR}/get-stx-wheels.sh --os ${OS} --stream ${BUILD_STREAM}
+${MY_SCRIPT_DIR}/get-stx-wheels.sh --os ${OS} --os-codename ${OS_CODENAME} --stream ${BUILD_STREAM}
 if [ $? -ne 0 ]; then
     echo "Failure running get-stx-wheels.sh" >&2
     exit 1
 fi
 
-BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/tarball${PY_SUFFIX}
+BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${OS_CODENAME}-${BUILD_STREAM}/tarball${PY_SUFFIX}
 if [ -d ${BUILD_OUTPUT_PATH} ]; then
     # Wipe out the existing dir to ensure there are no stale files
     rm -rf ${BUILD_OUTPUT_PATH}
@@ -271,7 +303,7 @@ cd ${BUILD_OUTPUT_PATH}
 
 IMAGE_NAME=stx-${OS}-${BUILD_STREAM}-wheels${PY_SUFFIX}
 
-TARBALL_FNAME=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/${IMAGE_NAME}.tar
+TARBALL_FNAME=${MY_WORKSPACE}/std/build-wheels-${OS}-${OS_CODENAME}-${BUILD_STREAM}/${IMAGE_NAME}.tar
 if [ -f ${TARBALL_FNAME} ]; then
     rm -f ${TARBALL_FNAME}
 fi

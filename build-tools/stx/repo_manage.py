@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021 WindRiver Corporation
+# Copyright (C) 2021-2025 WindRiver Corporation
 
 import apt
 import apt_pkg
@@ -108,9 +108,13 @@ class AptFetch():
     # Download a binary package into downloaded folder
     def fetch_deb(self, pkg_name, pkg_version):
         '''Download a binary package'''
-        ret = ''
+
         if not pkg_name or not pkg_version:
+            ret = 'DEB-F missing parameter'
             return ret
+
+        # Default return is a "download failed" message
+        ret = ' '.join(['DEB-F', pkg_name, pkg_version]).strip()
 
         self.logger.info("Current downloading:%s:%s", pkg_name, pkg_version)
         destdir = os.path.join(self.workdir, 'downloads', 'binary')
@@ -133,7 +137,7 @@ class AptFetch():
                         candidate = default_candidate
                 if not candidate:
                     self.aptlock.release()
-                    self.logger.error("Failed to found the matched version %s for %s", pkg_version, pkg_name)
+                    self.logger.error("Failed to find a matching version for %s %s", pkg_name, pkg_version)
                     return ret
         except Exception as e:
             self.aptlock.release()
@@ -153,7 +157,7 @@ class AptFetch():
         except Exception as e:
             self.logger.error(str(e))
             self.logger.error('Binary package %s %s download error' % (pkg_name, pkg_version))
-            return ' '.join(['DEB-F', pkg_name, pkg_version]).strip()
+            return ret
         else:
             self.logger.debug('Binary package %s %s downloaded.' % (pkg_name, pkg_version))
             return ' '.join(['DEB', pkg_name, pkg_version]).strip()
@@ -204,7 +208,19 @@ class AptFetch():
     # deb_list: binary package list file
     # dsc_list: source package list file
     def fetch_pkg_list(self, deb_set=set(), dsc_set=set()):
-        '''Download a bundle of packages specified through deb_list and dsc_list.'''
+        """
+        Download a bundle of packages specified through deb_list and dsc_list
+
+        Each item in the input sets should be formatted as:
+        '<pkg_name> <pkg_version>'
+
+        :param deb_set: Set of binary pkgs to download
+        :param dsc_set: Set of source pkgs to download
+
+        :return: A dict with keys ['deb', 'deb-failed', 'dsc', 'dsc-failed']
+        each with a list of pkgs.
+        """
+
         if not deb_set and not dsc_set:
             raise Exception('deb_list and dsc_list, at least one is required.')
 
@@ -223,10 +239,7 @@ class AptFetch():
                 else:
                     pkg_version = pkg_ver.split()[1]
                 obj = threads.submit(self.fetch_deb, pkg_name, pkg_version)
-                if not obj:
-                    self.logger.error("Failed to download %s:%s", pkg_name, pkg_version)
-                else:
-                    obj_list.append(obj)
+                obj_list.append(obj)
             # Download source packages
             for pkg_ver in dsc_set:
                 pkg_name = pkg_ver.split()[0]
@@ -240,14 +253,17 @@ class AptFetch():
             for future in as_completed(obj_list):
                 ret = future.result()
                 if ret:
-                    if ret.startswith('DEB'):
-                        fetch_result['deb'].append(ret.lstrip('DEB '))
-                    elif ret.startswith('DEB-F'):
+                    if ret.startswith('DEB-F'):
                         fetch_result['deb-failed'].append(ret.lstrip('DEB-F '))
-                    elif ret.startswith('DSC'):
-                        fetch_result['dsc'].append(ret.lstrip('DSC '))
                     elif ret.startswith('DSC-F'):
                         fetch_result['dsc-failed'].append(ret.lstrip('DSC-F '))
+                    elif ret.startswith('DEB'):
+                        fetch_result['deb'].append(ret.lstrip('DEB '))
+                    elif ret.startswith('DSC'):
+                        fetch_result['dsc'].append(ret.lstrip('DSC '))
+                    else:
+                        raise Exception(f"Invalid fetch pkg result: {ret}")
+
         return fetch_result
 
 
@@ -495,7 +511,7 @@ class RepoMgr():
 
     # Construct a repository mirror to an upstream Debian repository
     # kwargs:url: URL of the upstream repo (http://deb.debian.org/debian)
-    # kwargs:distribution: the distribution of the repo (bullseye)
+    # kwargs:distribution: the distribution of the repo (DEBIAN_DISTRIBUTION)
     # kwargs:component: component of the repo (main)
     # kwargs:architecture: architecture of the repo, "all" is always enabled. (amd64)
     # kwargs:with_sources: include source packages, default is False.
@@ -728,15 +744,20 @@ class RepoMgr():
     def search_pkg(self, repo_name, pkg_name, pkg_version=None, binary=True):
         '''Find a package from a specified repo.'''
         repo_find = False
+        repo_list = []
         repo = None
+
         r_list = self.repo.list_local(quiet=True)
         for repo in r_list:
-            if repo == repo_name:
+            if not repo_name or repo == repo_name:
+                repo_list.append(repo)
                 repo_find = True
         r_list = self.repo.list_remotes(quiet=True)
         for repo in r_list:
-            if repo == repo_name:
+            if not repo_name or repo == repo_name:
+                repo_list.append(repo)
                 repo_find = True
+
         if not repo_find:
             self.logger.error('Search package, repository does not exist.')
             return False
@@ -745,7 +766,8 @@ class RepoMgr():
             pkg_type = 'binary'
         else:
             pkg_type = 'source'
-        if not self.repo.pkg_exist([repo_name], pkg_name, pkg_type, pkg_version):
+
+        if not self.repo.pkg_exist(repo_list, pkg_name, pkg_type, pkg_version):
             self.logger.info('Search %s package %s, not found.' % (pkg_type, pkg_name))
             return False
         return True
@@ -799,7 +821,6 @@ class RepoMgr():
 
 # Simple example on using this class.
 applogger = logging.getLogger('repomgr')
-utils.set_logger(applogger)
 
 
 def _handleDownload(args):
@@ -946,6 +967,8 @@ def subcmd_copy_pkg(subparsers):
     copy_pkg_parser.set_defaults(handle=_handleCopyPkg)
 
 def main():
+    utils.set_logger(applogger)
+
     # command line arguments
     parser = argparse.ArgumentParser(add_help=True,
                                      description='Repository management Tool',

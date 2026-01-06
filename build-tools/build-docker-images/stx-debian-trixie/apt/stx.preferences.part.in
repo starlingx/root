@@ -1,0 +1,4 @@
+Explanation: Prefer StarlingX repos over anything else
+Package: *
+Pin: release o=@REPOMGR_ORIGIN@
+Pin-Priority: 999

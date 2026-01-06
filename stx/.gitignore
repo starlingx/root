@@ -8,12 +8,13 @@
 installer-prebuilt
 /ansible-playbooks
 /app-dell-storage
+/app-distributed-cloud
 /app-harbor
 /app-gen-tool
-/app-intel-ethernet-operator
 /app-intel-device-plugins
 /app-ipsec-policy-operator
 /app-istio
+/app-kernel-module-management
 /app-kubernetes-power-manager
 /app-kubevirt/
 /app-node-feature-discovery
@@ -23,6 +24,7 @@ installer-prebuilt
 /apt-ostree
 /app-power-metrics
 /app-rook-ceph
+/app-seaweedfs
 /app-security-profiles-operator
 /app-sriov-fec-operator
 /app-sts-silicom/

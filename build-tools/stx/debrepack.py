@@ -33,31 +33,12 @@ import yaml
 
 
 RELEASENOTES = " ".join([os.environ.get('PROJECT'), os.environ.get('MY_RELEASE'), "distribution"])
-DIST = os.environ.get('STX_DIST')
+STX_DIST = os.environ.get('STX_DIST')
+DIST = os.environ.get('DIST')
 
-# The CENGN_STRATEGY and CENGNURL references is retained for backward
-# compatability with pre-existing build environments.
-CENGN_BASE = None
-CENGNURL = os.environ.get('CENGNURL')
-CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
-if CENGNURL is not None:
-    CENGN_BASE = os.path.join(CENGNURL, "debian")
-STX_MIRROR_BASE = None
-STX_MIRROR_URL = os.environ.get('STX_MIRROR_URL')
-if STX_MIRROR_URL is not None: 
-    STX_MIRROR_BASE = os.path.join(STX_MIRROR_URL, "debian")
-if STX_MIRROR_BASE is None:
-    STX_MIRROR_BASE = CENGN_BASE
-STX_MIRROR_BASE = os.path.join(os.environ.get('STX_MIRROR_URL'), "debian")
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
-if STX_MIRROR_BASE is None:
-    STX_MIRROR_BASE = CENGN_BASE
 if STX_MIRROR_STRATEGY is None:
-    STX_MIRROR_STRATEGY = CENGN_STRATEGY
-    if STX_MIRROR_STRATEGY == "cengn":
-        STX_MIRROR_STRATEGY = "stx_mirror"
-    if STX_MIRROR_STRATEGY == "cengn_first":
-        STX_MIRROR_STRATEGY = "stx_mirror_first"
+    STX_MIRROR_STRATEGY = "stx_mirror_first"
 
 BTYPE = "@KERNEL_TYPE@"
 
@@ -206,10 +187,35 @@ def checksum(dl_file, checksum, cmd, logger):
 def download(url, savepath, logger):
     logger.info(f"Download {url} to {savepath}")
 
-    # Need to avoid using the shell as the URL may include '&' characters.
-    run_shell_cmd(["curl", "--fail", "--location", "--connect-timeout", "15",
-        "--speed-time", "15", "--speed-limit", "1", "--retry", "5",
-        "-o", savepath, url], logger)
+    # Use temporary file to enable resume capability without corrupting final file
+    temp_file = f"{savepath}.tmp.{os.getpid()}"
+
+    # Clean any stale temp files from previous crashed sessions
+    if os.path.exists(temp_file):
+        os.remove(temp_file)
+        logger.debug(f"Removed stale temp file: {temp_file}")
+
+    try:
+        # Need to avoid using the shell as the URL may include '&' characters.
+        run_shell_cmd(["curl", "--fail", "--location",
+            "--connect-timeout", "30",
+            "--speed-time", "30",
+            "--speed-limit", "1",
+            "--retry", "3",
+            "--retry-delay", "3",
+            "-C", "-",
+            "-o", temp_file, url], logger)
+
+        # Atomic rename ensures final file only exists if download succeeded
+        os.rename(temp_file, savepath)
+        logger.info(f"Download complete: {savepath}")
+
+    except Exception as e:
+        # Clean up failed temporary file
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+            logger.debug(f"Removed failed temp file: {temp_file}")
+        raise e
 
     return True
 
@@ -222,9 +228,30 @@ def is_git_repo(path):
         return False
 
 
+def is_python_debmake():
+    try:
+        # Check what the debmake binary points to
+        result = subprocess.run(
+            ['head', '-n', '1', '/usr/bin/debmake'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        first_line = result.stdout.strip()
+
+        # Python version has this shebang
+        return first_line.startswith('#!') and 'python' in first_line.lower()
+
+    except Exception as e:
+        # Default to False if anything fails
+        return False
+
+
 class Parser():
 
-    def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std"):
+    def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std",
+                 distro=discovery.STX_DEFAULT_DISTRO,
+                 codename=discovery.STX_DEFAULT_DISTRO_CODENAME):
 
         self.logger = logging.getLogger(__name__)
         if not self.logger.handlers:
@@ -246,6 +273,9 @@ class Parser():
             raise Exception(f"{output}: No such file or directory")
         self.output = os.path.abspath(output)
 
+        self.distro=distro
+        self.codename=codename
+
         self.srcrepo = srcrepo
         self.btype = btype
         self.meta_data = dict()
@@ -261,12 +291,12 @@ class Parser():
             raise Exception(f"{pkgpath}: No such file or directory")
 
         self.pkginfo["pkgpath"] = os.path.abspath(pkgpath)
-        self.pkginfo["pkgname"] = discovery.package_dir_to_package_name(pkgpath, 'debian')
+        self.pkginfo["pkgname"] = discovery.package_dir_to_package_name(pkgpath, self.distro, self.codename)
         self.pkginfo["packdir"] = os.path.join(self.basedir, self.pkginfo["pkgname"])
 
-        self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")
+        self.pkginfo["debfolder"] = discovery.get_relocated_package_dir(pkgpath, self.distro, self.codename)
         if not os.path.isdir(self.pkginfo["debfolder"]):
-            self.logger.error("No debian folder")
+            self.logger.error("No debian folder: {}".format(self.pkginfo["debfolder"]))
             raise Exception("No debian folder")
 
         self.meta_data_file = os.path.join(self.pkginfo["debfolder"], "meta_data.yaml")
@@ -314,10 +344,11 @@ class Parser():
         self.versions["debian_revision"] = BaseVersion(self.versions["full_version"]).debian_revision
         self.versions["epoch"] = BaseVersion(self.versions["full_version"]).epoch
 
-        self.logger.info("=== Package Name: %s", self.pkginfo["pkgname"])
+        self.logger.info("=== Package Name:        %s", self.pkginfo["pkgname"])
         self.logger.info("=== Debian Package Name: %s", self.pkginfo["debname"])
-        self.logger.info("=== Package Version: %s", self.versions["full_version"])
-        self.logger.info("=== Package Path: %s", self.pkginfo["pkgpath"])
+        self.logger.info("=== Package Version:     %s", self.versions["full_version"])
+        self.logger.info("=== Package Path:        %s", self.pkginfo["pkgpath"])
+        self.logger.info("=== Distro Package Path: %s", self.pkginfo["debfolder"])
 
         srcdir = self.pkginfo["debname"] + "-" + self.versions["upstream_version"]
         self.pkginfo["srcdir"] = os.path.join(self.pkginfo["packdir"], srcdir)
@@ -356,7 +387,7 @@ class Parser():
                 src_dir = os.path.join(self.pkginfo['pkgpath'], src_dir)
             self.logger.info ("SRC_DIR = %s", src_dir)
         else:
-            src_dir = self.pkginfo["pkgpath"]
+            src_dir = self.pkginfo["debfolder"]
             self.logger.info("SRC_DIR = %s (guessed)", src_dir)
         return src_dir
 
@@ -368,7 +399,14 @@ class Parser():
             return dist
 
         # reset the debfolder
-        self.pkginfo["debfolder"] = os.path.join(self.pkginfo["pkgpath"], "debian")
+        #
+        # This also means that when a package is relocated to the "new style"
+        # for bullseye builds, we need to make sure that the revcount is
+        # adjusted properly for continuity of patching, this will require setting
+        # "revision.stx_patch: <number>" in the package meta_data.yaml correctly
+        #
+        self.pkginfo["debfolder"] = discovery.get_relocated_package_dir(self.pkginfo["pkgpath"],
+                                                                        self.distro, self.codename)
 
         revision_data = self.meta_data["revision"]
         if "dist" in revision_data:
@@ -975,7 +1013,7 @@ class Parser():
         src = run_shell_cmd('dpkg-parsechangelog -l %s --show-field source' % changelog, self.logger)
         ver = run_shell_cmd('dpkg-parsechangelog -l %s --show-field version' % changelog, self.logger)
         ver += self.set_revision()
-        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (self.pkginfo["srcdir"], ver, RELEASENOTES), self.logger)
+        run_shell_cmd('cd %s; dch -p -D %s -v %s %s' % (self.pkginfo["srcdir"], DIST, ver, RELEASENOTES), self.logger)
         # strip epoch
         ver = ver.split(":")[-1]
 
@@ -999,6 +1037,7 @@ class Parser():
 
         return files
 
+
     def dummy_package(self, pkgfiles, pkgname, pkgver="1.0-1"):
 
         for pfile in pkgfiles:
@@ -1020,8 +1059,12 @@ class Parser():
         for pfile in pkgfiles:
             run_shell_cmd('mkdir -p %s; cp %s %s' % (srcdir, pfile, srcdir), self.logger)
         run_shell_cmd('tar czvf %s %s; rm -rf %s' % (tarfile, srcdir, srcdir), self.logger)
-        run_shell_cmd('debmake -a %s' % tarfile, self.logger)
-        run_shell_cmd('cd %s; dch -p -D bullseye -v %s %s' % (srcdir, pkgver, RELEASENOTES), self.logger)
+
+        extra_args = ''
+        if is_python_debmake():
+            extra_args = '--targz=tar.gz'
+        run_shell_cmd('debmake -a %s %s' % (tarfile, extra_args), self.logger)
+        run_shell_cmd('cd %s; dch -p -D %s -v %s %s' % (srcdir, DIST, pkgver, RELEASENOTES), self.logger)
         run_shell_cmd('cd %s; dpkg-buildpackage -nc -us -uc -S -d' % srcdir, self.logger)
         # strip epoch
         ver = pkgver.split(":")[-1]

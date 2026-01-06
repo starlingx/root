@@ -236,12 +236,12 @@ repo_url_to_sub_path () {
     return 0
 }
 
-STX_MIRROR_PROTOCOL="${STX_MIRROR_PROTOCOL:-https}"
-STX_MIRROR_HOST="${STX_MIRROR_HOST:-mirror.starlingx.windriver.com}"
-STX_MIRROR_PORT="${STX_MIRROR_PORT:-443}"
-STX_MIRROR_URL_ROOT="${STX_MIRROR_URL_ROOT:-mirror}"
+OS_MIRROR_PROTOCOL="${OS_MIRROR_PROTOCOL:-https}"
+OS_MIRROR_HOST="${OS_MIRROR_HOST:-mirror.starlingx.windriver.com}"
+OS_MIRROR_PORT="${OS_MIRROR_PORT:-443}"
+OS_MIRROR_URL_ROOT="${OS_MIRROR_URL_ROOT:-mirror}"
 
-url_to_stx_mirror_url () {
+url_to_os_mirror_url () {
     local URL="$1"
     local DISTRO="$2"
     local URL_PATH=""
@@ -264,7 +264,7 @@ url_to_stx_mirror_url () {
         return 1
     fi
 
-    echo "$STX_MIRROR_PROTOCOL://$STX_MIRROR_HOST:$STX_MIRROR_PORT/$STX_MIRROR_URL_ROOT/$DISTRO/$URL_PATH"
+    echo "$OS_MIRROR_PROTOCOL://$OS_MIRROR_HOST:$OS_MIRROR_PORT/$OS_MIRROR_URL_ROOT/$DISTRO/$URL_PATH"
     return 0
 }
 

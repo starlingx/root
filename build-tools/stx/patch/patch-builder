@@ -8,6 +8,7 @@
 Builds a Debian patch
 '''
 
+import click
 import hashlib
 import logging
 import os
@@ -17,40 +18,68 @@ import sys
 import tarfile
 import tempfile
 
-import click
+from exceptions import FetchDebsError
+
+import constants
 import fetch_debs
 import metadata
 from signing.patch_signing import sign_files
 
-import constants
-
 sys.path.append('..')
 import utils
+
+# Patch signature files
+DETACHED_SIGNATURE_FILENAME = "signature.v2"
+MD5SUM_SIGNATURE_FILENAME = "signature"
+
+# Default patch output directory
+DEPLOY_DIR = "/localdisk/deploy"
+DEFAULT_PATCH_OUTPUT_DIR = os.path.join(DEPLOY_DIR, "patch_output")
+
 
 logger = logging.getLogger('patch_builder')
 utils.set_logger(logger)
 
-# Patch signature files
-detached_signature_file = "signature.v2"
-mdsum_signature_file = "signature"
-
-# Signing server variables
-signing_server = os.getenv('SIGNING_SERVER', '')
-signing_user = os.getenv('SIGNING_USER', '')
-
-# Patch output directory
-DEPLOY_DIR = "/localdisk/deploy"
-PATCH_OUTPUT = os.path.join(DEPLOY_DIR, "patch_output")
 
 class PatchBuilder(object):
-    def __init__(self, patch_recipe_file, file_name=None, sign_remote=False):
+
+    def __init__(self,
+                 patch_recipe_file,
+                 file_name=None,
+                 sign_remote=False):
+
         self.metadata = metadata.PatchMetadata(patch_recipe_file)
         self.metadata.parse_input_xml_data()
+
+        self.patch_script_paths = self.metadata.patch_script_paths
+
         self.fetch_debs = fetch_debs.FetchDebs()
         self.fetch_debs.need_dl_stx_pkgs = self.metadata.stx_packages
         self.fetch_debs.need_dl_binary_pkgs = self.metadata.binary_packages
+
         self.patch_name = f'{self.metadata.patch_id}.patch' if file_name == None else file_name
+
         self.sign_remote = sign_remote
+        self.signing_server = os.environ.get('SIGNING_SERVER')
+        self.signing_user = os.environ.get('SIGNING_USER')
+
+        self.validate_inputs()
+
+
+    def validate_inputs(self):
+        """Raise errors if any input is invalid"""
+
+        # Formal signature requested without providing auths for signing server
+        if self.sign_remote and \
+           (self.signing_server == None or self.signing_user == None):
+            msg = "Cannot sign patch without signing server info"
+            logger.error(msg)
+            raise Exception(msg)
+
+        # In-Service patch requested without providing any patch scripts
+        if self.metadata.reboot_required == 'N' and not any(self.patch_script_paths.values()):
+            logger.warning("In service patch without any patch scripts!")
+
 
     def get_md5(self, path):
         '''
@@ -64,70 +93,72 @@ class PatchBuilder(object):
                 md5.update(chunk)
         return int(md5.hexdigest(), 16)
 
+
     def build_patch(self):
-        logger.info(f"Generating patch {self.patch_name}")
-        # Fetch debs from metadata and
-        # Create software.tar, metadata.tar and signatures
-        # Create a temporary working directory
+        logger.info(f"Patch patch: {self.patch_name}")
+
         logger.debug("Fetching debs...")
         self.fetch_debs.fetch_stx_packages()
         self.fetch_debs.fetch_external_binaries()
-        # verify if dir is not empty
-        dl_dir = os.path.join(self.fetch_debs.output_dir, "downloads", "binary")
-        if not os.listdir(dl_dir):
-            logger.error("No debs fetched")
-            return False
-        logger.info("################ PATCH BUILD ################")
-        logger.info("Download completed, building our patch")
+
+        logger.info("Building patch...")
+
         tmpdir = tempfile.mkdtemp(prefix="patch_")
         os.chdir(tmpdir)
-        tar = tarfile.open("software.tar", "w")
-        # copy all files from dl_dir into the tar
-        for file in os.listdir(dl_dir):
-            logger.info(f"Saving file {file}")
-            tar.add(os.path.join(dl_dir, file), arcname=file)
-            # append deb name into metadata
-            self.metadata.debs.append(file)
-        tar.close()
 
-        pre_install = self.metadata.pre_install
-        post_install = self.metadata.post_install
+        tmp_debs_dir = os.path.join(self.fetch_debs.output_dir, "downloads", "binary")
 
-        # pre/post install scripts
-        if pre_install:
-            logger.debug(f"Copying pre-install script: {pre_install}")
-            self.copy_rename_script(pre_install, "PRE_INSTALL")
+        # software tarball
+        with tarfile.open("software.tar", "w") as software_tar:
+            for binary_pkg in os.listdir(tmp_debs_dir):
+                logger.info(f"Saving file {binary_pkg}")
+                software_tar.add(os.path.join(tmp_debs_dir, binary_pkg), arcname=binary_pkg)
+                # append deb name into metadata
+                self.metadata.debs.append(binary_pkg)
 
-        if post_install:
-            logger.debug(f"Copying post-install script: {post_install}")
-            self.copy_rename_script(post_install, "POST_INSTALL")
+        # Patch scripts
+        for script_id, script_path in self.patch_script_paths.items():
+            if script_path is not None:
+                self.copy_rename_script(script_path, script_id)
+                logger.debug(f"Patch script added: {script_id}: {script_path}")
 
         # Copy all activate scripts
         if self.metadata.activation_scripts:
             for script in self.metadata.activation_scripts:
                 self.copy_rename_script(path_to_script=script, rename=False)
 
-        # if the patch includes the 'software' package we need to make deploy-precheck
-        # and upgrade_utils.py from .deb file accessible directly from patch file
-        if 'software' in self.metadata.stx_packages:
-            logger.info(f"Patch includes the software package, getting scripts from deb file...")
+        # Extra content
+        if self.metadata.extra_content:
+            logger.info("Adding in extra content...")
+            with tarfile.open("extra.tar", "w") as extra_tar:
+                for item in self.metadata.extra_content:
+                    logger.info(f"Adding: {item}")
+                    extra_tar.add(item, arcname=os.path.join("extra", os.path.basename(item)))
+
+        # Precheck Scripts:
+        # If the patch includes the 'software' package or
+        # if the patch XML has the 'precheck_scripts' flag set to 'Y',
+        # extract precheck scripts from software.deb and put them in the patch file
+        if 'software' in self.metadata.stx_packages or \
+            self.metadata.precheck_scripts_flag == 'Y':
+            logger.info(f"Adding precheck scripts...")
 
             # create temporary folder to hold our files until we copy them to the patch
             tmp_folder = tempfile.mkdtemp(prefix='deb_')
 
+            # Fetch software deb
+            fetch_debs.FetchDebs(need_dl_stx_pkgs = ['software']).fetch_stx_packages()
+
             # Collect files
-            files_to_get = [constants.PATCH_SCRIPTS["DEPLOY_PRECHECK"],
-                            constants.PATCH_SCRIPTS["UPGRADE_UTILS"]]
-            path_files = self.get_files_from_deb(dl_dir, tmp_folder, 'software', files_to_get)
+            files_to_get = [constants.PRECHECK_SCRIPTS["DEPLOY_PRECHECK"],
+                            constants.PRECHECK_SCRIPTS["UPGRADE_UTILS"]]
+            path_files = self.get_files_from_deb(tmp_debs_dir, tmp_folder, 'software', files_to_get)
 
             for path in path_files:
                 self.copy_rename_script(path_to_script=path, rename=False)
 
             # removing the temporary folder
             shutil.rmtree(tmp_folder)
-
-        if not pre_install and not post_install and self.metadata.reboot_required == 'N':
-            logger.warn("In service patch without restart scripts provided")
 
         # Generate metadata.xml
         logger.debug("Generating metadata file")
@@ -140,6 +171,7 @@ class PatchBuilder(object):
         # Pack .patch file
         self.__sign_and_pack(self.patch_name)
 
+
     def copy_rename_script(self, path_to_script, script_type=None, rename=True):
         '''
         Copy the script to the directory we are in and rename based
@@ -151,23 +183,27 @@ class PatchBuilder(object):
 
         '''
         if not os.path.isfile(path_to_script):
-            erro_msg = f"Install script {path_to_script} not found"
-            logger.error(erro_msg)
-            raise FileNotFoundError(erro_msg)
+            msg = f"Patch script not found: {path_to_script}"
+            logger.error(msg)
+            raise FileNotFoundError(msg)
 
         # check if need a rename or not
         if rename:
-            # We check the type to correctly rename the file to a expected value
-            script_name = constants.PATCH_SCRIPTS.get(script_type, None)
+            if script_type == None or script_type not in constants.PATCH_SCRIPTS.keys():
+                msg = f"Not a valid script type: {script_type}"
+                logger.error(msg)
+                raise Exception(msg)
 
-            if script_name and rename:
-                logger.info(f"Renaming {path_to_script} to {script_name}")
-                shutil.copy(path_to_script, f"./{script_name}")
-            else:
-                raise ValueError(f"Script type provided is not valid one: {script_type}")
+            # We check the type to correctly rename the file to a expected value
+            script_name = constants.PATCH_SCRIPTS[script_type]
+
+            logger.info(f"Renaming {path_to_script} to {script_name}")
+            shutil.copy(path_to_script, f"./{script_name}")
+
         else:
             logger.info(f"Copying {path_to_script}...")
             shutil.copy(path_to_script, "./")
+
 
     def get_files_from_deb(self, download_dir, tmp_folder, package_name, files):
         '''
@@ -224,6 +260,7 @@ class PatchBuilder(object):
 
         return paths
 
+
     def __sign_and_pack(self, patch_file):
         """
         Generates the patch signatures and pack the .patch file
@@ -231,19 +268,20 @@ class PatchBuilder(object):
         """
         filelist = ["metadata.tar", "software.tar"]
 
-        if self.metadata.pre_install:
-            filelist.append(constants.PATCH_SCRIPTS["PRE_INSTALL"])
+        if self.metadata.extra_content:
+            filelist.append("extra.tar")
 
-        if self.metadata.post_install:
-            filelist.append(constants.PATCH_SCRIPTS["POST_INSTALL"])
+        for script_id, script_path in self.patch_script_paths.items():
+            if script_path is not None:
+                filelist.append(constants.PATCH_SCRIPTS[script_id])
 
         # Generate the local signature file
-        logger.debug(f"Generating signature for patch files {filelist}")
+        logger.debug(f"Generating signature for patch files: {filelist}")
         sig = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
         for f in filelist:
             sig ^= self.get_md5(f)
 
-        sigfile = open(mdsum_signature_file, "w")
+        sigfile = open(MD5SUM_SIGNATURE_FILENAME, "w")
         sigfile.write("%x" % sig)
         sigfile.close()
 
@@ -255,7 +293,7 @@ class PatchBuilder(object):
         #    need_resign_with_formal is set to True.
         need_resign_with_formal = sign_files(
             filelist,
-            detached_signature_file,
+            DETACHED_SIGNATURE_FILENAME,
             cert_type=None)
 
         logger.info(f"Formal signing status: {need_resign_with_formal}")
@@ -263,9 +301,9 @@ class PatchBuilder(object):
         # Save files into .patch
         files = [f for f in os.listdir('.') if os.path.isfile(f)]
 
-        if not os.path.exists(PATCH_OUTPUT):
-            os.makedirs(PATCH_OUTPUT)
-        patch_full_path = os.path.join(PATCH_OUTPUT, patch_file)
+        if not os.path.exists(DEFAULT_PATCH_OUTPUT_DIR):
+            os.makedirs(DEFAULT_PATCH_OUTPUT_DIR)
+        patch_full_path = os.path.join(DEFAULT_PATCH_OUTPUT_DIR, patch_file)
         tar = tarfile.open(patch_full_path, "w:gz")
         for file in files:
             logger.info(f"Saving file {file}")
@@ -275,6 +313,7 @@ class PatchBuilder(object):
         if self.sign_remote:
             self.__sign_patch_remotely(patch_full_path)
 
+
     def __sign_patch_remotely(self, patch_file):
         """
         Send the patch file to be signed remotely by a signing server
@@ -283,14 +322,14 @@ class PatchBuilder(object):
         """
         logger.info("Starting remote signing for: %s", patch_file)
 
-        if not signing_server:
-            logger.exception("SIGNING_SERVER variable not set, unable to continue.")
+        if not self.signing_server:
+            logger.error("SIGNING_SERVER variable not set, unable to continue.")
             sys.exit(1)
-        if not signing_user:
-            logger.exception("SIGNING_USER variable not set, unable to continue.")
+        if not self.signing_user:
+            logger.error("SIGNING_USER variable not set, unable to continue.")
             sys.exit(1)
         try:
-            conn_string = f"{signing_user}@{signing_server}"
+            conn_string = f"{self.signing_user}@{self.signing_server}"
             patch_basename = os.path.basename(patch_file)
 
             # First we get the upload path from the signing server, it should return something
@@ -338,7 +377,7 @@ class PatchBuilder(object):
 @click.command()
 @click.option(
             '--recipe',
-            help='Patch recipe input XML file, examples are available under EXAMLES directory',
+            help='Patch recipe input XML file, examples are available under EXAMPLES directory',
             required=True)
 @click.option(
             '--name',
@@ -351,9 +390,16 @@ class PatchBuilder(object):
             is_flag=True,
             required=False)
 
+
 def build(recipe, name=None, remote_sign=False):
-    patch_builder = PatchBuilder(recipe, name, remote_sign)
-    patch_builder.build_patch()
+    try:
+        patch_builder = PatchBuilder(recipe, name, remote_sign)
+        patch_builder.build_patch()
+
+    except FetchDebsError as e:
+        logger.exception(e)
+        sys.exit(1)
+
 
 if __name__ == '__main__':
     build()

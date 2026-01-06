@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 from lxml import etree
 from xml.dom import minidom
 
-import constants
+from constants import PATCH_SCRIPTS
 
 logger = logging.getLogger('metadata_parser')
 utils.set_logger(logger)
@@ -36,8 +36,6 @@ DESCRIPTION = 'description'
 INSTALL_INSTRUCTIONS = 'install_instructions'
 WARNINGS = 'warnings'
 REBOOT_REQUIRED = 'reboot_required'
-PRE_INSTALL = 'pre_install'
-POST_INSTALL = 'post_install'
 UNREMOVABLE = 'unremovable'
 REQUIRES = 'requires'
 REQUIRES_PATCH_ID = 'req_patch_id'
@@ -46,6 +44,8 @@ STX_PACKAGES = 'stx_packages'
 BINARY_PACKAGES = 'binary_packages'
 SEMANTICS = 'semantics'
 ACTIVATION_SCRIPTS = 'activation_scripts'
+EXTRA_CONTENT = 'extra_content'
+PRECHECK_SCRIPTS_FLAG = 'precheck_scripts'
 
 
 class PatchMetadata(object):
@@ -55,6 +55,7 @@ class PatchMetadata(object):
         self.binary_packages = []
         self.requires = []
         self.activation_scripts = []
+        self.extra_content = []
 
         # Verify if the path to the patch builder folder is set
         if not PATCH_BUILDER_PATH:
@@ -122,23 +123,23 @@ class PatchMetadata(object):
         else:
             raise Exception('Supported values for "Reboot Required" are Y or N, for "Yes" or "No" respectively')
 
+        if self.precheck_scripts_flag.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, PRECHECK_SCRIPTS_FLAG, self.precheck_scripts_flag.upper())
+        else:
+            raise Exception('Supported values for "Precheck Scripts" are Y or N, for "Yes" or "No" respectively')
+
         self.__add_text_tag_to_xml(top_tag, SEMANTICS, self.semantics)
 
         requires_atg = ET.SubElement(top_tag, REQUIRES)
         for req_patch in sorted(self.requires):
             self.__add_text_tag_to_xml(requires_atg, REQUIRES_PATCH_ID, req_patch)
 
-        if self.pre_install:
-            self.__add_text_tag_to_xml(top_tag, PRE_INSTALL,
-                                       constants.PATCH_SCRIPTS['PRE_INSTALL'])
-        else:
-            self.__add_text_tag_to_xml(top_tag, PRE_INSTALL, "")
+        for script_id, script_path in self.patch_script_paths.items():
+            script_name = ""
+            if script_path != None:
+                script_name = PATCH_SCRIPTS[script_id]
 
-        if self.post_install:
-            self.__add_text_tag_to_xml(top_tag, POST_INSTALL,
-                                       constants.PATCH_SCRIPTS['POST_INSTALL'])
-        else:
-            self.__add_text_tag_to_xml(top_tag, POST_INSTALL, "")
+            self.__add_text_tag_to_xml(top_tag, script_id, script_name)
 
         if self.activation_scripts:
             activation_scripts_tag = ET.SubElement(top_tag, ACTIVATION_SCRIPTS)
@@ -146,6 +147,13 @@ class PatchMetadata(object):
                 self.__add_text_tag_to_xml(activation_scripts_tag, "script", script.split('/')[-1])
         else:
             self.__add_text_tag_to_xml(top_tag, ACTIVATION_SCRIPTS, "")
+
+        if self.extra_content:
+            extra_content_tag = ET.SubElement(top_tag, EXTRA_CONTENT)
+            for item in self.extra_content:
+                self.__add_text_tag_to_xml(extra_content_tag, "item", item.split('/')[-1])
+        else:
+            self.__add_text_tag_to_xml(top_tag, EXTRA_CONTENT, "")
 
         packages_tag = ET.SubElement(top_tag, PACKAGES)
         for package in sorted(self.debs):
@@ -161,6 +169,9 @@ class PatchMetadata(object):
             return [tag_content]
         return tag_content
 
+
+    # TODO: The feature of searching for content in MY_REPO_ROOT_DIR needs to
+    # be implemented for activation scripts as well.
     def _validate_activation_script(self, script_list):
         '''
         Validate if scripts filename start with an integer
@@ -173,6 +184,7 @@ class PatchMetadata(object):
                 logger.error("Error while parsing the activation script:")
                 logger.error("Filename '%s' doesn't start with an integer." % fullpath_script)
                 sys.exit(1)
+
 
     def parse_metadata(self, patch_recipe):
         self.patch_id = f"{patch_recipe[COMPONENT]}-{patch_recipe[SW_VERSION]}"
@@ -187,14 +199,24 @@ class PatchMetadata(object):
         self.install_instructions = patch_recipe[INSTALL_INSTRUCTIONS]
         self.warnings = patch_recipe[WARNINGS]
         self.reboot_required = patch_recipe[REBOOT_REQUIRED]
-        self.pre_install = self.check_script_path(patch_recipe[PRE_INSTALL])
-        self.post_install = self.check_script_path(patch_recipe[POST_INSTALL])
+
+        self.precheck_scripts_flag = 'N'
+        if PRECHECK_SCRIPTS_FLAG in patch_recipe:
+            self.precheck_scripts_flag = patch_recipe[PRECHECK_SCRIPTS_FLAG]
+
+        # For each patch script, validate the path provided
+        self.patch_script_paths = {
+            script_id: self.check_script_path(patch_recipe.get(script_id, None))
+            for script_id in PATCH_SCRIPTS.keys()
+        }
+
         self.unremovable = patch_recipe[UNREMOVABLE]
         self.status = patch_recipe[STATUS]
         if 'id' in patch_recipe[REQUIRES]:
             self.requires = self.__tag_to_list(patch_recipe[REQUIRES]['id'])
         self.semantics = patch_recipe[SEMANTICS]
-        if 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
+
+        if ACTIVATION_SCRIPTS in patch_recipe and 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
             # the xml parser transform the 'script' value in string or in
             # array depending on how much elements we add.
             scripts_lst = []
@@ -205,12 +227,57 @@ class PatchMetadata(object):
                     scripts_lst.append(self.check_script_path(script))
             self._validate_activation_script(scripts_lst)
             self.activation_scripts = scripts_lst
+
+        if EXTRA_CONTENT in patch_recipe and 'item' in patch_recipe[EXTRA_CONTENT]:
+            # the xml parser transform the 'script' value in string or in
+            # array depending on how much elements we add.
+            if isinstance(patch_recipe[EXTRA_CONTENT]['item'], str):
+                extra_content_input = [patch_recipe[EXTRA_CONTENT]['item']]
+            else:
+                extra_content_input = patch_recipe[EXTRA_CONTENT]['item']
+
+            for item in extra_content_input:
+                candidate_item = self.validate_extra_content(item)
+                if candidate_item is not None:
+                    self.extra_content.append(candidate_item)
+
         self.debs = []
 
         if self.status != 'DEV' and self.status != 'REL':
             raise Exception('Supported status are DEV and REL, selected')
 
         logger.debug("Metadata parsed: %s", self)
+
+
+    # TODO: This funtion is very similar to check_script_path()
+    # This code can be refactored to use just one of them.
+    # It's worth refactoring input validation in general.
+    def validate_extra_content(self, item):
+        """ Check if item corresponds to existing file/dir
+
+        If path is relative, look for content using as parent dir
+        the current directory, then fallback to MY_REPO_ROOT_DIR
+        (ie.: /localdisk/designer/USER/PROJECT/)
+        """
+        if not item:
+            # No input provided
+            return None
+
+        # Cases: Absolute path and path relative to curdir
+        candidate = os.path.abspath(item)
+        if os.path.exists(candidate):
+            return candidate
+
+        # Case: Path relative to MY_REPO_ROOT_DIR
+        parent = utils.get_env_variable('MY_REPO_ROOT_DIR')
+        candidate = os.path.join(parent, item)
+        if os.path.exists(candidate):
+            return candidate
+
+        msg = f"Extra content not found: {item}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
 
     def parse_input_xml_data(self):
         # Parse and validate the XML
@@ -240,19 +307,32 @@ class PatchMetadata(object):
 
 
     def check_script_path(self, script_path):
+        """ Process and validate script path
+
+        Check if path points to an existing file.
+        If path is relative, look for the script using as parent dir
+        the current directory, then fallback to MY_REPO_ROOT_DIR
+        (ie.: /localdisk/designer/USER/PROJECT/)
+        """
+
+        # Case: No input provided
         if not script_path:
-            # No scripts provided
             return None
 
-        if not os.path.isabs(script_path):
-            script_path = os.path.join(os.getcwd(), script_path)
+        # Cases: Absolute path and path relative to curdir
+        candidate = os.path.abspath(script_path)
+        if os.path.isfile(candidate):
+            return candidate
 
-        if not os.path.isfile(script_path):
-            erro_msg = f"Install script {script_path} not found"
-            logger.error(erro_msg)
-            raise FileNotFoundError(erro_msg)
+        # Case: Path relative to MY_REPO_ROOT_DIR
+        parent = utils.get_env_variable('MY_REPO_ROOT_DIR')
+        candidate = os.path.join(parent, script_path)
+        if os.path.isfile(candidate):
+            return candidate
 
-        return script_path
+        msg = f"Script not found: {script_path}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
 
 
 if __name__ == "__main__":

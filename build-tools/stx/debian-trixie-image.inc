@@ -12,6 +12,7 @@ bind9-host
 bsdextrautils
 bsdutils
 busybox
+ca-certificates
 cdebconf
 cloud-init
 cluster-glue
@@ -29,7 +30,6 @@ dconf-gsettings-backend
 debconf-i18n
 diffutils
 dnf
-docker.io
 dosfstools
 eatmydata
 e2fsprogs
@@ -67,7 +67,7 @@ firmware-samsung
 firmware-siano
 flake8
 fonts-dejavu-core
-gcc-10
+gcc-14
 genisoimage
 gettext-base
 gnupg
@@ -83,6 +83,7 @@ inotify-tools
 install-info
 iperf3
 ipmitool
+ipset
 iptables-persistent
 ipxe-qemu
 iscsiuio
@@ -96,19 +97,19 @@ libavahi-glib1
 libbabeltrace1
 libblas3
 libbluetooth3
-libboost-context1.74.0
-libboost-iostreams1.74.0
-libboost-python1.74.0
-libboost-regex1.74.0
+libboost-context1.83.0
+libboost-iostreams1.83.0
+libboost-python1.83.0
+libboost-regex1.83.0
 libc6
 libc6-dev
 libcacard0
-libcapstone4
+libcapstone5
 libcrypt1
 libdebconfclient0
-libdns-export1110
+# libdns-export1110
 libeinfo1
-libfam0
+# libfam0
 libfuse2
 libgcc-s1
 libgeoip1
@@ -123,20 +124,20 @@ liblognorm5
 libmm-glib0
 libndctl6
 libndp0
-libnetcf1
+# libnetcf1
 libnet-ntp-perl
-libnfs13
+libnfs14
 libnm0
 libnss-cache
 libnss-mdns
 libnss-sss
 liboath0
-libodbc1
+libodbc2
 libopendbx1
 libpam-sss
 libpciaccess0
 librabbitmq4
-librte-vhost21
+librte-vhost25
 libsanlock-client1
 libsecret-1-0
 libslirp0
@@ -146,13 +147,12 @@ libssh-4
 libsss-sudo
 libteam-utils
 libunbound8
-liburing1
+liburing2
 libusb-1.0-0
 libusbredirparser1
 libvdeplug2
 libvirglrenderer1
 libyajl2
-linux-cpupower
 locales-all
 logrotate
 lsb-base
@@ -171,7 +171,7 @@ ndisc6
 netcat-openbsd
 nfs-kernel-server
 nftables
-ntp
+ntpsec
 nvme-cli
 open-iscsi
 openssh-server
@@ -180,21 +180,21 @@ ovmf
 pciutils
 pinentry-curses
 pipexec
-postgresql-13
+postgresql-17
 psmisc
 puppet-module-adrienthebo-filemapper
-puppet-module-asciiduck-sssd
+# puppet-module-asciiduck-sssd
 puppet-module-barbican
 puppet-module-duritong-sysctl
 puppet-module-puppetlabs-mount-core
 puppet-module-voxpupuli-collectd
 puppet-module-vswitch
 pv
-python3-amqplib
+python3-amqp
 python3-boto3
 python3-castellan
 python3-cherrypy3
-python3-contextlib2
+# python3-contextlib2
 python3-coverage
 python3-daemon
 python3-dev
@@ -204,9 +204,8 @@ python3-enmerkar
 python3-falcon
 python3-fixtures
 python3-flask-restful
-python3-ipaddr
+# python3-ipaddr
 python3-keystonemiddleware
-python3-kubernetes
 python3-ldap3
 python3-ldappool
 python3-lz4
@@ -289,7 +288,7 @@ ssg-debian
 sshpass
 sssd
 sssd-tools
-startpar
+#startpar
 strace
 strongswan
 strongswan-swanctl

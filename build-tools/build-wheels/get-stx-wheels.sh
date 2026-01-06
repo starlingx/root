@@ -15,7 +15,9 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
 fi
 
 SUPPORTED_OS_ARGS=('debian')
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=
+OS_CODENAME=
 BUILD_STREAM=stable
 
 function usage {
@@ -24,13 +26,14 @@ Usage:
 $(basename $0) [ --os <os> ] [ --stream <stable|dev> ]
 
 Options:
-    --os:         Specify base OS (eg. debian)
-    --stream:     Openstack release (default: stable)
+    --os:          Specify base OS (eg. debian)
+    --os-codename: Specify base OS (eg. trixie, bullseye)
+    --stream:      Openstack release (default: stable)
 
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,release:,stream: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,release:,stream: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -47,6 +50,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-codename)
+            OS_CODENAME=$2
             shift 2
             ;;
         --stream)
@@ -90,10 +97,36 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+if [ -z "$OS_CODENAME" ] ; then
+    if [[ ! -z "$DEBIAN_DISTRIBUTION" ]]; then
+        OS_CODENAME="$DEBIAN_DISTRIBUTION"
+    else
+        OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    fi
+    if [[ -z "$OS_CODENAME" ]] ; then
+        echo "Unable to determine OS_CODENAME, please re-run with \`--os-codename' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_CODENAME=1
+for supported_os_codename in ${SUPPORTED_OS_CODENAME_ARGS[@]}; do
+    if [ "$OS_CODENAME" = "${supported_os_codename}" ]; then
+        VALID_OS_CODENAME=0
+        break
+    fi
+done
+if [ ${VALID_OS_CODENAME} -ne 0 ]; then
+    echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
+    echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
+
 source ${MY_REPO}/build-tools/git-utils.sh
 
 function get_wheels_files {
-    find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_wheels.inc"
+    find ${GIT_LIST} -maxdepth 1 \! -path "$(git_ctx_root_dir)/do-not-build/*" \
+                     \( -name "${OS}_${BUILD_STREAM}_wheels.inc" \
+                     -o -name "${OS}_${OS_CODENAME}_${BUILD_STREAM}_wheels.inc" \)
 }
 
 function get_lower_layer_wheels_files {
@@ -119,11 +152,11 @@ function find_wheel_deb {
 
 declare -a WHEELS_FILES=($(get_wheels_files) $(get_lower_layer_wheels_files))
 if [ ${#WHEELS_FILES[@]} -eq 0 ]; then
-    echo "Could not find ${OS} wheels.inc files" >&2
+    echo "Could not find ${OS}-${OS_CODENAME} wheels.inc files" >&2
     exit 1
 fi
 
-BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/stx
+BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${OS_CODENAME}-${BUILD_STREAM}/stx
 echo "BUILD_OUTPUT_PATH: $BUILD_OUTPUT_PATH" >&2
 if [ -d ${BUILD_OUTPUT_PATH} ]; then
     # Wipe out the existing dir to ensure there are no stale files

@@ -29,49 +29,53 @@ import copy
 import os
 import re
 import shutil
+import stx_apt_cache
 from debian import deb822
 
-# Debian repository. You can also choose a nearby mirror site, see web page below:
-# https://www.debian.org/mirror/list
-mirror_0 = 'http://deb.debian.org/debian/ bullseye main contrib'
-mirror_1 = 'http://security.debian.org/debian-security bullseye-security main contrib'
-mirrors = [mirror_0, mirror_1]
-apt_rootdir = '/tmp/dsc_depend'
+DEBIAN_DISTRIBUTION = os.environ.get('DEBIAN_DISTRIBUTION')
+
 DEFAULT_CIRCULAR_CONFIG = os.path.join(os.environ.get('MY_BUILD_TOOLS_DIR'), 'stx/circular_dep.conf')
-# Use /etc/apt/sources.list of the host
-USE_HOST_RESOURCE = True
 
+apt_required_paths = [
+    "/etc/apt",
+    "/var/lib/apt",
+    "/var/cache/apt",
+]
+            
+def apt_copy(src, dest):
+    # Copy required system APT data into temp root
+    for path in apt_required_paths:
+        try:
+            if os.path.isdir(src):
+                shutil.copytree(src, dest, symlinks=True)
+            elif os.path.isfile(src):
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy2(src, dest)
+        except PermissionError as e:
+            print(f"Permission denied: {src} — skipping (run as sudo if needed)")
+        except Exception as e:
+            print(f"Error copying {src}: {e}")
 
-def get_aptcache(rootdir):
+    # Step 3: Create missing directories expected by apt
+    partial_path = os.path.join(dest, "var/lib/apt/lists/partial")
+    os.makedirs(partial_path, exist_ok=True)
+
+def get_aptcache():
     '''
     `apt update` for specified Debian repositories.
     '''
-    if USE_HOST_RESOURCE:
-        apt_cache = apt.Cache(rootdir='/')
-        return apt_cache
     try:
-        if os.path.exists(rootdir):
-            if os.path.isdir(rootdir):
-                shutil.rmtree(rootdir)
-            else:
-                os.remove(rootdir)
-
-        os.makedirs(rootdir + '/etc/apt')
-        f_sources = open(rootdir + '/etc/apt/sources.list', 'w')
-        for mirror in mirrors:
-            f_sources.write('deb [trusted=yes] ' + mirror + '\n')
-        f_sources.close()
+        stx_apt_cache.create_apt_chroot()
+        stx_apt_cache.apt_update_inside_chroot()
     except Exception as e:
         print(e)
         raise Exception('APT root dir build error')
+
     try:
-        apt_cache = apt.Cache(rootdir=rootdir)
-        ret = apt_cache.update()
+        apt_cache = apt.Cache(rootdir=stx_apt_cache.apt_rootdir)
     except Exception as e:
         print(e)
         raise Exception('APT update failed')
-    if not ret:
-        raise Exception('APT update error')
     apt_cache.open()
     return apt_cache
 
@@ -763,7 +767,6 @@ class Circular_break():
                 self.__depth_t(node, depend_on, circular_chain)
         except Exception as e:
             # Find a circular group
-            self.logger.debug('%s' % e)
             find_circular = True
         if not find_circular:
             # self.logger.debug('No circular dependency found')
@@ -796,7 +799,18 @@ class Circular_break():
             pkgs = self.__get_one_circular_grp(depend_on)
             if not pkgs:
                 break
-            self.logger.error('Circular dependency: %s' % pkgs)
+            # Extract package names from full paths for readability
+            pkg_names = []
+            for pkg_path in sorted(pkgs):
+                # Extract package name from path like: /path/to/package_version.dsc
+                pkg_name = os.path.basename(pkg_path).split('_')[0]
+                pkg_names.append(pkg_name)
+            self.logger.error('Circular dependency detected in packages: %s' % ', '.join(pkg_names))
+            # Add detailed instructions for fixing
+            self.logger.info('To fix, add an entry to build-tools/stx/circular_dep.conf:')
+            self.logger.info('  SRC SET: %s [and possibly other related packages]' % ' '.join(pkg_names))
+            self.logger.info('  BUILD ORDER: <analyze dependencies to determine correct order>')
+            self.logger.info('See existing entries in the file for reference')
             # remove related pakages from current packge set("depend_on")
             for node in pkgs:
                 depend_on.pop(node)
@@ -821,7 +835,6 @@ class Circular_break():
             pkgs = self.__get_circular_group(pkgs, meta_info)
             if orig_len == len(pkgs):
                 self.__dump_circular_dep(pkgs, meta_info)
-                self.logger.error('There are unexpected circular dependency.')
                 raise Exception('UNEXPECTED CIRCULAR DEPENDENCY.')
 
     def get_build_able_pkg(self, count):
@@ -927,7 +940,7 @@ class Dsc_build_order(Circular_break):
         Construct the build relationship of all those dsc files in "dsc_list"
         '''
         self.logger = logger
-        self.aptcache = get_aptcache(apt_rootdir)
+        self.aptcache = get_aptcache()
         self.meta_info = [dict(), dict()]
         # information from file debian/control, for runtime depend relationship:
         # self.ctl_info[A] = {B, C} Binary package A runtime depend on B and C.
@@ -1148,7 +1161,7 @@ class Pkg_build(Circular_break):
         '''
         self.logger = logger
         self.meta_info = [dict(), dict()]
-        self.aptcache = get_aptcache(apt_rootdir)
+        self.aptcache = get_aptcache()
         self.__get_meta_info(meta_info, set(target_pkgs))
         super().__init__(logger, self.meta_info, circular_conf_file)
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (c) 2018-2019 Wind River Systems, Inc.
+# Copyright (c) 2018-2019,2025 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -16,13 +16,16 @@ if [ -z "${MY_WORKSPACE}" -o -z "${MY_REPO}" ]; then
 fi
 
 source ${MY_REPO}/build-tools/git-utils.sh
+source ${MY_SCRIPT_DIR}/docker_utils.sh
 
 # make this process nice
 renice -n 10 -p $$
 ionice -c 3 -p $$
 
 SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=
+OS_CODENAME=
 OS_LABEL=
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
@@ -43,6 +46,8 @@ export USE_DOCKER_CACHE=no
 TAG_LATEST=no
 TAG_LIST_FILE=
 TAG_LIST_LATEST_FILE=
+POSTBUILD_REMOVE_PYTHON_PACKAGES="pip"
+POSTBUILD_REMOVE_OS_PACKAGES="python3-pip python-pip-whl"
 DEFAULT_SPICE_REPO="https://gitlab.freedesktop.org/spice/spice-html5"
 declare -a ONLY
 declare -a SKIP
@@ -61,6 +66,7 @@ $(basename $0)
 
 Options:
     --os:            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
+    --os-codename:   Specify base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
     --os-label:      Use this string as part of image tags, log file names and
                        image record file names, in place of OS, eg:
                        "--os distroless --os-label debian" would look for
@@ -307,6 +313,21 @@ function post_build {
 
     local IMAGE_TAG_VERSIONED="${IMAGE_TAG}.${IMAGE_UPDATE_VER}"
 
+    # POSTBUILD_REMOVE_OS_PACKAGES
+    # POSTBUILD_REMOVE_PYTHON_PACKAGES
+    # POSTBUILD_COMMAND
+    local remove_python_packages
+    remove_python_packages=$(
+        source ${image_build_file} && echo ${POSTBUILD_REMOVE_PYTHON_PACKAGES}
+    )
+    local remove_os_packages
+    remove_os_packages=$(
+        source ${image_build_file} && echo ${POSTBUILD_REMOVE_OS_PACKAGES}
+    )
+    local postbuild_command
+    postbuild_command=$(
+        source ${image_build_file} && echo -n "${POSTBUILD_COMMAND}"
+    )
 
     if [ -n "${CUSTOMIZATION}" ]; then
         local -a PROXY_ARGS=
@@ -347,6 +368,25 @@ function post_build {
             > ${WORKDIR}/${LABEL}-${OS_LABEL}-${BUILD_STREAM}.rpmlst
         docker run --entrypoint /bin/bash --rm ${build_image_name} -c 'pip freeze 2>/dev/null | sort' \
             > ${WORKDIR}/${LABEL}-${OS_LABEL}-${BUILD_STREAM}.piplst
+    fi
+
+    if [[ -n "${remove_python_packages}" || -n "${remove_os_packages}" || -n "${postbuild_command}" ]] ; then
+        local postbuild_workdir="$WORKDIR/${LABEL}-${OS_LABEL}-${BUILD_STREAM}-postbuild"
+        rm -rf "$postbuild_workdir"
+        mkdir -p "$postbuild_workdir" || return 1
+        "$MY_SCRIPT_DIR"/docker-image-postbuild.sh \
+            --work-dir="${postbuild_workdir}" \
+            --tmp-image="${build_image_name}-postbuild" \
+            --tmp-container="${LABEL}-postbuild" \
+            --remove-python-packages="${remove_python_packages}" \
+            --remove-os-packages="${remove_os_packages}" \
+            --command="${postbuild_command}" \
+            "${build_image_name}"
+        if [[ $? -ne 0 ]] ; then
+            echo "Failed to remove OS packages from ${build_image_name} ... Aborting"
+            RESULTS_FAILED+=(${LABEL})
+            return 1
+        fi
     fi
 
     RESULTS_BUILT+=(${build_image_name})
@@ -396,6 +436,7 @@ function cleanup_loci_failure {
         docker image rm ${image}
     done
 }
+
 
 function build_image_loci {
     local image_build_file=$1
@@ -575,14 +616,9 @@ function build_image_loci {
         BUILD_ARGS+=(--build-arg UPDATE_SYSTEM_ACCOUNT="${UPDATE_SYSTEM_ACCOUNT}")
     fi
 
-    # Disable build cache
-    if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
-        BUILD_ARGS+=("--no-cache")
-    fi
-
     local build_image_name="${USER}/${LABEL}:${IMAGE_TAG_BUILD}"
 
-    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build ${WORKDIR}/loci \
+    docker_build_with_retries ${WORKDIR}/loci \
         "${BUILD_ARGS[@]}" \
         --tag ${build_image_name}  2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
@@ -711,12 +747,8 @@ function build_image_docker {
         BASE_BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
     fi
 
-    if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
-        BASE_BUILD_ARGS+=("--no-cache")
-    fi
-
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
-    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
+    docker_build_with_retries ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
         echo "Failed to build ${LABEL}... Aborting"
@@ -830,7 +862,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o hN -l help,os:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
+OPTS=$(getopt -o hN -l help,os:,os-codename:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -851,6 +883,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-codename)
+            OS_CODENAME=$2
             shift 2
             ;;
         --os-label)
@@ -976,8 +1012,32 @@ if [ ${VALID_OS} -ne 0 ]; then
     exit 1
 fi
 
+if [ -z "$OS_CODENAME" ] ; then
+    if [[ ! -z "$DEBIAN_DISTRIBUTION" ]]; then
+        OS_CODENAME="$DEBIAN_DISTRIBUTION"
+    else
+        OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    fi
+    if [[ -z "$OS_CODENAME" ]] ; then
+        echo "Unable to determine OS_CODENAME, please re-run with \`--os-codename' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_CODENAME=1
+for supported_os_codename in ${SUPPORTED_OS_CODENAME_ARGS[@]}; do
+    if [ "$OS_CODENAME" = "${supported_os_codename}" ]; then
+        VALID_OS_CODENAME=0
+        break
+    fi
+done
+if [ ${VALID_OS_CODENAME} -ne 0 ]; then
+    echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
+    echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
+
 if [[ -z "$OS_LABEL" ]] ; then
-    OS_LABEL="$OS"
+    OS_LABEL="${OS}-${OS_CODENAME}"
 fi
 
 if [ -z "${BASE}" ]; then
@@ -1017,11 +1077,22 @@ function find_image_build_files {
     local image_build_inc_file image_build_dir image_build_file
     local -A all_labels
 
-    for image_build_inc_file in $(find ${GIT_LIST} -maxdepth 1 -name "${OS}_${BUILD_STREAM}_docker_images.inc"); do
+    for image_build_inc_file in $(find ${GIT_LIST} -maxdepth 1 \! -path "$(git_ctx_root_dir)/do-not-build/*" \
+                                                   -name "${OS}_${BUILD_STREAM}_docker_images.inc" \
+                                                   -o -name "${OS}_${OS_CODENAME}_${BUILD_STREAM}_docker_images.inc"); do
         basedir=$(dirname ${image_build_inc_file})
         for image_build_dir in $(sed -e 's/#.*//' ${image_build_inc_file} | sort -u); do
-            for image_build_file in ${basedir}/${image_build_dir}/${OS}/*.${BUILD_STREAM}_docker_image; do
-
+            final_build_dir="${basedir}/${image_build_dir}/${OS}"
+            if [ "${OS}" != "centos" ]; then
+                if [ -d "${final_build_dir}/${OS_CODENAME}" ]; then
+                    final_build_dir="${final_build_dir}/${OS_CODENAME}"
+                elif [ -d "${final_build_dir}/all" ]; then
+                    final_build_dir="${final_build_dir}/all"
+                elif [ "${OS_CODENAME}" != "bullseye" ]; then
+                    continue
+                fi
+            fi
+            for image_build_file in ${final_build_dir}/*.${BUILD_STREAM}_docker_image; do
                 # Make sure image exists
                 if [[ ! -f "$image_build_file" ]] ; then
                     echo "ERROR: $image_build_file: file not found" >&2

@@ -20,6 +20,8 @@
   # Fragment of base-bullseye.yaml for signing part of rootfs-post-scripts definition
   echo "***Start signing part of rootfs-post-scripts***"
   SIGNING_SERVER=INPUT_SIGNING_SERVER
+  SIGNING_USER=INPUT_SIGNING_USER
+  SIGNING_KEY_NAME=INPUT_SIGNING_KEY_NAME
   LOCKD_FILE=LockDown.efi
   LOCKD_PATH=${IMAGE_ROOTFS}/boot/efi/EFI/BOOT/
   LOCKD_INIT=${IMAGE_ROOTFS}/usr/lib/efitools/x86_64-linux-gnu/LockDown.efi
@@ -30,32 +32,32 @@
   KERNEL_FILE=$(ls ${KERNEL_PATH}/vmlinuz-*[0-9]-amd64)
   KERNEL_FILE=${KERNEL_FILE##*/}
   SSH_OPTION_NOCHECKING="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
-  REQUEST=$(ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} sudo /opt/signing/sign-debian.sh -r)
+  REQUEST=$(ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} sudo /opt/signing/sign-debian.sh -r)
   UPLOAD_PATH=${REQUEST#*Upload: }
   echo "UPLOAD_PATH: ${UPLOAD_PATH}"
   [ -z ${UPLOAD_PATH}] && { echo "Fail to request for upload path!"; exit 1; }
   echo "(1) Sign LockDown.efi"
-  scp ${SSH_OPTION_NOCHECKING} ${LOCKD_INIT} ${SIGNING_SERVER}:${UPLOAD_PATH} \
+  scp ${SSH_OPTION_NOCHECKING} ${LOCKD_INIT} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy LockDown.efi to signing server!"; exit 1; }
-  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${LOCKD_FILE} -t grub-gpg \
+  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${LOCKD_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign LockDown.efi!"; exit 1; }
-  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER}:${UPLOAD_PATH}/${LOCKD_FILE}.sig ${LOCKD_PATH} \
+  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${LOCKD_FILE}.sig ${LOCKD_PATH} \
       || { echo "Fail to copy back LockDown.efi sig file!"; exit 1; }
   echo "(2) Sign kernel-rt"
-  scp ${SSH_OPTION_NOCHECKING} ${KERNEL_RT_PATH}/${KERNEL_RT_FILE} ${SIGNING_SERVER}:${UPLOAD_PATH} \
+  scp ${SSH_OPTION_NOCHECKING} ${KERNEL_RT_PATH}/${KERNEL_RT_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy kernel-rt image to signing server!"; exit 1; }
-  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t grub-gpg \
+  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign kernel-rt image!"; exit 1; }
-  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_RT_FILE}.sig ${KERNEL_RT_PATH} \
+  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_RT_FILE}.sig ${KERNEL_RT_PATH} \
       || { echo "Fail to copy back kernel-rt image sig file!"; exit 1; }
   echo "(3) Sign kernel-std"
-  scp ${SSH_OPTION_NOCHECKING} ${KERNEL_PATH}/${KERNEL_FILE} ${SIGNING_SERVER}:${UPLOAD_PATH} \
+  scp ${SSH_OPTION_NOCHECKING} ${KERNEL_PATH}/${KERNEL_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy kernel-std image to signing server!"; exit 1; }
-  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_FILE} -t grub-gpg \
+  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign kernel-std image!"; exit 1; }
-  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_FILE}.sig ${KERNEL_PATH} \
+  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_FILE}.sig ${KERNEL_PATH} \
       || { echo "Fail to copy back kernel-std image sig file"; exit 1; }
   echo "***Finish signing part of rootfs-post-scripts***"

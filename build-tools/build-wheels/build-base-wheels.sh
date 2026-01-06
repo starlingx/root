@@ -20,8 +20,10 @@ fi
 
 KEEP_IMAGE=no
 KEEP_CONTAINER=no
-SUPPORTED_OS_LIST=( 'debian' )
+SUPPORTED_OS_ARGS=( 'debian' )
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
 OS=
+OS_CODENAME=
 OS_VERSION=
 BUILD_STREAM=stable
 HTTP_PROXY=""
@@ -39,6 +41,7 @@ $(basename $0) [ --os <os> ] [ --keep-image ] [ --keep-container ] [ --stream <s
 
 Options:
     --os:             Override base OS (eg. debian; default: auto)
+    --os-codename:    Override base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
     --os-version:     Override OS version (default: auto)
     --keep-image:     Skip deletion of the wheel build image in docker
     --keep-container: Skip deletion of container used for the build
@@ -59,7 +62,7 @@ Options:
 EOF
 }
 
-OPTS=$(getopt -o h -l help,os:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts:,retry-delay:,cache -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,os-version:,keep-image,keep-container,release:,stream:,http_proxy:,https_proxy:,no_proxy:,attempts:,retry-delay:,cache -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -76,6 +79,10 @@ while true; do
             ;;
         --os)
             OS=$2
+            shift 2
+            ;;
+        --os-codename)
+            OS_CODENAME=$2
             shift 2
             ;;
         --os-version)
@@ -141,6 +148,42 @@ if [ -z "$OS" ] ; then
         exit 1
     fi
 fi
+VALID_OS=1
+for supported_os in ${SUPPORTED_OS_ARGS[@]}; do
+    if [ "$OS" = "${supported_os}" ]; then
+        VALID_OS=0
+        break
+    fi
+done
+if [ ${VALID_OS} -ne 0 ]; then
+    echo "Unsupported OS specified: ${OS}" >&2
+    echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
+    exit 1
+fi
+
+if [ -z "$OS_CODENAME" ] ; then
+    if [[ ! -z "$DEBIAN_DISTRIBUTION" ]]; then
+        OS_CODENAME="$DEBIAN_DISTRIBUTION"
+    else
+        OS_CODENAME="$(ID= && source /etc/os-release 2>/dev/null && echo $VERSION_CODENAME || true)"
+    fi
+    if [[ -z "$OS_CODENAME" ]] ; then
+        echo "Unable to determine OS_CODENAME, please re-run with \`--os-codename' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_CODENAME=1
+for supported_os_codename in ${SUPPORTED_OS_CODENAME_ARGS[@]}; do
+    if [ "$OS_CODENAME" = "${supported_os_codename}" ]; then
+        VALID_OS_CODENAME=0
+        break
+    fi
+done
+if [ ${VALID_OS_CODENAME} -ne 0 ]; then
+    echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
+    echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
 
 BUILD_IMAGE_NAME="${USER}-$(basename ${MY_WORKSPACE})-wheelbuilder:${OS}-${BUILD_STREAM}"
 
@@ -148,11 +191,12 @@ BUILD_IMAGE_NAME="${USER}-$(basename ${MY_WORKSPACE})-wheelbuilder:${OS}-${BUILD
 # The following will substitute caps with lower case.
 BUILD_IMAGE_NAME="${BUILD_IMAGE_NAME,,}"
 
-DOCKER_FILE=${MY_SCRIPT_DIR}/${OS}/Dockerfile
+DOCKER_FILE=${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}/Dockerfile
 
 if [ ! -f ${DOCKER_FILE} ]; then
-    echo "Unsupported OS specified: ${OS}" >&2
-    echo "Supported OS options: ${SUPPORTED_OS_LIST[@]}" >&2
+    echo "Unsupported OS/CODENAME specified: ${OS}/${OS_CODENAME}" >&2
+    echo "Supported OS options: ${SUPPORTED_OS_ARGS[@]}" >&2
+    echo "Supported OS CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
     exit 1
 fi
 
@@ -222,11 +266,11 @@ function prepare_output_dir {
     fi
 }
 
-DOCKER_BUILD_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/docker
-BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base
-BUILD_OUTPUT_PATH_PY2=${MY_WORKSPACE}/std/build-wheels-${OS}-${BUILD_STREAM}/base-py2
-WHEELS_CFG=${MY_SCRIPT_DIR}/${OS}/${BUILD_STREAM}-wheels.cfg
-WHEELS_CFG_PY2=${MY_SCRIPT_DIR}/${OS}/${BUILD_STREAM}-wheels-py2.cfg
+DOCKER_BUILD_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${OS_CODENAME}-${BUILD_STREAM}/docker
+BUILD_OUTPUT_PATH=${MY_WORKSPACE}/std/build-wheels-${OS}-${OS_CODENAME}-${BUILD_STREAM}/base
+BUILD_OUTPUT_PATH_PY2=${MY_WORKSPACE}/std/build-wheels-${OS}-${OS_CODENAME}-${BUILD_STREAM}/base-py2
+WHEELS_CFG=${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}/${BUILD_STREAM}-wheels.cfg
+WHEELS_CFG_PY2=${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}/${BUILD_STREAM}-wheels-py2.cfg
 
 # make sure .cfg files exist
 require_file "${WHEELS_CFG}"
@@ -311,7 +355,7 @@ fi
 # Create a directory containing docker files
 \rm -rf "${DOCKER_BUILD_PATH}"
 mkdir -p "${DOCKER_BUILD_PATH}"
-\cp -r "${MY_SCRIPT_DIR}/docker-common" "${MY_SCRIPT_DIR}/${OS}" "${DOCKER_BUILD_PATH}" || exit 1
+\cp -r "${MY_SCRIPT_DIR}/docker-common" "${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}" "${DOCKER_BUILD_PATH}" || exit 1
 # Replace "@...@" vars in apt/*.in files
 if [[ "${OS}" == "debian" ]] ; then
     (
@@ -341,7 +385,8 @@ print (urlparse (sys.argv[1]).hostname)
 
         # replace @...@ vars in apt/*.in files
         count=0
-        for src in "${DOCKER_BUILD_PATH}/${OS}/apt"/*.in ; do
+        for src in "${DOCKER_BUILD_PATH}/${OS}-${OS_CODENAME}/apt"/*.in ; do
+            stat "$src" >/dev/null || exit 1
             dst="${src%.in}"
             sed -e "s#@REPOMGR_DEPLOY_URL@#$REPOMGR_DEPLOY_URL#g" \
                 -e "s#@REPOMGR_HOST@#$REPOMGR_HOST#g" \
@@ -352,7 +397,7 @@ print (urlparse (sys.argv[1]).hostname)
             let ++count
         done
         if [[ $count -eq 0 ]] ; then
-            echo "No *.in files found in ${DOCKER_BUILD_PATH}/${OS}/apt !" >&2
+            echo "No *.in files found in ${DOCKER_BUILD_PATH}/${OS}-${OS_CODENAME}/apt !" >&2
             exit 1
         fi
     ) || exit 1
@@ -383,7 +428,7 @@ if [[ "$USE_DOCKER_CACHE" != "yes" ]] ; then
 fi
 
 BUILD_ARGS+=(-t ${BUILD_IMAGE_NAME})
-BUILD_ARGS+=(-f ${DOCKER_BUILD_PATH}/${OS}/Dockerfile ${DOCKER_BUILD_PATH})
+BUILD_ARGS+=(-f ${DOCKER_BUILD_PATH}/${OS}-${OS_CODENAME}/Dockerfile ${DOCKER_BUILD_PATH})
 
 # Build image
 with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker build "${BUILD_ARGS[@]}"

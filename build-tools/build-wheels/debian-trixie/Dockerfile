@@ -1,12 +1,14 @@
-# Start with an the old-ish bullseye release (11.2), then upgrade --
+# Start with an the old-ish trixie release (13.0), then upgrade --
 # to make sure packages that come pre-installed in the debian:XXX image
 # are older than anything in StarlingX.
-ARG RELEASE=11.2
+ARG RELEASE=13.0
 FROM debian:${RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG BUILD_STREAM=stable
+
+ARG OS_CODENAME=trixie
 
 # Install latest ca-certificates
 RUN apt-get -y update && \
@@ -16,9 +18,9 @@ RUN apt-get -y update && \
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.disabled
 
 # Install apt repos
-COPY debian/apt/debian.sources.list /etc/apt/sources.list.d/debian.list
-COPY debian/apt/stx.sources.list /etc/apt/sources.list.d/stx.list
-COPY debian/apt/stx.preferences /etc/apt/preferences.d/stx
+COPY debian-${OS_CODENAME}/apt/debian.sources.list /etc/apt/sources.list.d/debian.list
+COPY debian-${OS_CODENAME}/apt/stx.sources.list /etc/apt/sources.list.d/stx.list
+COPY debian-${OS_CODENAME}/apt/stx.preferences /etc/apt/preferences.d/stx
 
 # Clean apt cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -30,15 +32,10 @@ RUN mv /etc/apt/sources.list.d/debian.list /etc/apt/sources.list.d/debian.list.d
     mv /etc/apt/sources.list.d/debian.list.disabled /etc/apt/sources.list.d/debian.list && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# FIXME: disable vanilla bullseye repo. Requires all dependent packages
+# FIXME: disable vanilla trixie repo. Requires all dependent packages
 # referenced by apt-get to be added to stx-tools .lst file(s). Otherwise
 # we get a "random" set of packages, some from upstream, some from STX.
 # We may also get package conflicts between vanilla debian & STX repos.
-
-# FIXME: there's no ussuri/bullseye port, best we can do is "victoria" or more recent
-#RUN set -ex ; \
-#    echo "deb [trusted=yes] http://osbpo.debian.net/osbpo bullseye-victoria-backports-nochange main" \
-#        /etc/apt/sources.list.d/openstack-victoria.list.disabled ; \
 
 # Install the necessary packages for building the python modules.
 # Some of these are dependencies of the specific modules, and could
@@ -107,6 +104,6 @@ RUN apt-get clean && \
 
 # Copy local files
 COPY docker-common/docker-build-wheel.sh /
-COPY debian/${BUILD_STREAM}-wheels.cfg /wheels.cfg
-COPY debian/${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
+COPY debian-${OS_CODENAME}/${BUILD_STREAM}-wheels.cfg /wheels.cfg
+COPY debian-${OS_CODENAME}/${BUILD_STREAM}-wheels-py2.cfg /wheels-py2.cfg
 

@@ -14,7 +14,8 @@
 #
 # Copyright (C) 2021-2022 Wind River Systems,Inc
 
-import apt
+# import apt
+import apt_pkg
 import argparse
 import debrepack
 import discovery
@@ -26,6 +27,7 @@ import pathlib
 import repo_manage
 import shutil
 import signal
+import stx_apt_cache
 import subprocess
 import sys
 import utils
@@ -37,31 +39,98 @@ subprocess.run(['ionice', '-c', '3', '-p', str(pid)])
 
 DEFAULT_ARCH = 'amd64'
 REPO_BIN = 'deb-local-binary'
-mirror_root = os.environ.get('STX_MIRROR')
+mirror_root = os.environ.get('OS_MIRROR')
 stx_src_mirror = os.path.join(mirror_root, 'sources')
 stx_bin_mirror = os.path.join(mirror_root, 'binaries')
-all_binary_lists = ['base-bullseye.lst', 'os-std.lst', 'os-rt.lst']
-types_pkg_dirs = ['debian_pkg_dirs', 'debian_pkg_dirs_rt', 'debian_pkg_dirs_installer']
+
+STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+DIST_CODENAME = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
+all_binary_lists = ['base-' + DIST_CODENAME + '.lst', 'os-std.lst', 'os-rt.lst']
 
 logger = logging.getLogger('downloader')
 utils.set_logger(logger)
 
-STX_DEFAULT_DISTRO = discovery.STX_DEFAULT_DISTRO
+rlogger = logging.getLogger('repo_manager')
+utils.set_logger(rlogger)
 
 ALL_DISTROS = discovery.get_all_distros()
-ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO)
+ALL_LAYERS = discovery.get_all_layers(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME)
 ALL_BUILD_TYPES = discovery.get_all_build_types(distro=STX_DEFAULT_DISTRO)
 
-# The CENGN_STRATEGY reference is retained for backward compatability 
-# with pre-existing build environments.
-CENGN_STRATEGY = os.environ.get('CENGN_STRATEGY')
 STX_MIRROR_STRATEGY = os.environ.get('STX_MIRROR_STRATEGY')
-if not STX_MIRROR_STRATEGY:
-    STX_MIRROR_STRATEGY = CENGN_STRATEGY
-if STX_MIRROR_STRATEGY == "cengn":
-    STX_MIRROR_STRATEGY = "stx_mirror"
-elif STX_MIRROR_STRATEGY == "cengn_first":
+if STX_MIRROR_STRATEGY is None:
     STX_MIRROR_STRATEGY = "stx_mirror_first"
+
+
+def get_version(pkg, version_str):
+    """
+    Given an apt_pkg.Package object, return a apt_pkg.version objectmatching version_str
+    """
+    for ver in pkg.version_list:
+        if version_str is None:
+            return ver
+        if ver.ver_str == version_str:
+            return ver
+    return None
+
+def get_avail_versions(pkg):
+    """
+    Given an apt_pkg.Package object, return a list of version strings
+    """
+    vers = []
+    for ver in pkg.version_list:
+        vers.append(ver.ver_str)
+    return vers
+
+def parse_packages_file(file_path, target_package, target_version):
+    with open(file_path, 'r') as f:
+        entry = {}
+        for line in f:
+            line = line.strip()
+            if not line:
+                # End of entry
+                if entry.get("Package") == target_package and entry.get("Version") == target_version:
+                    return entry
+                entry = {}
+            elif ": " in line:
+                key, value = line.split(": ", 1)
+                entry[key] = value
+            elif line.startswith(" ") and entry:
+                # Multi-line value continuation
+                last_key = list(entry.keys())[-1]
+                entry[last_key] += "\n" + line.strip()
+    return None
+
+def get_download_urls(pkg_name, target_version, version):
+    """
+    Given an apt_pkg.Version object, return a list of full .deb download URLs.
+    """
+    urls = []
+    lists_dir = os.path.join(stx_apt_cache.apt_rootdir, "var/lib/apt/lists")
+    #
+    for pkg_file_tuple in version.file_list:
+        pkg_file_obj, _ = pkg_file_tuple
+        # site = pkg_file_obj.site  # e.g. 'stx-master-deb-stx-repomgr:80'
+        # label = pkg_file_obj.label    # e.g. 'deb-local-binary trixie'
+        # archive = pkg_file_obj.archive  # e.g. 'trixie'
+        # component = pkg_file_obj.component  # e.g. 'main'
+        # arch = pkg_file_obj.architecture  # e.g. 'main'
+        index_path = pkg_file_obj.filename  # e.g. '/tmp/downloader/var/lib/apt/lists/stx-master-deb-stx-repomgr:80_deb-local-binary_dists_trixie_main_binary-amd64_Packages'
+        #
+        # Construct the base URL (example, adjust if your repo structure differs)
+        base=os.path.relpath(index_path, lists_dir).replace('_','/').split("/dists/", 1)[0]
+        base_url = f"http://{base}"
+        #
+        if os.path.exists(index_path):
+            entry = parse_packages_file(index_path, pkg_name, target_version)
+            if entry and "Filename" in entry:
+                relpath = entry["Filename"].lstrip("/")
+                final_url = f"{base_url}/{relpath}"
+                urls.append(final_url)
+    #
+    return urls
+
 
 def get_downloaded(dl_dir, dl_type):
     """
@@ -115,26 +184,22 @@ def get_all_stx_pkgs():
         Map of all STX buildable packages and path to debian folder
     """
     pkgs = {}
-    projects_root = os.environ.get('MY_REPO')
-    for root, dirs, files in os.walk(projects_root):
-        if dirs:
-            pass
-        for r in files:
-            # Find all types of package dirs?
-            if r in types_pkg_dirs:
-                pkgs_file = os.path.join(root, r)
-                pkgs.update(get_pkgs_from_list(root, pkgs_file))
+    for pkgs_file in discovery.get_pkg_dirs_files(layer='all'):
+        root = os.path.basename(pkgs_file)
+        pkgs.update(get_pkgs_from_list(root, pkgs_file))
     return pkgs
 
 
-def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None):
+def get_all_binary_list(distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME, layers=None,
+                        build_types=None):
     """
-    Return all binary packages listed in base-bullseye.lst, os-std.lst,os-rt.lst
+    Return all binary packages listed in base-${DIST_CODENAME}.lst,
+    os-std.lst,os-rt.lst
     """
     layer_binaries = {}
     stx_config = os.path.join(os.environ.get('MY_REPO_ROOT_DIR'),
-                              'stx-tools/debian-mirror-tools/config/debian')
-
+                              'stx-tools/debian-mirror-tools/config/{}/{}'.format(
+                                  distro, codename))
     if layers:
         for layer in layers:
             if layer not in ALL_LAYERS:
@@ -147,9 +212,9 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
         if layer not in layer_binaries:
             layer_binaries[layer] = []
         search_dir = os.path.join(stx_config, layer)
-        all_build_types = discovery.get_layer_build_types(distro=distro, layer=layer)
+        all_build_types = discovery.get_layer_build_types(layer, distro=distro, codename=codename)
         if not all_build_types:
-            logger.error(' '.join(['No build_types found for distro', distro, 'layer', layer]))
+            logger.error('No build_types found for {}/{}, layer: {}'.format(distro, codename, layer))
             return
 
         if not build_types:
@@ -157,7 +222,8 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
 
         for build_type in build_types:
             if build_type not in all_build_types:
-                logger.warning(' '.join([build_type, 'is not a valid build_type for distro', distro, 'of layer', layer]))
+                logger.warning('{} is not a valid build_type for {}/{} of layer: {}'.format(
+                    build_type, distro, codename, layer))
                 continue
 
             pattern=''.join(['os-',build_type,'.lst'])
@@ -170,7 +236,7 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
         )
 
     search_dir = os.path.join(stx_config, 'common')
-    pattern='base-*.lst'
+    pattern='base-' + codename + '*.lst'
 
     if "common" not in layer_binaries:
         layer_binaries["common"] = []
@@ -184,28 +250,7 @@ def get_all_binary_list(distro=STX_DEFAULT_DISTRO, layers=None, build_types=None
         f"{layer_binaries['common']}"
     )
     return layer_binaries
-
-def update_apt():
-    try:
-        cache = apt.Cache(rootdir='/')
-        cache.update()
-
-        # Reopen the cache to reflect the updates
-        cache.open(None)
-        logger.info("apt update done")
-
-        if cache._depcache.broken_count == 0:
-            logger.info("No apt packages broken")
-        else:
-            logger.error("Broken apt dependencies were found")
-
-    except apt.cache.FetchFailedException as e:
-        logger.error(f"Failed to fetch apt packages {e} before downloader")
-    except Exception as e:
-        if "Failed to lock directory" in str(e):
-            logger.info("Suppressed harmless apt lock error")
-        else:
-            logger.error(f" An unexpected error occurred {e}")
+            
 
 class BaseDownloader():
     def __init__(self, arch, _dl_dir, dl_list_file, clean):
@@ -215,8 +260,6 @@ class BaseDownloader():
         self.dl_need = []
         self.dl_success = []
         self.dl_failed = []
-        rlogger = logging.getLogger('repo_manager')
-        utils.set_logger(rlogger)
         self.repomgr = repo_manage.RepoMgr('aptly', os.environ.get('REPOMGR_URL'),
                                            '/tmp/', os.environ.get('REPOMGR_ORIGIN'),
                                            rlogger)
@@ -277,7 +320,10 @@ class DebDownloader(BaseDownloader):
         self.downloaded = []
         self.need_upload = []
         self.layer_binaries = _layer_binaries
-        self.apt_cache = apt.cache.Cache()
+        apt_pkg.config.set("Dir::Root", stx_apt_cache.apt_rootdir)
+        apt_pkg.config.set("Dir::Etc::main", stx_apt_cache.apt_rootdir + '/etc/apt/apt_chroot.conf')
+        apt_pkg.init()
+        self.apt_cache = apt_pkg.Cache()
 
     def _get_layer_binaries_repository(self, layer: str):
         repo = REPO_BIN
@@ -302,7 +348,21 @@ class DebDownloader(BaseDownloader):
             logger.info("Successfully created repository %s", repo)
         return True
 
+    
+    def get_arch_of_version(self, ver):
+        """
+        """
+        apt_records = apt_pkg.PackageRecords(self.apt_cache)
+        apt_records.lookup(ver.file_list[0])
+        record_str = apt_records.record
+        fields = dict(
+            line.split(": ", 1) for line in record_str.strip().split("\n") if ": " in line
+        )
+        arch = fields['Architecture']
+        return arch
+
     def download(self, _name, _version, dl_file, url=None, retries=3):
+        logger.info ('download _name=%s _version=%s dl_file=%s url=%s retries=%s', _name, _version, dl_file, str(url), retries)
         if url is not None:
             ret = os.path.join(self.dl_dir, dl_file)
             tmp_file = ".".join([ret, "tmp"])
@@ -337,24 +397,33 @@ class DebDownloader(BaseDownloader):
 
         try:
             package = self.apt_cache[_name]
-            candidate = package.versions.get(_version)
+            if not package:
+                logger.error(' '.join(['Failed to find', _name,
+                             'in available sources']))
+                logger.error('You may need to update the package list file')
+
+            candidate = get_version(package, _version)
             if not candidate:
-                logger.error(' '.join(['Fail to download', _name,
+                logger.error(' '.join(['Failed to download', _name,
                              'with wrong version', _version, '?']))
-                logger.error('May need to update the package list file')
+                logger.error('You may need to update the package list file')
                 logger.error('package: %s', str(package))
-                logger.error('package.versions: %s', str(package.versions))
+                logger.error('Available versions: %s', str(get_avail_versions(package)))
                 return None
 
-            package.candidate = candidate
-            logger.info ('Downloading %s from %s', dl_file, package.candidate.uri)
-            ret = package.candidate.fetch_binary(self.dl_dir)
+            urls = get_download_urls(_name, _version, candidate)
+            logger.info ('Downloading %s from %s', dl_file, str(urls))
+            # ret = candidate.fetch_binary(self.dl_dir)
+            for url in urls:
+                ret = self.download(_name, _version, dl_file, url=url, retries=retries)
+                if ret:
+                    break
             assert os.path.basename(ret) == dl_file
             if ret:
                 return ret
         except Exception as e:
             deb_name = _name + '_' + _version
-            logger.debug("Fail to fetch binary %s", deb_name)
+            logger.debug("Failed to fetch binary %s", deb_name)
             logger.debug(str(e))
             '''
             Sometimes the target deb is created in dl_dir, but actually it is
@@ -427,10 +496,13 @@ class DebDownloader(BaseDownloader):
                             url = None
                             try:
                                 package = self.apt_cache[pkg_name]
+                                candidate = get_version(package, pkg_ver)
+                                if candidate is None:
+                                    candidate = get_version(package, None)
+                                arch = self.get_arch_of_version(candidate)
                             except Exception as e:
                                 logger.error(str(e))
                                 sys.exit(1)
-                            arch = package.candidate.architecture
 
                         pkg_dict={'name':pkg_name, 'ver':pkg_ver, 'epoch':pkg_epoch, 'arch':arch, 'url':url, 'repo':repo}
                         pkg_data.append(pkg_dict)
@@ -508,7 +580,7 @@ class DebDownloader(BaseDownloader):
                         del_ret = self.repomgr.delete_pkg(repo, deb_name, 'binary', deb_ver)
                         logger.debug("deleted the old %s from repo %s, ret %d", deb_name, repo, del_ret)
                     except Exception as e:
-                        logger.error(str(e))
+                        logger.error(str(e), exc_info=True)
                         logger.error("Exception on deleting %s from %s", deb_name, repo)
             else:
                 self.dl_failed.append(pname_epoch_arch)
@@ -533,7 +605,7 @@ class DebDownloader(BaseDownloader):
                         continue
             if delete_me:
                 del_ver = prev_upload_dict['ver']
-                logger.debug("Deleting pkg %s_%s freom %s", del_name, del_ver, repo)
+                logger.debug("Deleting pkg %s_%s from %s", del_name, del_ver, repo)
                 try:
                     del_ret = self.repomgr.delete_pkg(repo, del_name, 'binary', del_ver)
                 except Exception as e:
@@ -570,7 +642,7 @@ class DebDownloader(BaseDownloader):
 
     def start(self):
         """Here define:
-        the complete set of binaries = base_bullseye.lst
+        the complete set of binaries = base_${DIST_CODENAME}.lst
                                      + <layer>/os-std.lst
                                      + <layer>/os-rt.lst
         """
@@ -592,9 +664,12 @@ class DebDownloader(BaseDownloader):
 
 
 class SrcDownloader(BaseDownloader):
-    def __init__(self, arch, _dl_dir, dl_list_file, force):
+    def __init__(self, arch, _dl_dir, dl_list_file, force,
+                 distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME):
         super(SrcDownloader, self).__init__(arch, _dl_dir, dl_list_file, force)
         self.parser = None
+        self.distro = distro
+        self.codename =codename
 
     def prepare(self):
         build_dir = os.path.join(os.environ.get('MY_BUILD_PKG_DIR'))
@@ -603,8 +678,8 @@ class SrcDownloader(BaseDownloader):
         os.makedirs(recipes_dir, exist_ok=True)
         if not self.parser:
             try:
-                self.parser = debrepack.Parser(build_dir,
-                                               recipes_dir, log_level='debug')
+                self.parser = debrepack.Parser(build_dir, recipes_dir, log_level='debug',
+                                               distro=self.distro, codename=self.codename)
             except Exception as e:
                 logger.error(str(e))
                 logger.error("Failed to create debrepack parser")
@@ -622,7 +697,7 @@ class SrcDownloader(BaseDownloader):
             logger.error("Failed to download source with %s", _pkg_path)
             return None
 
-    def download_all(self, distro=STX_DEFAULT_DISTRO, layers=None, build_types=None)->list[str]:
+    def download_all(self, layers=None, build_types=None)->list[str]:
         logger.info("download_all, layers=%s, build_types=%s" % (layers, build_types))
         if layers:
             for layer in layers:
@@ -635,9 +710,9 @@ class SrcDownloader(BaseDownloader):
         pkg_dirs = []
 
         for layer in layers:
-            all_build_types = discovery.get_layer_build_types(distro=distro, layer=layer)
+            all_build_types = discovery.get_layer_build_types(layer, distro=self.distro, codename=self.codename)
             if not all_build_types:
-                logger.error(' '.join(['No build_types found for distro', distro, 'layer', layer]))
+                logger.error('No build_types found for {}/{}, layer {}'.format(self.distro, self.codename, layer))
                 return
 
             if not build_types:
@@ -648,13 +723,14 @@ class SrcDownloader(BaseDownloader):
                     logger.warning(' '.join([build_type, 'is not a valid build_type for distro', distro, 'of layer', layer]))
                     continue
 
-                pkg_dirs.extend(discovery.package_dir_list(distro=distro, layer=layer, build_type=build_type))
+                pkg_dirs.extend(discovery.package_dir_list(distro=self.distro, codename=self.codename, layer=layer,
+                                                           build_type=build_type))
 
         if not len(pkg_dirs):
             logger.info("No source packages found")
             return
 
-        pkg_dirs_to_names = discovery.package_dirs_to_names_dict(pkg_dirs, distro=distro)
+        pkg_dirs_to_names = discovery.package_dirs_to_names_dict(pkg_dirs, distro=self.distro, codename=self.codename)
         for pkg_dir in pkg_dirs_to_names:
             self.dl_need.append(pkg_dirs_to_names[pkg_dir])
 
@@ -670,12 +746,12 @@ class SrcDownloader(BaseDownloader):
                 if pkg_dir in pkg_dirs_to_names:
                     self.dl_failed.append(pkg_dirs_to_names[pkg_dir])
 
-    def start(self, distro=STX_DEFAULT_DISTRO, layers=None, build_types=None):
+    def start(self, layers=None, build_types=None):
         # stx package source downloading
         super(SrcDownloader, self).clean()
 
         if self.prepare():
-            self.download_all(distro=distro, layers=layers, build_types=build_types)
+            self.download_all(layers=layers, build_types=build_types)
         else:
             logger.error("Failed to initialize source downloader")
             sys.exit(1)
@@ -705,6 +781,7 @@ if __name__ == "__main__":
     binary_ret = 0
     source_ret = 0
     distro = STX_DEFAULT_DISTRO
+    distro_codename = STX_DEFAULT_DISTRO_CODENAME
     layers = None
     build_types = None
 
@@ -715,37 +792,68 @@ if __name__ == "__main__":
                         action='store_true')
     parser.add_argument('-c', '--clean_mirror', help="clean the whole mirror and download again, be careful to use",
                         action='store_true')
-    parser.add_argument('-d', '--distro', type=str, nargs=1,
+    parser.add_argument('-d', '--distro', type=str,
                         help="name of the distro to build\n   %s" % ALL_DISTROS,
                         default=STX_DEFAULT_DISTRO, required=False)
+    parser.add_argument('-C', '--distro_codename', type=str,
+                        help="name of the distro codename to build\n   %s" % discovery.STX_DISTRO_DICT,
+                        default=STX_DEFAULT_DISTRO_CODENAME, required=False)
     parser.add_argument('-B', '--build-types', type=str,
                         help="comma separated list of all build-types to build\n   %s" % ALL_BUILD_TYPES,
-                        default='std,rt', required=False)
+                        default=','.join(ALL_BUILD_TYPES), required=False)
     parser.add_argument('-l', '--layers', type=str,
                         help="comma separated list of all layers to build\n   %s" % ALL_LAYERS,
                         default=None, required=False)
-
 
     args = parser.parse_args()
     clean_mirror = args.clean_mirror
 
     if args.distro:
         if args.distro not in ALL_DISTROS:
-            logger.error(' '.join(['Distro', args.distro, 'not in', ','.join(ALL_DISTROS)]))
+            logger.error('Distro "{}" is not supported. It should be one of: [{}]'.format(
+                args.distro,
+                ','.join(ALL_DISTROS)))
             logger.error("Please consult: downloader --help")
             sys.exit(1)
         distro = args.distro
-        ALL_LAYERS = discovery.get_all_layers(distro=distro)
-        ALL_BUILD_TYPES = discovery.get_all_build_types(distro=distro)
+
+    if args.distro_codename:
+        if args.distro_codename not in discovery.STX_DISTRO_DICT[distro]:
+            logger.error('Distro codname "{}" is not supported for {}. It should be one of: [{}]'.format(
+                args.distro_codename,
+                distro, 
+                ','.join(discovery.STX_DISTRO_DICT[distro])))
+            logger.error("Please consult: downloader --help")
+            sys.exit(1)
+        distro_codename = args.distro_codename
 
     if args.build_types:
         build_types = args.build_types.strip().split(',')
-        logger.debug("The required types to download:%s", ','.join(build_types))
+        logger.debug("The required types to download: %s", ','.join(build_types))
         for build_type in build_types:
             if build_type not in ALL_BUILD_TYPES:
                 logger.error(' '.join(['Build_type', build_type, 'not in', ','.join(ALL_BUILD_TYPES)]))
                 logger.error("Please consult: downloader --help")
                 sys.exit(1)
+
+    # Verify that this container build suite has the correct tooling for this distro/codename
+    os_release_dict = {}
+    with open("/etc/os-release") as myfile:
+        for line in myfile:
+            key, val = line.partition("=")[::2]
+            os_release_dict[key.strip()] = val.strip()
+
+    if distro != os_release_dict['ID'] or distro_codename != os_release_dict['VERSION_CODENAME']:
+        logger.error('Invalid tooling. You are attempting to download {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+        sys.exit(1)
+    else:
+        logger.info('Tooling validated. You are downloading {}/{} with {}/{} containers'.format(
+            distro, distro_codename, os_release_dict['ID'], os_release_dict['VERSION_CODENAME']))
+
+    # Reset these based on potentially new values
+    ALL_LAYERS = discovery.get_all_layers(distro=distro, codename=distro_codename)
+    ALL_BUILD_TYPES = discovery.get_all_build_types(distro=distro)
 
     if args.layers:
         layers = args.layers.strip().split(',')
@@ -761,14 +869,18 @@ if __name__ == "__main__":
         args.download_binary = True
         args.download_source = True
 
-    update_apt()
+    logger.info('Setting up apt cache')
+    
+    stx_apt_cache.create_apt_chroot()
+    stx_apt_cache.apt_update_inside_chroot()
+    logger.info('Apt cache is ready')
 
     dl_list_dir = '%s/required_downloads' % os.environ['MY_WORKSPACE']
     if os.path.isdir(dl_list_dir):
         shutil.rmtree(dl_list_dir)
     os.makedirs(dl_list_dir, exist_ok=True)
     if args.download_binary:
-        all_binary_lists = get_all_binary_list(distro=distro, layers=layers, build_types=build_types)
+        all_binary_lists = get_all_binary_list(distro=distro, codename=distro_codename, layers=layers, build_types=build_types)
         dl_list_file_bin = '%s/binaries.txt' % dl_list_dir
         binary_dl = DebDownloader(DEFAULT_ARCH, stx_bin_mirror, dl_list_file_bin, clean_mirror, all_binary_lists)
         if not binary_dl.create_binary_repo():
@@ -776,13 +888,14 @@ if __name__ == "__main__":
 
     if args.download_source:
         dl_list_file_src = '%s/sources.txt' % dl_list_dir
-        source_dl = SrcDownloader(DEFAULT_ARCH, stx_src_mirror, dl_list_file_src, clean_mirror)
+        source_dl = SrcDownloader(DEFAULT_ARCH, stx_src_mirror, dl_list_file_src, clean_mirror,
+                                  distro=distro, codename=distro_codename)
 
     dl_register_signal_handler()
     if binary_dl:
         binary_dl.start()
     if source_dl:
-        source_dl.start(distro=distro, layers=layers, build_types=build_types)
+        source_dl.start(layers=layers, build_types=build_types)
 
     if binary_dl:
         binary_ret = binary_dl.reports()
@@ -796,7 +909,7 @@ if __name__ == "__main__":
             cmd = 'file="%s" && sort -u "$file" >"$file".tmp && mv -f "$file".tmp "$file"' % dl_list_file
             utils.run_shell_cmd(cmd, logger)
 
-    logger.info('Required downloads\' file names are in %s/', dl_list_dir)
+    logger.info('Required download file names are in %s/', dl_list_dir)
 
     logger.info("Verifying downloader return status")
     if binary_ret != 0:
