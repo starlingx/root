@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2021-2022 WindRiver Corporation
+# Copyright (C) 2021-2026 WindRiver Corporation
 
 # import apt
 import apt_pkg
@@ -42,6 +42,10 @@ if STX_MIRROR_STRATEGY is None:
 
 BTYPE = "@KERNEL_TYPE@"
 
+# Filename patterns to ignore for package revision calculations.
+# These are files/dirs related to branching, linting, and build tools.
+# Changes to these items do not affect pkg source code, so the pkg should not be upversioned.
+REVISION_IGNORE = [".gitreview"]
 
 class DownloadProgress():
     def __init__(self):
@@ -251,7 +255,8 @@ class Parser():
 
     def __init__(self, basedir, output, log_level='info', srcrepo=None, btype="std",
                  distro=discovery.STX_DEFAULT_DISTRO,
-                 codename=discovery.STX_DEFAULT_DISTRO_CODENAME):
+                 codename=discovery.STX_DEFAULT_DISTRO_CODENAME,
+                 revision_ignore=REVISION_IGNORE):
 
         self.logger = logging.getLogger(__name__)
         if not self.logger.handlers:
@@ -283,6 +288,8 @@ class Parser():
         self.versions = dict()
         self.pkginfo = dict()
         self.dsc_sha256 = None
+
+        self.revision_ignore = revision_ignore
 
     def setup(self, pkgpath):
 
@@ -391,6 +398,31 @@ class Parser():
             self.logger.info("SRC_DIR = %s (guessed)", src_dir)
         return src_dir
 
+    def get_num_of_revision_commits(self, target_dir:str, base_srcrev:str = "") -> int:
+        """Get num of valid commits in target_dir for revision calculation
+
+        Get the number of commits that changed source code in the target_dir.
+        This will ignore commits that affect only files/directories matching patterns
+        specified in self.revision_ignore.
+
+        :target_dir: path to target directory
+        :base_srcrev: count only commits made after this commit SHA
+        """
+        os.chdir(target_dir)
+
+        items_to_ignore = [item
+                           for item in os.listdir()
+                           for pattern in self.revision_ignore
+                           if pattern in item]
+
+        # Format list according to git's negative pathspec rules
+        git_rev_list_ignore = " ".join(f"':!{item}'" for item in items_to_ignore)
+
+        if base_srcrev:
+            return int(run_shell_cmd(f"git rev-list --count {base_srcrev}..HEAD -- . {git_rev_list_ignore}", self.logger))
+
+        return int(run_shell_cmd(f"git rev-list --count HEAD -- . {git_rev_list_ignore}", self.logger))
+
     def set_revision(self):
 
         revision = 0
@@ -413,15 +445,10 @@ class Parser():
             if revision_data["dist"] is not None:
                 dist = os.path.expandvars(revision_data["dist"])
 
-        git_rev_list = "cd %s;git rev-list --count HEAD ."
-        git_rev_list_from = "cd %s;git rev-list --count %s..HEAD ."
         git_status = "cd %s;git status --porcelain . | wc -l"
 
         if "PKG_GITREVCOUNT" in revision_data:
-            if "PKG_BASE_SRCREV" in revision_data:
-                revision += int(run_shell_cmd(git_rev_list_from % (self.pkginfo["debfolder"], revision_data["PKG_BASE_SRCREV"]), self.logger))
-            else:
-                revision += int(run_shell_cmd(git_rev_list % self.pkginfo["debfolder"], self.logger))
+            revision += self.get_num_of_revision_commits(self.pkginfo["debfolder"],revision_data.get("PKG_BASE_SRCREV"))
             revision += int(run_shell_cmd(git_status % self.pkginfo["debfolder"], self.logger))
 
         if "FILES_GITREVCOUNT" in revision_data:
@@ -443,7 +470,7 @@ class Parser():
                     files_commits[f] = base_commits[i]
 
             for f in files_commits:
-                revision += int(run_shell_cmd(git_rev_list_from % (f, files_commits[f]), self.logger))
+                revision += self.get_num_of_revision_commits(f, files_commits[f])
                 revision += int(run_shell_cmd(git_status % f, self.logger))
 
         if "SRC_GITREVCOUNT" in revision_data:
@@ -452,10 +479,7 @@ class Parser():
                 raise Exception(f"SRC_GITREVCOUNT is set, but no \"src_path\" in meta_data.yaml")
             src_path = self.meta_data["src_path"]
             src_gitrevcount = revision_data["SRC_GITREVCOUNT"]
-            if "SRC_BASE_SRCREV" in src_gitrevcount:
-                revision += int(run_shell_cmd(git_rev_list_from % (src_path, src_gitrevcount["SRC_BASE_SRCREV"]), self.logger))
-            else:
-                revision += int(run_shell_cmd(git_rev_list % src_path, self.logger))
+            revision += self.get_num_of_revision_commits(src_path, src_gitrevcount.get("SRC_BASE_SRCREV"))
             revision += int(run_shell_cmd(git_status % src_path, self.logger))
 
         if "GITREVCOUNT" in revision_data:
@@ -464,7 +488,7 @@ class Parser():
             if "BASE_SRCREV" not in gitrevcount:
                 self.logger.error("Not set BASE_SRCREV in GITREVCOUNT")
                 raise Exception(f"Not set BASE_SRCREV in GITREVCOUNT")
-            revision += int(run_shell_cmd(git_rev_list_from % (src_dir, gitrevcount["BASE_SRCREV"]), self.logger))
+            revision += self.get_num_of_revision_commits(src_dir, gitrevcount["BASE_SRCREV"])
             revision += int(run_shell_cmd(git_status % src_dir, self.logger))
 
         if "stx_patch" in revision_data:
