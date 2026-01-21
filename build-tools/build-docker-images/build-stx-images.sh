@@ -22,11 +22,15 @@ source ${MY_SCRIPT_DIR}/docker_utils.sh
 renice -n 10 -p $$
 ionice -c 3 -p $$
 
-SUPPORTED_OS_ARGS=('centos' 'debian' 'distroless')
-SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
+SUPPORTED_OS_ARGS=('debian' 'distroless')
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie' 'all')
+SUPPORTED_OS_ARCH_ARGS=('amd64' 'all')
 OS=
 OS_CODENAME=
+OS_ARCH=
 OS_LABEL=
+OS_LABEL_LEGACY=
+OS_LABEL_LEGACY_SET=no
 BUILD_STREAM=stable
 IMAGE_VERSION=$(date --utc '+%Y.%m.%d.%H.%M') # Default version, using timestamp
 PREFIX=dev
@@ -67,10 +71,11 @@ $(basename $0)
 Options:
     --os:            Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
     --os-codename:   Specify base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
+    --os-arch:       Specify base OS Architecture (valid options: ${SUPPORTED_OS_ARCH_ARGS[@]})
     --os-label:      Use this string as part of image tags, log file names and
-                       image record file names, in place of OS, eg:
-                       "--os distroless --os-label debian" would look for
-                       "distroless" build recipes, but tag them as "debian"
+                       image record file names (default: OS-OS_CODENAME-OS_ARCH)
+    --os-label-legacy: Use this string for legacy image tags. If specified,
+                       enables legacy tag generation (default: OS)
     --version:       Specify version for output image
     --stream:        Build stream, stable or dev (default: stable)
     --base:          Specify base docker image (required option)
@@ -418,6 +423,46 @@ function post_build {
             RESULTS_PUSHED+=(${latest_tag})
 
             update_image_record ${LABEL} ${latest_tag} ${TAG_LIST_LATEST_FILE}
+        fi
+
+        # Push legacy format tags for backward compatibility (debian-bullseye-amd64 only) or if --os-label-legacy was specified
+        if [[ ( "${OS}" == "debian" && "${OS_CODENAME}" == "bullseye" && "${OS_ARCH}" == "amd64" ) || \
+                "${OS_LABEL_LEGACY_SET}" == "yes" ]]; then
+            local IMAGE_TAG_LEGACY_VERSIONED="${IMAGE_TAG_LEGACY}.${IMAGE_UPDATE_VER}"
+            local legacy_tag="${DOCKER_REGISTRY}${DOCKER_USER}/${LABEL}:${IMAGE_TAG_LEGACY_VERSIONED}"
+
+            docker tag ${build_image_name} ${legacy_tag}
+            echo "Pushing legacy tag: ${legacy_tag}"
+            with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${legacy_tag}
+            if [[ $? -ne 0 ]] ; then
+                echo "Warning: Failed to push legacy tag ${legacy_tag}"
+            else
+                RESULTS_PUSHED+=(${legacy_tag})
+                update_image_record ${LABEL} ${legacy_tag} ${TAG_LIST_FILE_LEGACY}
+            fi
+
+            if [ "$TAG_LATEST" = "yes" ]; then
+                # Construct legacy latest tag from base components (without PREFIX already in IMAGE_TAG_LEGACY)
+                local IMAGE_TAG_LEGACY_BASE="${OS_LABEL_LEGACY}-${BUILD_STREAM}-latest"
+                if [ -n "${LATEST_PREFIX}" ]; then
+                    local IMAGE_TAG_LEGACY_LATEST="${LATEST_PREFIX}-${IMAGE_TAG_LEGACY_BASE}"
+                elif [ -n "${PREFIX}" ]; then
+                    local IMAGE_TAG_LEGACY_LATEST="${PREFIX}-${IMAGE_TAG_LEGACY_BASE}"
+                else
+                    local IMAGE_TAG_LEGACY_LATEST="${IMAGE_TAG_LEGACY_BASE}"
+                fi
+                local legacy_latest="${DOCKER_REGISTRY}${DOCKER_USER}/${LABEL}:${IMAGE_TAG_LEGACY_LATEST}"
+
+                docker tag ${build_image_name} ${legacy_latest}
+                echo "Pushing legacy latest tag: ${legacy_latest}"
+                with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${legacy_latest}
+                if [[ $? -ne 0 ]] ; then
+                    echo "Warning: Failed to push legacy latest tag ${legacy_latest}"
+                else
+                    RESULTS_PUSHED+=(${legacy_latest})
+                    update_image_record ${LABEL} ${legacy_latest} ${TAG_LIST_LATEST_FILE_LEGACY}
+                fi
+            fi
         fi
     fi
 }
@@ -862,7 +907,7 @@ function build_image {
     esac
 }
 
-OPTS=$(getopt -o hN -l help,os:,os-codename:,os-label:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
+OPTS=$(getopt -o hN -l help,os:,os-codename:,os-arch:,os-label:,os-label-legacy:,version:,release:,stream:,push,http_proxy:,https_proxy:,no_proxy:,user:,registry:,base:,wheels:,wheels-alternate:,wheels-py2:,only:,skip:,prefix:,latest,latest-prefix:,clean,cache,attempts:,retry-delay:,no-pull-base -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -889,8 +934,17 @@ while true; do
             OS_CODENAME=$2
             shift 2
             ;;
+        --os-arch)
+            OS_ARCH=$2
+            shift 2
+            ;;
         --os-label)
             OS_LABEL=$2
+            shift 2
+            ;;
+        --os-label-legacy)
+            OS_LABEL_LEGACY=$2
+            OS_LABEL_LEGACY_SET=yes
             shift 2
             ;;
         --wheels)
@@ -1036,8 +1090,31 @@ if [ ${VALID_OS_CODENAME} -ne 0 ]; then
     exit 1
 fi
 
+if [ -z "$OS_ARCH" ] ; then
+    OS_ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
+    if [[ -z "$OS_ARCH" ]] ; then
+        echo "Unable to determine OS_ARCH, please re-run with \`--os-arch' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_ARCH=1
+for supported_os_arch in ${SUPPORTED_OS_ARCH_ARGS[@]}; do
+    if [ "$OS_ARCH" = "${supported_os_arch}" ]; then
+        VALID_OS_ARCH=0
+        break
+    fi
+done
+if [ ${VALID_OS_ARCH} -ne 0 ]; then
+    echo "Unsupported OS_ARCH specified: ${OS_ARCH}" >&2
+    echo "Supported OS_ARCH options: ${SUPPORTED_OS_ARCH_ARGS[@]}" >&2
+    exit 1
+fi
+
 if [[ -z "$OS_LABEL" ]] ; then
-    OS_LABEL="${OS}-${OS_CODENAME}"
+    OS_LABEL="${OS}-${OS_CODENAME}-${OS_ARCH}"
+fi
+if [[ -z "$OS_LABEL_LEGACY" ]] ; then
+    OS_LABEL_LEGACY="${OS}"
 fi
 
 if [ -z "${BASE}" ]; then
@@ -1149,6 +1226,7 @@ function find_image_build_files {
 find_image_build_files
 
 IMAGE_TAG="${OS_LABEL}-${BUILD_STREAM}"
+IMAGE_TAG_LEGACY="${OS_LABEL_LEGACY}-${BUILD_STREAM}"  # For backward compatibility
 IMAGE_TAG_LATEST="${IMAGE_TAG}-latest"
 
 if [ -n "${LATEST_PREFIX}" ]; then
@@ -1159,12 +1237,14 @@ fi
 
 if [ -n "${PREFIX}" ]; then
     IMAGE_TAG="${PREFIX}-${IMAGE_TAG}"
+    IMAGE_TAG_LEGACY="${PREFIX}-${IMAGE_TAG_LEGACY}"
 fi
 
 IMAGE_TAG_BUILD="${IMAGE_TAG}-build"
 
 if [ -n "${IMAGE_VERSION}" ]; then
     IMAGE_TAG="${IMAGE_TAG}-${IMAGE_VERSION}"
+    IMAGE_TAG_LEGACY="${IMAGE_TAG_LEGACY}-${IMAGE_VERSION}"
 fi
 
 WORKDIR=${MY_WORKSPACE}/std/build-images
@@ -1176,13 +1256,26 @@ fi
 
 TAG_LIST_FILE=${WORKDIR}/images-${OS_LABEL}-${BUILD_STREAM}-versioned.lst
 TAG_LIST_LATEST_FILE=${WORKDIR}/images-${OS_LABEL}-${BUILD_STREAM}-latest.lst
+GENERATE_LEGACY=no
+if [[ ( "${OS}" == "debian" && "${OS_CODENAME}" == "bullseye" && "${OS_ARCH}" == "amd64" ) || \
+        "${OS_LABEL_LEGACY_SET}" == "yes" ]]; then
+    GENERATE_LEGACY=yes
+    TAG_LIST_FILE_LEGACY=${WORKDIR}/images-${OS_LABEL_LEGACY}-${BUILD_STREAM}-versioned.lst
+    TAG_LIST_LATEST_FILE_LEGACY=${WORKDIR}/images-${OS_LABEL_LEGACY}-${BUILD_STREAM}-latest.lst
+fi
 if [ "${PUSH}" = "yes" ]; then
     if is_empty ${ONLY[@]} && is_empty ${SKIP[@]}; then
         # Reset image record files, since we're building everything
         echo -n > ${TAG_LIST_FILE}
+        if [ "${GENERATE_LEGACY}" = "yes" ]; then
+            echo -n > ${TAG_LIST_FILE_LEGACY}
+        fi
 
         if [ "$TAG_LATEST" = "yes" ]; then
             echo -n > ${TAG_LIST_LATEST_FILE}
+            if [ "${GENERATE_LEGACY}" = "yes" ]; then
+                echo -n > ${TAG_LIST_LATEST_FILE_LEGACY}
+            fi
         fi
     fi
 fi
