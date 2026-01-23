@@ -197,3 +197,23 @@ images:
     src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/20aaa28c2279bf406520fb74120e9a019fa7c91c
     # Tag based on upstream package version
     tag: stx.12.0-v0.8.3-1
+  - name: docker.io/starlingx/kmm-worker
+    src_build_tag: master-debian-stable-20260122T190949Z.0
+    src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/0fa2f18604dba111ea208ec18b7a896ae039e0a7
+    # Tag based on upstream package version
+    tag: stx.12.0-v2.3.0-g732308d
+  - name: docker.io/starlingx/kmm-webhook
+    src_build_tag: master-debian-stable-20260122T190949Z.0
+    src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/0fa2f18604dba111ea208ec18b7a896ae039e0a7
+    # Tag based on upstream package version
+    tag: stx.12.0-v2.3.0-g732308d
+  - name: docker.io/starlingx/kmm-signimage
+    src_build_tag: master-debian-stable-20260122T190949Z.0
+    src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/0fa2f18604dba111ea208ec18b7a896ae039e0a7
+    # Tag based on upstream package version
+    tag: stx.12.0-v2.3.0-g732308d
+  - name: docker.io/starlingx/kmm-operator
+    src_build_tag: master-debian-stable-20260122T190949Z.0
+    src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/0fa2f18604dba111ea208ec18b7a896ae039e0a7
+    # Tag based on upstream package version
+    tag: stx.12.0-v2.3.0-g732308d
