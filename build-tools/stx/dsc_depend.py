@@ -718,6 +718,11 @@ class Circular_break():
                     group_dict['grp_state']['num_accomplish'] = 0
                     self.package_grp.append(group_dict)
                     return ret_pkgs
+                else:
+                    #  if dep_on_set != circular_pkgs[0]:
+                    external_deps = dep_on_set - circular_pkgs[0]
+                    self.logger.debug(f"Circular group {circular_pkgs[0]} has external deps: {external_deps}")
+
         return ret_pkgs
 
     def __depth_t(self, node, dependencies, circular_chain):
@@ -761,6 +766,10 @@ class Circular_break():
         for node, pkgs in depend_on.items():
             for pkg in pkgs:
                 depend_by[pkg].add(node)
+        
+        # DEBUG: Log what we're searching
+        self.logger.error('=== DEBUG: __get_one_circular_grp searching %d packages ===' % len(depend_on))
+        
         try:
             for node in list(depend_on.keys()):
                 circular_chain.clear()
@@ -768,6 +777,11 @@ class Circular_break():
         except Exception as e:
             # Find a circular group
             find_circular = True
+            # DEBUG: Log the initial circular chain found
+            self.logger.error('=== DEBUG: Initial circular_chain found by __depth_t: %d packages ===' % len(circular_chain))
+            for pkg in circular_chain:
+                self.logger.error('  Initial chain: %s' % os.path.basename(pkg))
+        
         if not find_circular:
             # self.logger.debug('No circular dependency found')
             return set()
@@ -784,24 +798,50 @@ class Circular_break():
                 dep_by_and_circular = deps_by & set(circular_chain)
                 if dep_on_and_circular and dep_by_and_circular:
                     new_pkgs.add(pkg)
+        
+        # DEBUG: Log expansion results
+        if new_pkgs:
+            self.logger.error('=== DEBUG: Expansion added %d packages ===' % len(new_pkgs))
+            for pkg in new_pkgs:
+                self.logger.error('  Expanded: %s' % os.path.basename(pkg))
+        
         return new_pkgs.union(set(circular_chain))
 
     def __dump_circular_dep(self, pkgs, meta_info):
         '''Unexpected circular dependency detected. Find and dump them all.'''
+        # DEBUG: Log input packages
+        self.logger.error('=== DEBUG: __dump_circular_dep called with %d packages ===' % len(pkgs))
+        for pkg in sorted(pkgs):
+            self.logger.error('  Input pkg: %s' % os.path.basename(pkg))
+        
         checking_meta_info = [dict(), dict()]
         for index in range(0, 2):
             for pkg in pkgs:
                 checking_meta_info[index][pkg] = meta_info[index][pkg].copy()
         depend_on, depend_by = scan_meta_info(checking_meta_info)
+        
+        # DEBUG: Log depend_on structure
+        self.logger.error('=== DEBUG: depend_on after scan_meta_info ===')
+        for pkg, deps in depend_on.items():
+            pkg_name = os.path.basename(pkg).split('_')[0]
+            dep_names = [os.path.basename(d).split('_')[0] for d in deps]
+            self.logger.error('  %s depends on: %s' % (pkg_name, dep_names))
+        
         # Find and dump all circular dependency
         while True:
             # Get one circular dependency
-            pkgs = self.__get_one_circular_grp(depend_on)
-            if not pkgs:
+            circular_grp = self.__get_one_circular_grp(depend_on)
+            if not circular_grp:
                 break
+            
+            # DEBUG: Log what __get_one_circular_grp returned
+            self.logger.error('=== DEBUG: __get_one_circular_grp returned %d packages ===' % len(circular_grp))
+            for pkg in sorted(circular_grp):
+                self.logger.error('  Returned pkg: %s' % os.path.basename(pkg))
+            
             # Extract package names from full paths for readability
             pkg_names = []
-            for pkg_path in sorted(pkgs):
+            for pkg_path in sorted(circular_grp):
                 # Extract package name from path like: /path/to/package_version.dsc
                 pkg_name = os.path.basename(pkg_path).split('_')[0]
                 pkg_names.append(pkg_name)
@@ -812,10 +852,10 @@ class Circular_break():
             self.logger.info('  BUILD ORDER: <analyze dependencies to determine correct order>')
             self.logger.info('See existing entries in the file for reference')
             # remove related pakages from current packge set("depend_on")
-            for node in pkgs:
+            for node in circular_grp:
                 depend_on.pop(node)
             for pkg in depend_on.keys():
-                depend_on[pkg] = depend_on[pkg] - pkgs
+                depend_on[pkg] = depend_on[pkg] - circular_grp
             # refresh "depend_by" based on current "depend_on"
             depend_by.clear()
             for node in depend_on.keys():
