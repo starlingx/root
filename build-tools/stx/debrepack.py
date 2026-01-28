@@ -133,7 +133,7 @@ def get_str_md5(text):
 
 def tar_cmd(tarball_name, logger):
 
-    targz = re.match(r'.*.(tar\.gz|tar\.bz2|tar\.xz|tgz)$', tarball_name)
+    targz = re.match(r'.*.(tar\.gz|tgz|tar\.bz2|tar\.xz|tar\.zst)$', tarball_name)
     if targz is None:
         logger.error('Not supported tarball type, the supported types are: tar.gz|tar.bz2|tar.xz|tgz')
         raise ValueError(f'{tarball_name} type is not supported')
@@ -148,6 +148,10 @@ def tar_cmd(tarball_name, logger):
         cmd = 'tar --xz -xf %s '
         cmdx = 'tar --xz -tf %s '
         cmdc = 'tar --xz -cf %s %s '
+    elif targz == 'tar.zst':
+        cmd = 'tar --zstd -xf %s '
+        cmdx = 'tar --zstd -tf %s '
+        cmdc = 'tar --zstd -cf %s %s '
     else:
         cmd = 'tar -xzf %s '
         cmdx = 'tar -tzf %s '
