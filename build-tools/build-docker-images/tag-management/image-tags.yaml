@@ -80,10 +80,10 @@ images:
     src_ref: https://opendev.org/starlingx/upstream/commit/ed39fb1e71c2f89f4b8483038a88b3a22a60ec43
     tag: stx.12.0-v1.0.2
   - name: docker.io/starlingx/stx-vault-manager
-    src_build_tag: master-debian-stable-20250710T041000Z.0
-    src_ref: https://opendev.org/starlingx/vault-armada-app/commit/e32714f8823f45ef61e2410bd70274dbe7f67e61
+    src_build_tag: master-debian-stable-20260130T051000Z.0
+    src_ref: https://opendev.org/starlingx/vault-armada-app/commit/85cc0c1e9defd649c475c6f1c0d57c7bc2c40cec
     # Tag based on latest kubectl package version used in image
-    tag: stx.11.0-v1.32.6
+    tag: stx.12.0-v1.34.3
   - name: docker.io/starlingx/stx-openbao-manager
     src_build_tag: master-debian-stable-20251216T051000Z.0
     src_ref: https://opendev.org/starlingx/utilities/commit/342f87883fc2e4497d2e1cba3267232d9ea45064
