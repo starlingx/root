@@ -48,6 +48,32 @@ EXTRA_CONTENT = 'extra_content'
 PRECHECK_SCRIPTS_FLAG = 'precheck_scripts'
 
 
+# TODO: Functions for manipulating an XML should be extracted into another lib.
+#       Implementing it as a class makes sense.
+
+
+def update_tag(file_path, tag_name, new_value, output_path=None):
+    """Update value of the first matching XML tag
+
+    :param file_path: Path to input XML file
+    :param tag_name: Name of XML tag to update
+    :param new_value: New value to set
+    :param output_path: Optional path to save the updated XML (defaults to overwrite original)
+    """
+
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+
+    element = root.find(tag_name)
+    if element is None:
+        raise ValueError(f"Failed to update tag '{tag_name}'. Tag not found in XML.")
+
+    element.text = str(new_value)
+
+    save_path = output_path if output_path else file_path
+    tree.write(save_path)
+
+
 class PatchMetadata(object):
     def __init__(self, patch_recipe_file):
         self.patch_recipe_file = patch_recipe_file
