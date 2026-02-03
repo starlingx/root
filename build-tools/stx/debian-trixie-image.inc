@@ -73,6 +73,7 @@ gettext-base
 gnupg
 grep
 gunicorn
+gpsd
 gzip
 hdparm
 hostname
@@ -114,6 +115,7 @@ libfuse2
 libgcc-s1
 libgeoip1
 libgfapi0
+libgps30t64
 libgoogle-perftools4
 libinotifytools0
 libiscsi7
@@ -202,6 +204,7 @@ python3-enmerkar
 python3-falcon
 python3-fixtures
 python3-flask-restful
+python3-gps
 # python3-ipaddr
 python3-keystonemiddleware
 python3-ldap3
