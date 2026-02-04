@@ -500,6 +500,8 @@ class Parser():
                 self.logger.error("The stx_patch in meta_data.yaml is not an int value")
                 raise Exception(f"The stx_patch in meta_data.yaml is not an int value")
             revision += int(revision_data["stx_patch"])
+            self.logger.info("Revision offset from 'stx_patch':")
+            self.logger.info(revision_data["stx_patch"])
 
         return dist + "." + str(revision)
 
