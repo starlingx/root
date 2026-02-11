@@ -181,9 +181,9 @@ images:
     src_ref: https://opendev.org/starlingx/app-power-metrics/commit/40d003f066e58003cc711a317a2a8c7587f08f28
     tag: stx.12.0-v1.36.4
   - name: docker.io/starlingx/metrics-exporter-api
-    src_build_tag: master-debian-stable-20260120T051003Z.0
-    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/4866c59cff4413e7a004298db862d65ca712bf45
-    tag: stx.12.0-v2.0.0
+    src_build_tag: master-debian-stable-20260211T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/21d23854280037a4f8c86be050a0a5b642bcdc97
+    tag: stx.12.0-v3.0.0
   - name: docker.io/starlingx/stx-ceph-manager
     src_build_tag: master-debian-stable-20251030T041003Z.0
     src_ref: https://opendev.org/starlingx/utilities/commit/ee48f23033fc18acefc596ef38ab84dc2e4a2feb
