@@ -550,14 +550,14 @@ class Circular_break():
                     self.logger.error('Want key word "BUILD ORDER:": %s' % line)
                     raise Exception('CIRCULAR CONFIG FILE ERROR')
                 meta_str = line[len(src_set):]
-                srcs = set(meta_str.strip().split(' '))
+                srcs = set(meta_str.split())
                 want_set = False
             elif line.startswith(build_order):
                 if want_set:
                     self.logger.error('Want key word "SRC SET:": %s' % line)
                     raise Exception('CIRCULAR CONFIG FILE ERROR')
                 meta_str = line[len(build_order):]
-                src_list = meta_str.strip().split(' ')
+                src_list = meta_str.split()
                 if set(src_list) != srcs or not srcs:
                     self.logger.error('SRC packages must align with the build order, must not be empty: %s' % line)
                     raise Exception('CIRCULAR CONFIG FILE ERROR')
