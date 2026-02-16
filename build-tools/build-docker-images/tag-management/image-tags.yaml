@@ -217,3 +217,7 @@ images:
     src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/0fa2f18604dba111ea208ec18b7a896ae039e0a7
     # Tag based on upstream package version
     tag: stx.12.0-v2.3.0-g732308d
+  - name: docker.io/starlingx/kmm-builder
+    src_build_tag: master-debian-stable-20260215T051000Z.0
+    src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/9b8a408aa82a9e3f4427d794ad8ad2395e397578
+    tag: stx.12.0-v1.0.0
