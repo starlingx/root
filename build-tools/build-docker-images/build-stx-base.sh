@@ -42,6 +42,7 @@ DOCKER_USER=${USER}
 DOCKER_REGISTRY=
 declare -a REPO_LIST
 REPO_OPTS=
+REPOMGR_PUBLISH_URL=
 LOCAL=no
 CLEAN=no
 TAG_LATEST=no
@@ -68,7 +69,10 @@ Options:
                      * Debian format: "TYPE [OPTION=VALUE...] URL DISTRO COMPONENTS..."
                        This will be added to /etc/apt/sources.list as is,
                        see also sources.list(5) manpage.
-    --local:       Use local build for software repository (cannot be used with --repo)
+    --repomgr-publish-url: Base URL for published repository (used in layer templates)
+                     * If not specified, defaults to REPOMGR_DEPLOY_URL (local development)
+                     * Pipeline builds should specify the public mirror base URL
+    --local:       Use local build for software repository (ignored for compatibility)
     --push:        Push to docker repo
     --proxy:       Set proxy <URL>:<PORT>
     --latest:      Add a 'latest' tag when pushing
@@ -135,7 +139,7 @@ function get_args_from_file {
     done <"$1"
 }
 
-OPTS=$(getopt -o h -l help,os:,os-codename:,os-arch:,os-version:,version:,stream:,prefix:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,os-arch:,os-version:,version:,stream:,prefix:,release:,repo:,repomgr-publish-url:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -184,6 +188,10 @@ while true; do
             ;;
         --repo)
             REPO_LIST+=("$2")
+            shift 2
+            ;;
+        --repomgr-publish-url)
+            REPOMGR_PUBLISH_URL=$2
             shift 2
             ;;
         --local)
@@ -347,19 +355,6 @@ if [[ ! -z  ${CONFIG_FILE} ]]; then
     fi
 fi
 
-if [ ${#REPO_LIST[@]} -eq 0 ]; then
-    # Either --repo or --local must be specified
-    if [ "${LOCAL}" != "yes" -a "${BUILD_STREAM}" != "dev" -a "${BUILD_STREAM}" != "master" ]; then
-        echo "Either --local or --repo must be specified" >&2
-        exit 1
-    fi
-else
-    if [ "${LOCAL}" = "yes" ]; then
-        echo "Cannot specify both --local and --repo" >&2
-        exit 1
-    fi
-fi
-
 BUILDDIR=${MY_WORKSPACE}/std/build-images/stx-${OS}-${OS_CODENAME}
 if [ -d ${BUILDDIR} ]; then
     # Leftover from previous build
@@ -386,12 +381,17 @@ if [[ "$OS" == "debian" ]] ; then
     done
     unset var
 
+    # Set published repository URL base (defaults to local deployment URL)
+    # Use --repomgr-publish-url to override for pipeline builds
+    REPOMGR_PUBLISH_URL="${REPOMGR_PUBLISH_URL:-${REPOMGR_DEPLOY_URL%/}}"
+
     # Replace "@...@" tokens in apt template files
     function replace_vars {
         sed -e "s!@DEBIAN_SNAPSHOT@!${DEBIAN_SNAPSHOT}!g" \
             -e "s!@DEBIAN_SECURITY_SNAPSHOT@!${DEBIAN_SECURITY_SNAPSHOT}!g" \
             -e "s!@DEBIAN_DISTRIBUTION@!${DEBIAN_DISTRIBUTION}!g" \
             -e "s!@REPOMGR_DEPLOY_URL@!${REPOMGR_DEPLOY_URL}!g" \
+            -e "s!@REPOMGR_PUBLISH_URL@!${REPOMGR_PUBLISH_URL}!g" \
             -e "s!@REPOMGR_ORIGIN@!${REPOMGR_ORIGIN}!g" \
             -e "s!@LAYER@!${LAYER}!g" \
             "$@"
