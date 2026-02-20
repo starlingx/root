@@ -48,7 +48,8 @@ eventlet===0.32.0   # 0.30.0 - Fix tox issues - "py39: Add _at_fork_reinit metho
 extras===1.0.0
 falcon===2.0.0
 fasteners===0.14.1
-fixtures===3.0.0
+#fixtures===3.0.0   # Default bullseye version
+fixtures===4.2.6    # Latest version compatible with python 3.9. Required to allow 'stestr' tests
 Flask===1.1.2
 Flask-RESTful===0.3.8
 future===0.18.2
@@ -131,7 +132,8 @@ paramiko===2.7.2
 passlib===1.7.4
 Paste===3.5.0
 PasteDeploy===2.1.1
-pbr===5.5.0
+#pbr===5.5.0          # Fixing this version occasionally causes tests to break
+                      # Also, it's used for building pkgs. It's not relevent for simulating the runtime environment
 pecan===1.3.3
 ply===3.11
 prettytable===0.7.2
@@ -179,7 +181,8 @@ Tempita===0.5.2
 tenacity===6.2.0
 testresources===2.0.1
 testscenarios===0.5.0
-testtools===2.4.0
+#testtools===2.4.0     # Default bullseye version
+testtools===2.7.2      # Latest version compatible with python 3.9. Required to allow 'stestr' tests
 traceback2===1.4.0
 pytz===2021.1
 uhashring===1.2
