@@ -1208,8 +1208,7 @@ class BuildController():
                             logger.error("Failed to upload %s to %s", deb_file, REPO_BUILD)
                             return False
         except Exception as e:
-            logger.error("An exception occurred during uploading %s(%s)", package, str(e))
-            return False
+            raise RuntimeError("An exception occurred during uploading %s" % package) from e
 
         if sdebs:
             debsentry.set_subdebs(debs_clue, package, sdebs, logger)
