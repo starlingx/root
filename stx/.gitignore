@@ -48,6 +48,7 @@ installer-prebuilt
 /integ
 /kernel
 /metal
+/metapackages
 /metrics-server-armada-app
 /monitor-armada-app
 /monitoring
