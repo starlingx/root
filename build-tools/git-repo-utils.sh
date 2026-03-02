@@ -8,7 +8,7 @@
 
 #
 # A collection of utilities that stradle the divide between
-# between git and repo. 
+# between git and repo.
 #
 # These utilites are often the most reliable to use. They will
 # try to get the answer from repo, and will fall back to git
@@ -175,6 +175,18 @@ git_repo_review_method () {
 
     # Shouldn't get here
     return 1
+}
+
+git_repo_update_gerrit_remote () {
+    local method=""
+    method=$(git_repo_review_method)
+    if [ "${method}" == "gerrit" ]; then
+        # Remove existing gerrit remote and re-setup from .gitreview
+        git remote remove gerrit 2>/dev/null || true
+        with_retries -d 45 -t 15 -k 5 5 git review -s >&2 || return 1
+        git config remote.gerrit.url > /dev/null || return 1
+    fi
+    return 0
 }
 
 git_repo_review_remote () {

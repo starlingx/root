@@ -232,6 +232,10 @@ for subgit in $SUBGITS; do
     fi
 
     if [ "${review_method}" == "gerrit" ]; then
+        git_repo_update_gerrit_remote || {
+            echo_stderr "ERROR: Failed to update gerrit remote in ${subgit}"
+            exit 1
+        }
         review_remote=$(git_repo_review_remote)
     else
         review_remote=${remote}
