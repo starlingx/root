@@ -17,6 +17,7 @@ installer-prebuilt
 /app-kernel-module-management
 /app-kubernetes-power-manager
 /app-kubevirt/
+/app-lvm-csi
 /app-node-feature-discovery
 /app-node-interface-metrics-exporter
 /app-openbao
