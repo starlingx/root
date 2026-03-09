@@ -445,29 +445,19 @@ if [ $? -ne 0 ]; then
 fi
 
 # Get the existing CMD and ENTRYPOINT
-ORIG_CMD=$(docker inspect --format='{{.Config.Cmd}}' ${FROM} | sed -e 's/^\[//' -e 's/\]$//')
-ORIG_ENTRYPOINT=$(docker inspect --format='{{.Config.Entrypoint}}' ${FROM} | sed -e 's/^\[//' -e 's/\]$//')
-
-# Format the CMD and ENTRYPOINT to be valid for docker commit change
-FORMATTED_ORIG_CMD=""
-FORMATTED_ORIG_ENTRYPOINT=""
-
-for token in ${ORIG_CMD}; do
-    FORMATTED_ORIG_CMD="${FORMATTED_ORIG_CMD}, \"${token}\""
-done
-if [ -z "${FORMATTED_ORIG_CMD}" ]; then
-    FORMATTED_ORIG_CMD="[\"\"]"
-else
-    FORMATTED_ORIG_CMD="[${FORMATTED_ORIG_CMD:2}]"
+ORIG_CMD=$(docker inspect --format='{{json .Config.Cmd}}' ${FROM})
+if [[ "$ORIG_CMD" == "null" ]] ; then
+    ORIG_CMD="[]"
 fi
 
-for token in ${ORIG_ENTRYPOINT}; do
-    FORMATTED_ORIG_ENTRYPOINT="${FORMATTED_ORIG_ENTRYPOINT}, \"${token}\""
-done
-if [ -z "${FORMATTED_ORIG_ENTRYPOINT}" ]; then
-    FORMATTED_ORIG_ENTRYPOINT="[\"\"]"
-else
-    FORMATTED_ORIG_ENTRYPOINT="[${FORMATTED_ORIG_ENTRYPOINT:2}]"
+ORIG_ENTRYPOINT=$(docker inspect --format='{{json .Config.Entrypoint}}' ${FROM})
+if [[ "$ORIG_ENTRYPOINT" == "null" ]] ; then
+    ORIG_ENTRYPOINT="[]"
+fi
+
+ORIG_USER=$(docker inspect --format='{{json .Config.User}}' ${FROM})
+if [[ "$ORIG_USER" == "null" ]] ; then
+    ORIG_USER='""' # ie root
 fi
 
 # Get the OS NAME from /etc/os-release
@@ -475,22 +465,44 @@ OS_NAME=$(docker run --entrypoint /bin/bash --rm ${FROM} -c 'source /etc/os-rele
 
 # Run a container to install updates
 UPDATE_CONTAINER=${USER}_${LABEL}_updater_$$
-docker run --entrypoint /bin/bash --name ${UPDATE_CONTAINER} \
+docker run --user 0 --entrypoint /bin/bash --name ${UPDATE_CONTAINER} \
     -v "${WORKDIR}":/image-update \
     ${FROM} \
-    -x -c ' bash -x /image-update/internal-update-stx-image.sh '
+    -x -c 'bash -x /image-update/internal-update-stx-image.sh '
 if [ $? -ne 0 ]; then
     echo "Failed to update image: ${FROM}" >&2
     exit 1
 fi
 
-# Commit the updated image
-docker commit --change="CMD ${FORMATTED_ORIG_CMD}" --change="ENTRYPOINT ${FORMATTED_ORIG_ENTRYPOINT}" ${UPDATE_CONTAINER} ${UPDATED_IMAGE}
+# Commit the updated image. This will create an intermediate image
+# with ENTRYPOINT and CMD set as in the "docker run" command above. We
+# will correct it separately. Note that "--change" doesn't work correctly
+# when ENTRYPOINT or CMD are empty or null.
+echo "Running: docker commit ${UPDATE_CONTAINER} ${UPDATED_IMAGE}.update0"
+docker commit ${UPDATE_CONTAINER} ${UPDATED_IMAGE}.update0
 if [ $? -ne 0 ]; then
     echo "Failed to commit updated image: ${UPDATE_CONTAINER}" >&2
     docker rm ${UPDATE_CONTAINER} >/dev/null
     exit 1
 fi
+
+# Create a temporary Docker file that inherits from the intermediate image,
+# but sets ENTRYPOINT and CMD back to what they were originally.
+echo "Restoring ENTRYPOINT/CMD in ${UPDATED_IMAGE}" >&2
+echo "\
+FROM ${UPDATED_IMAGE}.update0
+USER $ORIG_USER
+ENTRYPOINT $ORIG_ENTRYPOINT
+CMD $ORIG_CMD
+" | docker build -t ${UPDATED_IMAGE} -
+if [[ $? -ne 0 ]] ; then
+    docker image rm ${UPDATED_IMAGE}.update0
+    echo "Failed to restore ENTRYPOINT/CMD in image: ${UPDATED_IMAGE}" >&2
+    exit 1
+fi
+
+# Remove intermediate image
+docker image rm ${UPDATED_IMAGE}.update0
 
 # Remove the update container
 docker rm ${UPDATE_CONTAINER} >/dev/null
