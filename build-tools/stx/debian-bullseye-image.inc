@@ -305,7 +305,6 @@ tcpdump
 time
 traceroute
 tuned
-tzdata
 udhcpc
 unzip
 uwsgi-plugin-apparmor
