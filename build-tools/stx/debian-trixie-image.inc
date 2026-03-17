@@ -141,8 +141,6 @@ libnss-sss
 liboath0
 libodbc2
 libopendbx1
-libopenscap33
-libopenscap-perl
 libpam-sss
 libpciaccess0
 librabbitmq4
@@ -185,10 +183,6 @@ nftables
 ntpsec
 nvme-cli
 open-iscsi
-openscap-common
-openscap-doc
-openscap-scanner
-openscap-utils
 openssh-server
 original-awk
 ovmf
@@ -233,7 +227,6 @@ python3-oslo.policy
 python3-oslo.rootwrap
 python3-oslo.upgradecheck
 python3-oslo.versionedobjects
-python3-openscap
 python3-osprofiler
 python3-paramiko
 python3-parted
