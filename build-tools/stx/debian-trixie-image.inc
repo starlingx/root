@@ -162,6 +162,7 @@ libusbredirparser1
 libvdeplug2
 libvirglrenderer1
 libyajl2
+linux-sysctl-defaults
 locales-all
 logrotate
 lsb-base
