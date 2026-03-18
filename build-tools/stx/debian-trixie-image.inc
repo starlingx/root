@@ -29,6 +29,8 @@ dbus-user-session
 dconf-gsettings-backend
 debconf-i18n
 diffutils
+dmeventd
+dmsetup
 dnf
 dosfstools
 eatmydata
@@ -108,6 +110,8 @@ libcacard0
 libcapstone5
 libcrypt1
 libdebconfclient0
+libdevmapper1.02.1
+libdevmapper-event1.02.1
 # libdns-export1110
 libeinfo1
 # libfam0
@@ -123,6 +127,7 @@ libjs-jquery-cookie
 liblapack3
 libleveldb1d
 liblognorm5
+liblvm2cmd2.03
 libmm-glib0
 libndctl6
 libndp0
@@ -161,6 +166,7 @@ locales-all
 logrotate
 lsb-base
 lsof
+lvm2
 man-db
 mawk
 mdadm
