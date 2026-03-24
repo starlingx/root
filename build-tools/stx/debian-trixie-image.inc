@@ -108,6 +108,7 @@ libc6
 libc6-dev
 libcacard0
 libcapstone5
+libcharon-extra-plugins
 libcrypt1
 libdebconfclient0
 libdevmapper1.02.1
@@ -152,6 +153,8 @@ libsoup2.4-1
 libspice-server1
 libssh-4
 libsss-sudo
+libstrongswan-extra-plugins
+libstrongswan-standard-plugins
 libteam-utils
 libunbound8
 liburing2
