@@ -607,10 +607,9 @@ class Deb_aptly():
         if pkg_type not in {'binary', 'source'}:
             self.logger.error('package type must be one of either "binary" or "source"')
             return
-        if not pkg_version:
-            query = pkg_name
-        else:
-            query = pkg_name + ' (' + pkg_version + ')'
+        query = 'Name (= %s)' % pkg_name
+        if pkg_version:
+            query += ', Version (= %s)' % pkg_version
         # If we want more detailed info, add "detailed=True, with_deps=True" for search_packages.
         search_result = self.aptly.repos.search_packages(local_repo, query=query)
         self.logger.debug('delete_pkg_local found %d packages.' % len(search_result))
