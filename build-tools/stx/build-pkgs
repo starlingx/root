@@ -482,7 +482,7 @@ def req_chroots_action(action, extra_params):
         resp = requests.get(BUILDER_URL + action, params=req_params)
         resp.raise_for_status()
     except requests.RequestException as e:
-        print(e)
+        logger.error("req_chroots_action(%s) request failed: %s", action, e)
     else:
         logger.debug(resp.text)
         if 'success' in resp.text:
@@ -491,6 +491,8 @@ def req_chroots_action(action, extra_params):
             return 'success'
         if 'creating' in resp.text:
             return 'creating'
+        logger.error("req_chroots_action(%s) unexpected response: %s",
+                     action, resp.text)
     return 'fail'
 
 
