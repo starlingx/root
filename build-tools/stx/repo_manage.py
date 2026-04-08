@@ -57,9 +57,14 @@ class AptFetch():
         # In case the sources_list is specified:
         #
         # ├── apt-root               # For apt cache
-        # │   └── etc
-        # │       └── apt
-        # │           └── sources.list
+        # │   ├── etc
+        # │   │   └── apt
+        # │   │       └── sources.list
+        # │   └── var
+        # │       ├── cache/apt
+        # │       │   ├── lists/partial
+        # │       │   └── archives/partial
+        # │       └── lib/apt/lists/partial
         # └── downloads              # Sub directory to store downloaded packages
         #       ├── binary
         #       └── source
@@ -81,6 +86,17 @@ class AptFetch():
                 aptdir = os.path.join(basedir, 'apt-root/etc/apt')
                 os.makedirs(aptdir)
                 shutil.copyfile(sources_list, os.path.join(aptdir, 'sources.list'))
+                # Create apt cache directory skeleton required by apt.Cache()
+                # apt.Cache(rootdir=...) does not consistently create all
+                # subdirectories before update() tries to acquire lock files.
+                # This is a known python-apt gap that varies by version.
+                # Pre-creating with exist_ok=True is a safe no-op if apt
+                # handles it, and prevents lock failures when it does not.
+                apt_root = os.path.join(basedir, 'apt-root')
+                for d in ['var/cache/apt/lists/partial',
+                          'var/cache/apt/archives/partial',
+                          'var/lib/apt/lists/partial']:
+                    os.makedirs(os.path.join(apt_root, d), exist_ok=True)
             os.makedirs(os.path.join(basedir, 'downloads', 'binary'))
             os.makedirs(os.path.join(basedir, 'downloads', 'source'))
         except Exception as e:
@@ -95,7 +111,17 @@ class AptFetch():
             self.aptcache = apt.Cache()
             return None
         try:
-            self.aptcache = apt.Cache(rootdir=os.path.join(self.workdir, 'apt-root'))
+            apt_root = os.path.join(self.workdir, 'apt-root')
+            cachedir = os.path.join(apt_root, 'var', 'cache', 'apt')
+            # Explicitly set apt_pkg config paths so update() uses our
+            # rootdir instead of a random temp dir. Without this,
+            # apt_pkg resolves Dir::State::Lists to a different path
+            # than rootdir and fails to find the lock file.
+            apt_pkg.config.set("Dir", apt_root)
+            apt_pkg.config.set("Dir::Etc", os.path.join(apt_root, "etc", "apt"))
+            apt_pkg.config.set("Dir::State::lists", os.path.join(cachedir, "lists"))
+            apt_pkg.config.set("Dir::Cache::archives", os.path.join(cachedir, "archives"))
+            self.aptcache = apt.Cache(rootdir=apt_root)
             ret = self.aptcache.update()
             if not ret:
                 raise Exception('APT cache update failed')
@@ -128,6 +154,11 @@ class AptFetch():
                 return ret
             default_candidate = pkg.candidate
             self.logger.debug("The default candidate is %s", default_candidate.version)
+            available_versions = [str(v.version) for v in pkg.versions]
+            self.logger.debug("Package '%s' versions available in repo: %s",
+                              pkg_name, available_versions)
+            self.logger.debug("Package '%s' requested version: '%s'",
+                              pkg_name, pkg_version)
             candidate = pkg.versions.get(pkg_version)
             if not candidate:
                 if ':' in default_candidate.version:
@@ -137,8 +168,14 @@ class AptFetch():
                         candidate = default_candidate
                 if not candidate:
                     self.aptlock.release()
-                    self.logger.error("Failed to find a matching version for %s %s", pkg_name, pkg_version)
+                    self.logger.error("Failed to find a matching version for %s: "
+                                      "requested='%s' available=%s",
+                                      pkg_name, pkg_version, available_versions)
                     return ret
+        except KeyError:
+            self.aptlock.release()
+            self.logger.error("Package not found in apt cache: '%s'", pkg_name)
+            return ret
         except Exception as e:
             self.aptlock.release()
             self.logger.error("Exception during candidate searching:%s", str(e))
