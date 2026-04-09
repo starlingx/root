@@ -20,6 +20,7 @@ installer-prebuilt
 /app-node-feature-discovery
 /app-node-interface-metrics-exporter
 /app-openbao
+/app-openvswitch
 /app-oran-o2
 /apt-ostree
 /app-power-metrics
