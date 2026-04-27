@@ -28,22 +28,6 @@ get_release_info () {
     return 1
 }
 
-get_bsp_dir () {
-    local dir=""
-    local path=""
-
-    for dir in $GIT_LIST; do
-        path="$dir/bsp-files"
-        if [ -d "$path" ]; then
-            echo "$path"
-            return 0
-        fi
-    done
-
-    echo "/invalid-path-to-bsp-files"
-    return 1
-}
-
 #
 # image_inc_list <build_target> <list_type> <distro> [<layer>]
 #
