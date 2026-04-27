@@ -268,7 +268,15 @@ function get_loci {
 
 function patch_loci {
     echo "Patching ${WORKDIR}/loci/Dockerfile" >&2
-    ( cd "${WORKDIR}/loci" && git am $( \ls -1 $MY_SCRIPT_DIR/loci/patches/*.patch | sort ) ; ) || exit 1
+
+    # Use codename-specific patches if available, otherwise fall back to common patches
+    local patch_dir
+    patch_dir="$MY_SCRIPT_DIR/loci/patches"
+    if [ -d "$MY_SCRIPT_DIR/loci/patches/${OS_CODENAME}" ]; then
+        patch_dir="$MY_SCRIPT_DIR/loci/patches/${OS_CODENAME}"
+        echo "Using ${OS_CODENAME}-specific loci patches" >&2
+    fi
+    ( cd "${WORKDIR}/loci" && git am $( \ls -1 ${patch_dir}/*.patch | sort ) ; ) || exit 1
 
     # clear wheels dir
     \rm -rf "${WORKDIR}/loci/stx-wheels/"* || exit 1

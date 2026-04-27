@@ -1,37 +1,24 @@
 # These are overridden by build-stx-debian.sh
-ARG DIST=bullseye
-ARG RELEASE=11.2
+ARG RELEASE=13.0
 
-################################################
-# ca_certs build stage
-################################################
-
-# We need up-to-date SSL certs, otherwise we won't be able to access
-# mirror.starlingx.windriver.com; yet the ca-certificates package is
-# behind that URL. As a workaround: install ca-certificates from
-# upstream debian, then copy the (generated) CA bundle into the.
-# main build stage.
-
-FROM debian:${DIST} as ca_certs
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update -y && \
-    apt-get -y install --no-install-recommends ca-certificates
-
-################################################
-# main build stage
-################################################
-
-# Start with an the old-ish bullseye release (11.2), then upgrade --
-# to make sure packages that come pre-installed in the debian:XXX image
-# are older than anything in StarlingX.
 FROM debian:${RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# FIXME: Remove group entries from /etc/gshadow that conflict with systemd-sysusers
+# basic.conf. The upstream debian image pre-populates these via base-passwd;
+# systemd-sysusers will recreate them correctly when systemd is installed.
+RUN if [ -f /etc/gshadow ]; then \
+      for grp in adm tty disk man kmem dialout fax voice cdrom floppy \
+                 tape sudo audio dip operator src shadow utmp video sasl \
+                 plugdev staff games users nogroup; do \
+        sed -i "/^${grp}:/d" /etc/gshadow; \
+      done; \
+    fi
+
 # Disable upstream debian repos
-RUN mv /etc/apt/sources.list /etc/apt/sources.list.disabled
+# Trixie uses deb822 format: /etc/apt/sources.list.d/debian.sources
+RUN mv /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.disabled
 
 # Install apt repos
 COPY apt/debian.sources.list /etc/apt/sources.list.d/debian.list.disabled
@@ -77,18 +64,6 @@ RUN for layer in /etc/apt/sources.list.d/*.layer.sources.list; do \
 #
 
 #
-# Copy CA certs from the "ca_certs" build stage. The bundle file was generated
-# by ca-certificates in that stage, and will be re-generated when we install
-# that package again in the main stage below. That version may be *older* than
-# the certs that we are copying here. We assume ca-certificates is regularly
-# updated in stx-tools' package download lists, or it is built by us, and contains
-# all the certs we might need during docker images build, such as the intermidate
-# cert used by mirror.starlingx.windriver.com .
-#
-RUN mkdir -p /etc/ssl/certs
-COPY --from=ca_certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-
-#
 # Upgrade base packages to versions in managed repos
 #
 RUN cp -f /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list && \
@@ -121,8 +96,6 @@ RUN apt-get update -y && \
 # FIXME: uncomment once qemu is ported to debian (starlingx/integ)
 #        qemu-utils \
         && \
-    apt-get remove -y gcc-9-base && \
-# gcc-9-base ends up unused since in bullseye the default gcc is gcc-10
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -137,7 +110,6 @@ RUN apt-get update -y && \
 RUN apt-get update -y && \
     apt-get upgrade -y && \
     apt-get install -y \
-        python3-thriftpy \
         python3-nss \
         && \
     apt-get clean && \
