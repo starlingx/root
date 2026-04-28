@@ -24,9 +24,11 @@ renice -n 10 -p $$
 ionice -c 3 -p $$
 
 SUPPORTED_OS_ARGS=( 'debian' )
-SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie')
+SUPPORTED_OS_CODENAME_ARGS=('bullseye' 'trixie' 'all')
+SUPPORTED_OS_ARCH_ARGS=('amd64' 'all')
 OS=                      # default: autodetect
 OS_CODENAME=             # default: autodetect
+OS_ARCH=                 # default: autodetect
 OS_VERSION=              # default: lookup "ARG RELEASE" in Dockerfile
 BUILD_STREAM=stable
 IMAGE_VERSION=
@@ -56,6 +58,7 @@ $(basename $0)
 Options:
     --os:          Specify base OS (valid options: ${SUPPORTED_OS_ARGS[@]})
     --os-codename: Specify base OS Codename (valid options: ${SUPPORTED_OS_CODENAME_ARGS[@]})
+    --os-arch:     Specify base OS Architecture (valid options: ${SUPPORTED_OS_ARCH_ARGS[@]})
     --os-version:  Specify OS version
     --version:     Specify version for output image
     --stream:      Build stream, stable or dev (default: stable)
@@ -130,7 +133,7 @@ function get_args_from_file {
     done <"$1"
 }
 
-OPTS=$(getopt -o h -l help,os:,os-codename:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,os-arch:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -151,6 +154,10 @@ while true; do
             ;;
         --os-codename)
             OS_CODENAME=$2
+            shift 2
+            ;;
+        --os-arch)
+            OS_ARCH=$2
             shift 2
             ;;
         --os-version)
@@ -279,6 +286,26 @@ done
 if [ ${VALID_OS_CODENAME} -ne 0 ]; then
     echo "Unsupported OS_CODENAME specified: ${OS_CODENAME}" >&2
     echo "Supported OS_CODENAME options: ${SUPPORTED_OS_CODENAME_ARGS[@]}" >&2
+    exit 1
+fi
+
+if [ -z "$OS_ARCH" ] ; then
+    OS_ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
+    if [[ -z "$OS_ARCH" ]] ; then
+        echo "Unable to determine OS_ARCH, please re-run with \`--os-arch' option" >&2
+        exit 1
+    fi
+fi
+VALID_OS_ARCH=1
+for supported_os_arch in ${SUPPORTED_OS_ARCH_ARGS[@]}; do
+    if [ "$OS_ARCH" = "${supported_os_arch}" ]; then
+        VALID_OS_ARCH=0
+        break
+    fi
+done
+if [ ${VALID_OS_ARCH} -ne 0 ]; then
+    echo "Unsupported OS_ARCH specified: ${OS_ARCH}" >&2
+    echo "Supported OS_ARCH options: ${SUPPORTED_OS_ARCH_ARGS[@]}" >&2
     exit 1
 fi
 
@@ -411,8 +438,14 @@ BASE_IMAGE_PRESENT=$?
 docker pull ${OS}:${OS_VERSION}
 
 # Build the image
-IMAGE_NAME=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_VERSION}
-IMAGE_NAME_LATEST=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${LATEST_TAG}
+IMAGE_TAG_BASE="${OS_CODENAME}-${OS_ARCH}-${BUILD_STREAM}"
+IMAGE_NAME=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE}-${IMAGE_VERSION}
+IMAGE_NAME_LATEST=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE}-${LATEST_TAG}
+
+# Backward compatibility tags for debian-bullseye-amd64
+IMAGE_TAG_BASE_LEGACY="${BUILD_STREAM}"
+IMAGE_NAME_LEGACY=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE_LEGACY}-${IMAGE_VERSION}
+IMAGE_NAME_LATEST_LEGACY=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE_LEGACY}-${LATEST_TAG}
 
 declare -a BUILD_ARGS
 BUILD_ARGS+=(--build-arg RELEASE=${OS_VERSION})
@@ -450,6 +483,27 @@ if [ "${PUSH}" = "yes" ]; then
         if [ $? -ne 0 ]; then
             echo "Failed running docker push command on latest" >&2
             exit 1
+        fi
+    fi
+
+    # Push legacy format tags for backward compatibility (debian-bullseye-amd64 only)
+    if [[ "${OS}" == "debian" && "${OS_CODENAME}" == "bullseye" && "${OS_ARCH}" == "amd64" ]]; then
+        docker tag ${IMAGE_NAME} ${IMAGE_NAME_LEGACY}
+        echo "Pushing legacy image: ${IMAGE_NAME_LEGACY}"
+        with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${IMAGE_NAME_LEGACY}
+        if [ $? -ne 0 ]; then
+            echo "Failed running docker push command on legacy tag" >&2
+            exit 1
+        fi
+
+        if [ "$TAG_LATEST" = "yes" ]; then
+            docker tag ${IMAGE_NAME} ${IMAGE_NAME_LATEST_LEGACY}
+            echo "Pushing legacy image: ${IMAGE_NAME_LATEST_LEGACY}"
+            with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} docker push ${IMAGE_NAME_LATEST_LEGACY}
+            if [ $? -ne 0 ]; then
+                echo "Failed running docker push command on legacy latest" >&2
+                exit 1
+            fi
         fi
     fi
 fi

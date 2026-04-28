@@ -65,6 +65,9 @@ Options:
             Specify the path to image record file(s) or url(s).
             Multiple files/urls can be specified with a comma-separated
             list, or with multiple --image-record arguments.
+            URLs with identical basenames are supported; downloaded
+            files are prefixed with a numeric index (000-, 001-, etc.)
+            to avoid collisions.
             Note: Files are in order of priority. Images may appear
             in multiple files, the last image reference has higher
             priority.
@@ -104,23 +107,44 @@ function is_in {
 }
 
 
+IMAGE_RECORD_DOWNLOAD_INDEX=0
+
 function get_image_record_file {
   local image_record=$1
+  # Set by this function: the resolved local path to the image record file
+  RESOLVED_IMAGE_RECORD=""
 
   if [[ ${image_record} =~ ^https?://.*(.lst|.txt)$ ]]; then
-      wget --quiet --no-clobber ${image_record} \
-           --directory-prefix ${IMAGE_RECORD_PATH}
+      local basename_file
+      basename_file=$(basename ${image_record})
+      local prefix
+      prefix=$(printf '%03d' ${IMAGE_RECORD_DOWNLOAD_INDEX})
+      local dest_file="${IMAGE_RECORD_PATH}/${prefix}-remote-${basename_file}"
+      local tmp_file="${dest_file}.tmp"
 
+      rm -f "${tmp_file}"
+      wget --quiet -O "${tmp_file}" ${image_record}
       if [ $? -ne 0 ]; then
+          rm -f "${tmp_file}"
           echo "Failed to download image record file from ${image_record}" >&2
           exit 1
       fi
+      if [ ! -s "${tmp_file}" ]; then
+          rm -f "${tmp_file}"
+          echo "Downloaded empty image record file from ${image_record}" >&2
+          exit 1
+      fi
+      mv "${tmp_file}" "${dest_file}"
+      RESOLVED_IMAGE_RECORD="${dest_file}"
+      IMAGE_RECORD_DOWNLOAD_INDEX=$((IMAGE_RECORD_DOWNLOAD_INDEX + 1))
+
   elif [[ -f ${image_record} && ${image_record} =~ .lst|.txt ]]; then
       cp ${image_record} ${IMAGE_RECORD_PATH}
       if [ $? -ne 0 ]; then
           echo "Failed to copy ${image_record} to ${IMAGE_RECORD_PATH}" >&2
           exit 1
       fi
+      RESOLVED_IMAGE_RECORD="${IMAGE_RECORD_PATH}/$(basename ${image_record})"
   else
       echo "Cannot recognize the provided image record file:${image_record}" >&2
       exit 1
@@ -131,6 +155,11 @@ function get_image_record_file {
 # record files and build them into armada manifest
 function build_image_versions_to_armada_manifest {
     local manifest_file=$1
+
+    # Clean up prior remote downloads
+    rm -f "${IMAGE_RECORD_PATH}"/[0-9][0-9][0-9]-remote-*.lst "${IMAGE_RECORD_PATH}"/[0-9][0-9][0-9]-remote-*.txt
+    rm -f "${IMAGE_RECORD_PATH}"/*.tmp
+    IMAGE_RECORD_DOWNLOAD_INDEX=0
 
     for image_record in ${IMAGE_RECORDS[@]}; do
         get_image_record_file ${image_record}
@@ -168,7 +197,7 @@ function build_image_versions_to_armada_manifest {
         #        aodh_api: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #
-        image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
+        image_record=${RESOLVED_IMAGE_RECORD}
         ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
         if [ $? -ne 0 ]; then
             echo "Failed to update manifest file" >&2
@@ -184,6 +213,11 @@ function build_image_versions_to_armada_manifest {
 function build_image_versions_to_fluxcd_manifests {
     local manifest_folder=$1
 
+    # Clean up prior remote downloads
+    rm -f "${IMAGE_RECORD_PATH}"/[0-9][0-9][0-9]-remote-*.lst "${IMAGE_RECORD_PATH}"/[0-9][0-9][0-9]-remote-*.txt
+    rm -f "${IMAGE_RECORD_PATH}"/*.tmp
+    IMAGE_RECORD_DOWNLOAD_INDEX=0
+
     for image_record in ${IMAGE_RECORDS[@]}; do
         get_image_record_file ${image_record}
 
@@ -220,7 +254,7 @@ function build_image_versions_to_fluxcd_manifests {
         #        aodh_api: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #        aodh_db_sync: docker.io/starlingx/stx-aodh:master-debian-stable-latest
         #
-        image_record=${IMAGE_RECORD_PATH}/$(basename ${image_record})
+        image_record=${RESOLVED_IMAGE_RECORD}
         find ${manifest_folder} -name "*.yaml" | while read manifest_file; do
           ${PYTHON_2_OR_3} $BUILD_HELM_CHARTS_DIR/helm_chart_modify.py ${manifest_file} ${manifest_file}.tmp ${image_record}
           if [ $? -ne 0 ]; then
