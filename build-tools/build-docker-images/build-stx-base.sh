@@ -32,6 +32,7 @@ OS_ARCH=                 # default: autodetect
 OS_VERSION=              # default: lookup "ARG RELEASE" in Dockerfile
 BUILD_STREAM=stable
 IMAGE_VERSION=
+PREFIX=""
 PUSH=no
 PROXY=""
 CONFIG_FILE=""
@@ -62,6 +63,7 @@ Options:
     --os-version:  Specify OS version
     --version:     Specify version for output image
     --stream:      Build stream, stable or dev (default: stable)
+    --prefix:      Prefix on the image tag (default: none)
     --repo:        Software repository, can be specified multiple times
                      * Debian format: "TYPE [OPTION=VALUE...] URL DISTRO COMPONENTS..."
                        This will be added to /etc/apt/sources.list as is,
@@ -133,7 +135,7 @@ function get_args_from_file {
     done <"$1"
 }
 
-OPTS=$(getopt -o h -l help,os:,os-codename:,os-arch:,os-version:,version:,stream:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
+OPTS=$(getopt -o h -l help,os:,os-codename:,os-arch:,os-version:,version:,stream:,prefix:,release:,repo:,push,proxy:,latest,latest-tag:,user:,registry:,local,clean,cache,hostname:,attempts:,retry-delay:,config-file: -- "$@")
 if [ $? -ne 0 ]; then
     usage
     exit 1
@@ -170,6 +172,10 @@ while true; do
             ;;
         --stream)
             BUILD_STREAM=$2
+            shift 2
+            ;;
+        --prefix)
+            PREFIX=$2
             shift 2
             ;;
         --release) # Temporarily keep --release support as an alias for --stream
@@ -439,11 +445,17 @@ docker pull ${OS}:${OS_VERSION}
 
 # Build the image
 IMAGE_TAG_BASE="${OS_CODENAME}-${OS_ARCH}-${BUILD_STREAM}"
+if [ -n "${PREFIX}" ]; then
+    IMAGE_TAG_BASE="${PREFIX}-${IMAGE_TAG_BASE}"
+fi
 IMAGE_NAME=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE}-${IMAGE_VERSION}
 IMAGE_NAME_LATEST=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE}-${LATEST_TAG}
 
 # Backward compatibility tags for debian-bullseye-amd64
 IMAGE_TAG_BASE_LEGACY="${BUILD_STREAM}"
+if [ -n "${PREFIX}" ]; then
+    IMAGE_TAG_BASE_LEGACY="${PREFIX}-${IMAGE_TAG_BASE_LEGACY}"
+fi
 IMAGE_NAME_LEGACY=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE_LEGACY}-${IMAGE_VERSION}
 IMAGE_NAME_LATEST_LEGACY=${DOCKER_REGISTRY}${DOCKER_USER}/stx-${OS}:${IMAGE_TAG_BASE_LEGACY}-${LATEST_TAG}
 
