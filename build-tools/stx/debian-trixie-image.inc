@@ -315,7 +315,6 @@ tcpdump
 time
 traceroute
 tuned
-tzdata
 udhcpc
 unzip
 util-linux-extra
