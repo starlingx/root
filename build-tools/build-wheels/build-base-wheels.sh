@@ -274,11 +274,15 @@ WHEELS_CFG_PY2=${MY_SCRIPT_DIR}/${OS}-${OS_CODENAME}/${BUILD_STREAM}-wheels-py2.
 
 # make sure .cfg files exist
 require_file "${WHEELS_CFG}"
-require_file "${WHEELS_CFG_PY2}"
+if [ "${OS_CODENAME}" == "bullseye" ]; then
+    require_file "${WHEELS_CFG_PY2}"
+fi
 
 # prepare output directories
 prepare_output_dir "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}"
-prepare_output_dir "${BUILD_OUTPUT_PATH_PY2}" "${WHEELS_CFG_PY2}"
+if [ "${OS_CODENAME}" == "bullseye" ]; then
+    prepare_output_dir "${BUILD_OUTPUT_PATH_PY2}" "${WHEELS_CFG_PY2}"
+fi
 
 if [ "${BUILD_STREAM}" = "dev" -o "${BUILD_STREAM}" = "master" ]; then
     # Download the master wheel from loci, so we're only building pieces not covered by it
@@ -346,10 +350,17 @@ function all_wheels_exist {
     return 0
 }
 
-if all_wheels_exist "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}" && \
-   all_wheels_exist "${BUILD_OUTPUT_PATH_PY2}" "${WHEELS_CFG_PY2}" ; then
-    echo "All base wheels are already present. Skipping build."
-    exit 0
+if [ "${OS_CODENAME}" == "bullseye" ]; then
+    if all_wheels_exist "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}" && \
+       all_wheels_exist "${BUILD_OUTPUT_PATH_PY2}" "${WHEELS_CFG_PY2}" ; then
+        echo "All base wheels are already present. Skipping build."
+        exit 0
+    fi
+else
+    if all_wheels_exist "${BUILD_OUTPUT_PATH}" "${WHEELS_CFG}" ; then
+        echo "All base wheels are already present. Skipping build."
+        exit 0
+    fi
 fi
 
 # Create a directory containing docker files
@@ -464,11 +475,16 @@ log_prefix "[python3] " \
         docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH}:/wheels ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
 BUILD_STATUS=$?
 
-notice "building python2 wheels"
-log_prefix "[python2] " \
-    with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} \
-        docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH_PY2}:/wheels --env PYTHON=python2 ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
-BUILD_STATUS_PY2=$?
+if [ "${OS_CODENAME}" == "bullseye" ]; then
+    notice "building python2 wheels"
+    log_prefix "[python2] " \
+        with_retries -d ${RETRY_DELAY} ${MAX_ATTEMPTS} \
+            docker run ${RUN_ARGS[@]} -v ${BUILD_OUTPUT_PATH_PY2}:/wheels --env PYTHON=python2 ${BUILD_IMAGE_NAME} /docker-build-wheel.sh
+    BUILD_STATUS_PY2=$?
+else
+    notice "skipping python2 wheels (not supported on ${OS_CODENAME})"
+    BUILD_STATUS_PY2=0
+fi
 
 if [ "${KEEP_IMAGE}" = "no" ]; then
     # Delete the builder image
@@ -532,9 +548,13 @@ EOF
     return 0
 }
 
-if ! check_result "python3" "${BUILD_STATUS}" "${BUILD_OUTPUT_PATH}" || \
-   ! check_result "python2" "${BUILD_STATUS_PY2}" "${BUILD_OUTPUT_PATH_PY3}" ; then
+if ! check_result "python3" "${BUILD_STATUS}" "${BUILD_OUTPUT_PATH}" ; then
     exit 1
+fi
+if [ "${OS_CODENAME}" == "bullseye" ]; then
+    if ! check_result "python2" "${BUILD_STATUS_PY2}" "${BUILD_OUTPUT_PATH_PY2}" ; then
+        exit 1
+    fi
 fi
 exit 0
 
