@@ -136,6 +136,7 @@ PasteDeploy===2.1.1
                       # Also, it's used for building pkgs. It's not relevent for simulating the runtime environment
 pecan===1.3.3
 ply===3.11
+prettytable===0.7.2
 psycopg2===2.8.6
 pyasn1===0.4.8
 pycadf===3.1.1
