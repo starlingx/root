@@ -1,0 +1,78 @@
+From dd9b0a00ba46d482655b799b2654adb3da3a4ffe Mon Sep 17 00:00:00 2001
+From: Luan Nunes Utimura <LuanNunes.Utimura@windriver.com>
+Date: Sat, 14 Jan 2023 16:38:59 -0300
+Subject: [PATCH] Add build argument to allow pip upgrade
+
+In older versions of the pip tool, there is a known bug with the
+dependency resolver that causes some package installations to take much
+longer than expected due to various version and compatibility checks
+done during this process.
+
+Since the newer versions of the tool bring improvements to the
+dependency resolver, updating it helps to avoid scenarios like the one
+described above.
+
+Thus, this patch adds a build argument called UPGRADE_PIP_PACKAGES
+which, when filled, allows LOCI to perform a `pip install --upgrade` on
+the listed packages before proceeding with the installation of the
+others.
+
+Signed-off-by: Luan Nunes Utimura <LuanNunes.Utimura@windriver.com>
+Change-Id: I93a8cd60ef55d5cd27a3e8e859ca0a6e848f40a2
+---
+ Dockerfile                      | 1 +
+ scripts/install.sh              | 9 +++++++++
+ scripts/upgrade_pip_packages.sh | 7 +++++++
+ 3 files changed, 17 insertions(+)
+ create mode 100755 scripts/upgrade_pip_packages.sh
+
+diff --git a/Dockerfile b/Dockerfile
+index 6567c90..89c3d66 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,6 +12,7 @@ ARG PROFILES
+ ARG PIP_PACKAGES=""
+ ARG PIP_ARGS=""
+ ARG PIP_WHEEL_ARGS=$PIP_ARGS
++ARG UPGRADE_PIP_PACKAGES=""
+ ARG DIST_PACKAGES=""
+ ARG PLUGIN=no
+ ARG PYTHON3=indeed
+diff --git a/scripts/install.sh b/scripts/install.sh
+index a5a31dc..e511ed7 100755
+--- a/scripts/install.sh
++++ b/scripts/install.sh
+@@ -103,8 +103,17 @@ fi
+ if [[ ${PROJECT} == 'nova' ]]; then
+     $(dirname $0)/install_nova_console.sh
+ fi
++
+ $(dirname $0)/clone_project.sh
+ $(dirname $0)/install_packages.sh
++
++# UPGRADE_PIP_PACKAGES, default=empty:
++#   If empty, proceed with the installation of packages normally.
++#   Otherwise, proceed with the upgrade of the specified packages and with the installation of the others afterwards.
++if [[ -n "$UPGRADE_PIP_PACKAGES" ]]; then
++  $(dirname $0)/upgrade_pip_packages.sh ${UPGRADE_PIP_PACKAGES}
++fi
++
+ $(dirname $0)/pip_install.sh ${NO_INDEX} /tmp/${PROJECT} ${PIP_PACKAGES}
+ $(dirname $0)/collect_info.sh
+ $(dirname $0)/cleanup.sh
+diff --git a/scripts/upgrade_pip_packages.sh b/scripts/upgrade_pip_packages.sh
+new file mode 100755
+index 0000000..754f0e0
+--- /dev/null
++++ b/scripts/upgrade_pip_packages.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++
++set -ex
++
++packages=$@
++
++pip install --upgrade ${packages}
+-- 
+2.25.1
+

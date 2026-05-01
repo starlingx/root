@@ -1,0 +1,30 @@
+From 8de0651d09a3fb86e2c6598a9489d98ded284a19 Mon Sep 17 00:00:00 2001
+From: Amit Mahajan <Amit.Mahajan@windriver.com>
+Date: Thu, 9 Apr 2026 16:15:07 -0400
+Subject: [PATCH] Removed explicit upgrade to the latest version of virtualenv
+
+With the Debian Trixie as base, the virtualenv upgrade to fixed version
+20.7.2 is not needed. So, removing the code that upgrades it.
+
+Signed-off-by: Amit Mahajan <Amit.Mahajan@windriver.com>
+---
+ scripts/setup_pip.sh | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/scripts/setup_pip.sh b/scripts/setup_pip.sh
+index bf4021c..b49ba86 100755
+--- a/scripts/setup_pip.sh
++++ b/scripts/setup_pip.sh
+@@ -32,9 +32,6 @@ source ${PIPBOOTSTRAP}/bin/activate
+ # Install setuptools explicitly required for virtualenv > 20 installation
+ pip install --upgrade setuptools
+ 
+-# Upgrade to the latest version of virtualenv
+-pip install --upgrade ${PIP_ARGS} virtualenv==20.7.2
+-
+ # Forget the cached locations of python binaries
+ hash -r
+ 
+-- 
+2.34.1
+
