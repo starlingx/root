@@ -8,20 +8,20 @@ Usage: %s KEY...
 Read a debian control file from STDIN, print KEY values to STDOUT
 """ % sys.argv[0])
 
-if len (sys.argv) > 0 and sys.argv[1] == "--help":
+if len(sys.argv) < 2 or sys.argv[1] == "--help":
     usage()
     sys.exit(0)
 
 # regex: "^(?:KEY1|KEY2|...)\s*:\s*(.*?)\s*$"
 re_field = re.compile (
-    "^(?:" +
-    "|".join (
+    r"^(?:" +
+    r"|".join (
         [ re.escape (key) for key in sys.argv[1:] ]
     ) +
-    "):\s*(.*?)\s*$"
+    r"):\s*(.*?)\s*$"
 )
 
-re_ws = re.compile ("^\s*$")
+re_ws = re.compile (r"^\s*$")
 
 in_header = True
 past_1st_paragraph = False
