@@ -64,13 +64,35 @@ RUN for layer in /etc/apt/sources.list.d/*.layer.sources.list; do \
 #
 
 #
+# Copy CA certs from the "ca_certs" build stage. The bundle file was generated
+# by ca-certificates in that stage, and will be re-generated when we install
+# that package again in the main stage below. That version may be *older* than
+# the certs that we are copying here. We assume ca-certificates is regularly
+# updated in stx-tools' package download lists, or it is built by us, and contains
+# all the certs we might need during docker images build, such as the intermidate
+# cert used by mirror.starlingx.windriver.com .
+#
+RUN mkdir -p /etc/ssl/certs
+COPY --from=ca_certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+#
+# Install ca-certificates from upstream before enabling STX HTTPS repos.
+# The base image may not have ca-certificates installed (e.g. trixie minimal),
+# and the CA bundle copied above is not sufficient for apt's own SSL verification.
+#
+RUN cp -f /etc/apt/sources.list.d/debian.list.disabled /etc/apt/sources.list.d/debian.list && \
+    apt-get -y update && \
+    apt-get -y install --no-install-recommends ca-certificates && \
+    rm -f /etc/apt/sources.list.d/debian.list && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+#
 # Upgrade base packages to versions in managed repos
 #
 RUN cp -f /etc/apt/sources.list.d/stx.list.disabled /etc/apt/sources.list.d/stx.list && \
     apt-get -y update && \
     apt-get -y upgrade && \
     apt-get -y install --no-install-recommends --no-install-suggests \
-        ca-certificates \
         libapache2-mod-wsgi-py3 \
         python3-setuptools \
         && \
