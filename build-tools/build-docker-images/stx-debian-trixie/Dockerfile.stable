@@ -1,5 +1,27 @@
 # These are overridden by build-stx-debian.sh
+ARG DIST=trixie
 ARG RELEASE=13.0
+
+################################################
+# ca_certs build stage
+################################################
+
+# We need up-to-date SSL certs, otherwise we won't be able to access
+# mirror.starlingx.windriver.com; yet the ca-certificates package is
+# behind that URL. As a workaround: install ca-certificates from
+# upstream debian, then copy the (generated) CA bundle into the
+# main build stage.
+
+FROM debian:${DIST} as ca_certs
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && \
+    apt-get -y install --no-install-recommends ca-certificates
+
+################################################
+# main build stage
+################################################
 
 FROM debian:${RELEASE}
 
