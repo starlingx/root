@@ -198,7 +198,6 @@ puppet-module-adrienthebo-filemapper
 puppet-module-duritong-sysctl
 puppet-module-puppetlabs-mount-core
 puppet-module-voxpupuli-collectd
-puppet-module-vswitch
 pv
 python3-amqp
 python3-boto3
