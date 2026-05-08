@@ -98,14 +98,17 @@ RUN mkdir -p /etc/ssl/certs
 COPY --from=ca_certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 #
-# Install ca-certificates from upstream before enabling STX HTTPS repos.
-# The base image may not have ca-certificates installed (e.g. trixie minimal),
-# and the CA bundle copied above is not sufficient for apt's own SSL verification.
+# Install ca-certificates from upstream Debian (HTTP) before enabling STX
+# HTTPS repos. The base image may not have ca-certificates installed (e.g.
+# trixie minimal), and the CA bundle copied above is not sufficient for
+# apt's own SSL verification. We use http://deb.debian.org directly to
+# avoid the chicken-and-egg problem with HTTPS mirror URLs.
 #
-RUN cp -f /etc/apt/sources.list.d/debian.list.disabled /etc/apt/sources.list.d/debian.list && \
+ARG DIST
+RUN echo "deb http://deb.debian.org/debian ${DIST} main" > /etc/apt/sources.list.d/deb-upstream.list && \
     apt-get -y update && \
     apt-get -y install --no-install-recommends ca-certificates && \
-    rm -f /etc/apt/sources.list.d/debian.list && \
+    rm -f /etc/apt/sources.list.d/deb-upstream.list && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 #
