@@ -918,7 +918,7 @@ oslo.db===8.1.1;python_version=='3.8'
 oslo.db===8.1.1;python_version=='3.9'
 simplegeneric===0.8.1
 python-pcre===0.7
-yappi===1.6.10
+yappi===1.2.3
 dataclasses===0.7;python_version=='3.6'
 abclient===0.2.3
 pymemcache===3.1.0
