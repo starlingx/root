@@ -25,9 +25,8 @@
     <!-- Packages to be included -->
     <stx_packages>
         <!-- Starlingx packages -->
-        <package>sysvinv</package>
-        <package>linux</package>
-        <package>linux-rt</package>
+        <package>sysinv</package>
+        <package>build-info</package>
     </stx_packages>
     <binary_packages>
         <!-- 3rd party downloaded packages -->

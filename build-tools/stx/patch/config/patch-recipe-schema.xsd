@@ -5,21 +5,21 @@
       <xs:all>
         <xs:element name="sw_version" type="xs:string"/>
         <xs:element name="component" type="xs:string"/>
-        <xs:element name="summary" type="xs:string"/>
-        <xs:element name="description" type="xs:string"/>
-        <xs:element name="install_instructions" type="xs:string"/>
-        <xs:element name="warnings" type="xs:string"/>
-        <xs:element name="reboot_required" type="xs:string"/>
-        <xs:element name="unremovable" type="xs:string"/>
-        <xs:element name="status" type="xs:string"/>
-        <xs:element name="requires">
+        <xs:element name="summary" type="xs:string" minOccurs="0"/>
+        <xs:element name="description" type="xs:string" minOccurs="0"/>
+        <xs:element name="install_instructions" type="xs:string" minOccurs="0"/>
+        <xs:element name="warnings" type="xs:string" minOccurs="0"/>
+        <xs:element name="reboot_required" type="xs:string" minOccurs="0"/>
+        <xs:element name="unremovable" type="xs:string" minOccurs="0"/>
+        <xs:element name="status" type="xs:string" minOccurs="0"/>
+        <xs:element name="requires" minOccurs="0">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="id" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>
-        <xs:element name="semantics" type="xs:string"/>
+        <xs:element name="semantics" type="xs:string" minOccurs="0"/>
         <xs:element name="precheck_scripts" type="xs:string" minOccurs="0"/>
         <xs:element name="pre_start" type="xs:string" minOccurs="0"/>
         <xs:element name="post_start" type="xs:string" minOccurs="0"/>
@@ -39,14 +39,14 @@
             </xs:sequence>
           </xs:complexType>
         </xs:element>
-        <xs:element name="stx_packages">
+        <xs:element name="stx_packages" minOccurs="0">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="package" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>
-        <xs:element name="binary_packages">
+        <xs:element name="binary_packages" minOccurs="0">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="package" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>

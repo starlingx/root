@@ -1,11 +1,13 @@
 #
-# Copyright (c) 2023 Wind River Systems, Inc.
+# Copyright (c) 2023-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 '''
 Class that holds the patch metadata information
 '''
+
+# TODO: Convert the patch recipe from XML to yaml.
 
 import json
 import logging
@@ -47,6 +49,11 @@ ACTIVATION_SCRIPTS = 'activation_scripts'
 EXTRA_CONTENT = 'extra_content'
 PRECHECK_SCRIPTS_FLAG = 'precheck_scripts'
 
+# Default values
+DEFAULT_PRECHECK_SCRIPTS_FLAG = "N"
+DEFAULT_REBOOT_REQUIRED = "Y"
+DEFAULT_STATUS = "DEV"
+DEFAULT_UNREMOVABLE = "N"
 
 # TODO: Functions for manipulating an XML should be extracted into another lib.
 #       Implementing it as a class makes sense.
@@ -75,6 +82,8 @@ def update_tag(file_path, tag_name, new_value, output_path=None):
 
 
 class PatchMetadata(object):
+
+    # TODO: Parsing the patch recipe should be done as part of the dunder init
     def __init__(self, patch_recipe_file):
         self.patch_recipe_file = patch_recipe_file
         self.stx_packages = []
@@ -128,10 +137,19 @@ class PatchMetadata(object):
         return result
 
 
-    def __tag_to_list(self, tag_content):
-        if type(tag_content) != list:
-            return [tag_content]
-        return tag_content
+    # Note this is used as a helper to parse lists from XML inputs.
+    def __assert_type_is_list(self, intended_list):
+        """
+        Return a list of strings, converting the input data type when necessary.
+        """
+
+        if isinstance(intended_list, str):
+            return [intended_list]
+
+        if isinstance(intended_list, list):
+            return intended_list
+
+        raise Exception(f"Valid inputs are 'str' and 'list'. Input received: {intended_list}")
 
 
     # TODO: The feature of searching for content in MY_REPO_ROOT_DIR needs to
@@ -149,36 +167,45 @@ class PatchMetadata(object):
                 logger.error("Filename '%s' doesn't start with an integer." % fullpath_script)
                 sys.exit(1)
 
-
+    # TODO: recipe parsing logic should be moved to __init__
     def parse_metadata(self, patch_recipe):
-        self.patch_id = f"{patch_recipe[COMPONENT]}-{patch_recipe[SW_VERSION]}"
-        self.sw_version = patch_recipe[SW_VERSION]
-        self.component = patch_recipe[COMPONENT]
-        self.summary = patch_recipe[SUMMARY]
-        self.description = patch_recipe[DESCRIPTION]
-        if 'package' in patch_recipe[STX_PACKAGES]:
-            self.stx_packages = self.__tag_to_list(patch_recipe[STX_PACKAGES]['package'])
-        if 'package' in patch_recipe[BINARY_PACKAGES]:
-            self.binary_packages = self.__tag_to_list(patch_recipe[BINARY_PACKAGES]['package'])
-        self.install_instructions = patch_recipe[INSTALL_INSTRUCTIONS]
-        self.warnings = patch_recipe[WARNINGS]
-        self.reboot_required = patch_recipe[REBOOT_REQUIRED]
+        """
+        This function receives the :patch_recipe: as a dict,
+        then parses the input values, applying default values and validation rules.
+        The parsed values are assigned to the :self: object.
+        """
 
-        self.precheck_scripts_flag = 'N'
-        if PRECHECK_SCRIPTS_FLAG in patch_recipe:
-            self.precheck_scripts_flag = patch_recipe[PRECHECK_SCRIPTS_FLAG]
+        # New fields
+        self.debs = []
 
-        # For each patch script, validate the path provided
+        # Straight copy
+        self.component = patch_recipe.get(COMPONENT)
+        self.description = patch_recipe.get(DESCRIPTION)
+        self.install_instructions = patch_recipe.get(INSTALL_INSTRUCTIONS)
+        self.semantics = patch_recipe.get(SEMANTICS)
+        self.summary = patch_recipe.get(SUMMARY)
+        self.sw_version = patch_recipe.get(SW_VERSION)
+        self.warnings = patch_recipe.get(WARNINGS)
+
+        # Fields with default values
+        self.precheck_scripts_flag = patch_recipe.get(PRECHECK_SCRIPTS_FLAG) or DEFAULT_PRECHECK_SCRIPTS_FLAG
+        self.reboot_required = patch_recipe.get(REBOOT_REQUIRED) or DEFAULT_REBOOT_REQUIRED
+        self.status = patch_recipe.get(STATUS) or DEFAULT_STATUS
+        self.unremovable = patch_recipe.get(UNREMOVABLE) or DEFAULT_UNREMOVABLE
+
+        # Composed fields
+        self.patch_id = f"{patch_recipe.get(COMPONENT)}-{patch_recipe.get(SW_VERSION)}"
+
+        # Lists (removing the xml item tag)
+        self.stx_packages = self.__assert_type_is_list(patch_recipe.get(STX_PACKAGES, {}).get('package', []))
+        self.binary_packages = self.__assert_type_is_list(patch_recipe.get(BINARY_PACKAGES, {}).get('package', []))
+        self.requires = self.__assert_type_is_list(patch_recipe.get(REQUIRES, {}).get('id', []))
+
+        # Various patch script fields, validating paths
         self.patch_script_paths = {
             script_id: self.check_script_path(patch_recipe.get(script_id, None))
             for script_id in PATCH_SCRIPTS.keys()
         }
-
-        self.unremovable = patch_recipe[UNREMOVABLE]
-        self.status = patch_recipe[STATUS]
-        if 'id' in patch_recipe[REQUIRES]:
-            self.requires = self.__tag_to_list(patch_recipe[REQUIRES]['id'])
-        self.semantics = patch_recipe[SEMANTICS]
 
         if ACTIVATION_SCRIPTS in patch_recipe and 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
             # the xml parser transform the 'script' value in string or in
@@ -205,12 +232,11 @@ class PatchMetadata(object):
                 if candidate_item is not None:
                     self.extra_content.append(candidate_item)
 
-        self.debs = []
-
+        # Other Validations
         if self.status != 'DEV' and self.status != 'REL':
             raise Exception('Supported status are DEV and REL, selected')
 
-        logger.debug("Metadata parsed: %s", self)
+        logger.debug("Patch recipe parsed: %s", self)
 
 
     # TODO: This funtion is very similar to check_script_path()
@@ -244,6 +270,13 @@ class PatchMetadata(object):
 
 
     def parse_input_xml_data(self):
+        """
+        Convert the XML file into a python object,
+        validate it against the schema,
+        store the data into a dictionary,
+        then call parse_metadata() to process the input info.
+        """
+
         # Parse and validate the XML
         try:
             xml_tree = etree.parse(self.patch_recipe_file)
@@ -266,7 +299,6 @@ class PatchMetadata(object):
                 logger.error(f"Line {error.line}: {error.message}")
             sys.exit(1)
 
-        logger.info(xml_dict)
         self.parse_metadata(xml_dict)
 
 
