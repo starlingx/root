@@ -145,7 +145,7 @@ def scan_meta_info(meta_info):
     # Here we have "meta_info[1]" and "src"
     # Construct dictionary depend_on and depend_by.
     for dsc, deb_list in meta_info[1].items():
-        src_set = {src.get(deb) for deb in deb_list if deb in src.keys()}
+        src_set = {src.get(deb) for deb in deb_list if deb in src.keys() and src.get(deb) != dsc}
         depend_on[dsc] = src_set
 
     # Construct dictionary "depend_by" from depend_on
