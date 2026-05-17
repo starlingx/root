@@ -435,7 +435,7 @@ function parse_yaml {
     local yaml_script="
 import sys
 import collections
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 
 yaml_files = sys.argv[2:]
 yaml_output = sys.argv[1]
@@ -449,17 +449,25 @@ def merge_yaml(yaml_merged, yaml_new):
         else:
             merge_yaml(yaml_merged[k], yaml_new[k])
 
+yaml_rt = YAML()
+yaml_rt.preserve_quotes = True
+yaml_rt.version = (1, 1)
+
 yaml_out = collections.OrderedDict()
 for yaml_file in yaml_files:
     print('Merging yaml from file: %s' % yaml_file)
-    for document in yaml.load_all(open(yaml_file), Loader=yaml.RoundTripLoader, preserve_quotes=True, version=(1, 1)):
-        document_name = (document['schema'], document['metadata']['schema'], document['metadata']['name'])
-        if document_name in yaml_out:
-            merge_yaml(yaml_out[document_name], document)
-        else:
-            yaml_out[document_name] = document
+    with open(yaml_file) as f:
+        for document in yaml_rt.load_all(f):
+            document_name = (document['schema'], document['metadata']['schema'], document['metadata']['name'])
+            if document_name in yaml_out:
+                merge_yaml(yaml_out[document_name], document)
+            else:
+                yaml_out[document_name] = document
+
 print('Writing merged yaml file: %s' % yaml_output)
-yaml.dump_all(yaml_out.values(), open(yaml_output, 'w'), Dumper=yaml.RoundTripDumper, default_flow_style=False)
+yaml_rt.default_flow_style = False
+with open(yaml_output, 'w') as f:
+    yaml_rt.dump_all(yaml_out.values(), f)
     "
     $PYTHON_2_OR_3 -c "${yaml_script}" ${@} || exit 1
 }

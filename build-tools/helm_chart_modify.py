@@ -50,7 +50,7 @@
 
 import collections
 import sys
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 
 
 def get_image_tag(image):
@@ -158,33 +158,32 @@ def main(argv):
         if name != '':
             new_image_dict[name] = image
 
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.version = (1, 1)
     # Load chart into dictionary(s) and then modify any image locations/tags if required
-    for document in yaml.load_all(
-        open(yaml_file),
-        Loader=yaml.RoundTripLoader,
-        preserve_quotes=True,
-        version=(1, 1)):
-        if 'schema' in document and 'armada' in document.get('schema'):
-            # Armada manifest, need to drop them all in the same file so
-            # storing in the OrderedDict using tuple as key to differentiate
-            # between entities
-            document_name = (
-                document['schema'],
-                document['metadata']['schema'],
-                document['metadata']['name']
-            )
-        else:
-            # FluxCD manifest, plain yaml file, should be simply dumped
-            document_name = ""
+    with open(yaml_file) as f:
+        for document in yaml_rt.load_all(f):
+            if 'schema' in document and 'armada' in document.get('schema'):
+                # Armada manifest, need to drop them all in the same file so
+                # storing in the OrderedDict using tuple as key to differentiate
+                # between entities
+                document_name = (
+                    document['schema'],
+                    document['metadata']['schema'],
+                    document['metadata']['name']
+                )
+            else:
+                # FluxCD manifest, plain yaml file, should be simply dumped
+                document_name = ""
 
-        modify_yaml(document, '', '', new_image_dict)
-        document_out[document_name] = document
+            modify_yaml(document, '', '', new_image_dict)
+            document_out[document_name] = document
 
     # Save modified yaml to file
-    yaml.dump_all(document_out.values(),
-                  open(yaml_output, 'w'),
-                  Dumper=yaml.RoundTripDumper,
-                  default_flow_style=False)
+    yaml_rt.default_flow_style = False
+    with open(yaml_output, 'w') as f:
+        yaml_rt.dump_all(document_out.values(), f)
 
 if __name__ == "__main__":
     main(sys.argv[0:])
