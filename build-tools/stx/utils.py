@@ -20,6 +20,7 @@ OS_MIRROR_DL_PATH = os.environ.get('OS_MIRROR_DL_PATH', 'debian/')
 if OS_MIRROR_URL:
     OS_MIRROR_BASE = os.path.join(OS_MIRROR_URL, OS_MIRROR_DL_PATH)
 
+DEFAULT_LOG_FILE = '/localdisk/builder.log'
 
 log_levels = {
     'debug': logging.DEBUG,
@@ -30,7 +31,7 @@ log_levels = {
 }
 
 
-def set_logger(logger, log_level='debug'):
+def set_logger(logger, log_level='debug', log_file=DEFAULT_LOG_FILE):
     logger.setLevel(log_levels[log_level])
 
     class ColorFormatter(logging.Formatter):
@@ -71,7 +72,7 @@ def set_logger(logger, log_level='debug'):
             return logging.Formatter.format(self, record)
 
     # create log and console handler and set level
-    fh = logging.FileHandler('/localdisk/builder.log')
+    fh = logging.FileHandler(log_file)
     fh.setLevel(log_levels[log_level])
     fh.setFormatter(ColorFormatter(use_color=False))
     logger.addHandler(fh)

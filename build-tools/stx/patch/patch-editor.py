@@ -28,7 +28,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import xml.etree.ElementTree as ET
 
 import constants
 import metadata
@@ -81,18 +80,20 @@ class PatchEditor(object):
 
         # Formal signature requested without providing auths for signing server
         if self.sign_remote and \
-           (self.signing_server == None or self.signing_user == None):
+           (self.signing_server is None or self.signing_user is None):
             msg = "Cannot sign patch without signing server info"
             logger.error(msg)
             raise Exception(msg)
 
 
     # TODO: This should be in the "signing" library
+
     def get_md5(self, path):
         '''
         Utility function for generating the md5sum of a file
         :param path: Path to file
         '''
+
         md5 = hashlib.md5()
         block_size = 8192
         with open(path, 'rb') as f:
@@ -149,11 +150,13 @@ class PatchEditor(object):
     # TODO: This function has some hidden requirements: It expects the curdir
     #       to be the temp build dir and expects *at least* the metadata and
     #       software tarballs to be there.
+
     def __sign_and_pack(self, patch_file):
         """
         Generates the patch signatures and pack the .patch file
         :param patch_file .patch file full path
         """
+
         filelist = ["metadata.tar", "software.tar"]
 
         if os.path.exists("extra.tar"):
@@ -277,7 +280,6 @@ class PatchEditor(object):
               help='Send patch to a signing server to receive another signature. Requires env vars: SIGNING_SERVER, SINGING_USER',
               is_flag=True,
               required=False)
-
 def main(patch, recipe=None, release=False, remote_sign=False):
     """Tool for creating a modified version of a given STX patch.
 

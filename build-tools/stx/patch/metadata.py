@@ -4,414 +4,226 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 '''
-Class that holds the patch metadata information
+Functions for handling the input parameters provided by the user
+in the patch recipe file and creating the patch metadata file.
 '''
 
-# TODO: Convert the patch recipe from XML to yaml.
-
-import json
 import logging
 import os
 import sys
-sys.path.append('..')
-import utils
-import xml.etree.ElementTree as ET
+
 from lxml import etree
-from xml.dom import minidom
 
-from constants import PATCH_SCRIPTS
+import constants
+import xml_parsing
 
-logger = logging.getLogger('metadata_parser')
+sys.path.append('..')
+
+import utils
+
+# TODO: By default, utils.set_logger() uses /localdisk/builder.log as the
+# target log file. Move all patching related modules to a "build-tools/patching"
+# And create a __init__.py file to set up the logger appropriately.
+
+# TODO: Convert the patch recipe from XML to yaml.
+
+logger = logging.getLogger(__name__)
 utils.set_logger(logger)
 
-PATCH_BUILDER_PATH = os.environ.get('PATCH_BUILDER_PATH')
+# Verify if the path to the patch builder folder is set
+try:
+    PATCH_BUILDER_PATH = os.environ['PATCH_BUILDER_PATH']
+except KeyError:
+    raise Exception("Environment variable PATCH_BUILDER_PATH is not set.")
+
 INPUT_XML_SCHEMA = f'{PATCH_BUILDER_PATH}/config/patch-recipe-schema.xsd'
 
 # Metadata components
-PATCH_ROOT_TAG = 'patch'
-PATCH_ID = 'id'
-SW_VERSION = 'sw_version'
 COMPONENT = 'component'
-STATUS = 'status'
-SUMMARY = 'summary'
 DESCRIPTION = 'description'
-INSTALL_INSTRUCTIONS = 'install_instructions'
-WARNINGS = 'warnings'
-REBOOT_REQUIRED = 'reboot_required'
-UNREMOVABLE = 'unremovable'
-REQUIRES = 'requires'
-REQUIRES_PATCH_ID = 'req_patch_id'
-PACKAGES = 'packages'
-STX_PACKAGES = 'stx_packages'
-BINARY_PACKAGES = 'binary_packages'
-SEMANTICS = 'semantics'
-ACTIVATION_SCRIPTS = 'activation_scripts'
 EXTRA_CONTENT = 'extra_content'
-PRECHECK_SCRIPTS_FLAG = 'precheck_scripts'
+ID = 'id'
+INSTALL_INSTRUCTIONS = 'install_instructions'
+METAPACKAGES = "metapackages"
+PACKAGES = "packages"
+PRODUCT_ROOT_TAG = 'product'
+REQUIRES = 'requires'
+STATUS = 'status'
+STX_SOURCE_PACKAGES = 'stx_source_packages'
+SUMMARY = 'summary'
+SW_VERSION = 'sw_version'
+THIRD_PARTY_PACKAGES = 'third_party_packages'
+WARNINGS = 'warnings'
+
+# Patch Statuses
+RELEASE_STATUS = "REL"
+DESIGNER_STATUS = "DEV"
+VALID_STATUSES = [RELEASE_STATUS, DESIGNER_STATUS]
 
 # Default values
-DEFAULT_PRECHECK_SCRIPTS_FLAG = "N"
-DEFAULT_REBOOT_REQUIRED = "Y"
-DEFAULT_STATUS = "DEV"
-DEFAULT_UNREMOVABLE = "N"
+DEFAULT_STATUS = DESIGNER_STATUS
 
-# TODO: Functions for manipulating an XML should be extracted into another lib.
-#       Implementing it as a class makes sense.
+# Metadata list tags
+ITEM = "item"                       # For EXTRA_CONTENT
+PKG = "pkg"                         # For STX_SOURCE_PACKAGES and THIRD_PARTY_PACKAGES
+DEB = "deb"                         # For listing debs
+REQUIRES_PATCH_ID = 'req_patch_id'  # For REQUIRES
 
-
-def update_tag(file_path, tag_name, new_value, output_path=None):
-    """Update value of the first matching XML tag
-
-    :param file_path: Path to input XML file
-    :param tag_name: Name of XML tag to update
-    :param new_value: New value to set
-    :param output_path: Optional path to save the updated XML (defaults to overwrite original)
-    """
-
-    tree = ET.parse(file_path)
-    root = tree.getroot()
-
-    element = root.find(tag_name)
-    if element is None:
-        raise ValueError(f"Failed to update tag '{tag_name}'. Tag not found in XML.")
-
-    element.text = str(new_value)
-
-    save_path = output_path if output_path else file_path
-    tree.write(save_path)
+# Backwards compatibility
+# Replaced for STX_SOURCE_PACKAGES and THIRD_PARTY_PACKAGES for clarity
+BINARY_PACKAGES = 'binary_packages'
+STX_PACKAGES = 'stx_packages'
+PACKAGE = 'package'
 
 
 class PatchMetadata(object):
+    """
+    Class for modeling the patch metadata file.
+    All object attributes go into the metadata file.
+    """
 
-    # TODO: Parsing the patch recipe should be done as part of the dunder init
-    def __init__(self, patch_recipe_file):
-        self.patch_recipe_file = patch_recipe_file
-        self.stx_packages = []
-        self.binary_packages = []
-        self.requires = []
-        self.activation_scripts = []
-        self.extra_content = []
+    def __init__(self, patch_recipe_path):
 
-        # Verify if the path to the patch builder folder is set
-        if not PATCH_BUILDER_PATH:
-            raise Exception("Environment variable PATCH_BUILDER_PATH is not set.")
+        input_dict = xml_parsing.xml_to_dict(file_path=patch_recipe_path,
+                                             schema_path=INPUT_XML_SCHEMA)
+
+        self.parse_input_dict(input_dict)
+
+        # Product metadata values not copy-pasted from patch recipe
+        self.debs = []
+        self.id = f"{input_dict.get(COMPONENT)}-{input_dict.get(SW_VERSION)}"
+        self.metapackages = []
 
     def __str__(self):
-        return json.dumps(self.__dict__)
+        return str(self.__dict__)
 
     def __repr__(self):
         return self.__str__()
 
-    def __add_text_tag_to_xml(self, parent, name, text):
+    def parse_input_dict(self, input_dict: dict) -> None:
         """
-        Utility function for adding a text tag to an XML object
-        :param parent: Parent element
-        :param name: Element name
-        :param text: Text value
-        :return:The created element
-        """
-        tag = ET.SubElement(parent, name)
-        tag.text = text
-        return tag
-
-    def __xml_to_dict(self, element):
-        """
-        Converts xml into a dict
-        :param xml element
-        """
-        if len(element) == 0:
-            return element.text.strip() if element.text else ""
-        result = {}
-        for child in element:
-            child_data = self.__xml_to_dict(child)
-            # Verify if child.tag is comment
-            if child.tag == etree.Comment:
-                continue
-            if child.tag in result:
-                if isinstance(result[child.tag], list):
-                    result[child.tag].append(child_data)
-                else:
-                    result[child.tag] = [result[child.tag], child_data]
-            else:
-                result[child.tag] = child_data
-        return result
-
-
-    def parse_xml_list(self, patch_recipe, list_tag, item_tag):
-        """
-        Parse list extracted from the patch recipe XML.
-        If the XML list has no items, return an empty list.
-        If the XML list has a single item, return it inside a list.
+        Parse the input parameters in :input_dict:.
+        Apply default values, validation rules and process XML lists.
         """
 
-        target_list = patch_recipe.get(list_tag)
-
-        # XML list has no items
-        if not target_list:
-            return []
-
-        try:
-            data = target_list[item_tag]
-        except KeyError:
-            err_msg = f"'{item_tag}' is not the item tag used for XML list '{list_tag}'"
-            raise Exception(err_msg)
-
-        # XML list has a single item. The conversion to a dict will store it
-        # as a string instead a list with the string inside.
-        if isinstance(data, str):
-            return [data]
-
-        # XML list with many items
-        if isinstance(data, list):
-            return data
-
-        raise Exception(f"Failed to extract XML list from patch recipe: {list_tag}")
-
-
-    # TODO: The feature of searching for content in MY_REPO_ROOT_DIR needs to
-    # be implemented for activation scripts as well.
-    def _validate_activation_script(self, script_list):
-        '''
-        Validate if scripts filename start with an integer
-        '''
-        for fullpath_script in script_list:
-            try:
-                name = os.path.basename(fullpath_script)
-                int(name.split("-")[0])
-            except Exception:
-                logger.error("Error while parsing the activation script:")
-                logger.error("Filename '%s' doesn't start with an integer." % fullpath_script)
-                sys.exit(1)
-
-    # TODO: recipe parsing logic should be moved to __init__
-    def parse_metadata(self, patch_recipe):
-        """
-        This function receives the :patch_recipe: as a dict,
-        then parses the input values, applying default values and validation rules.
-        The parsed values are assigned to the :self: object.
-        """
-
-        # New fields
-        self.debs = []
-
-        # Straight copy
-        self.component = patch_recipe.get(COMPONENT)
-        self.description = patch_recipe.get(DESCRIPTION)
-        self.install_instructions = patch_recipe.get(INSTALL_INSTRUCTIONS)
-        self.semantics = patch_recipe.get(SEMANTICS)
-        self.summary = patch_recipe.get(SUMMARY)
-        self.sw_version = patch_recipe.get(SW_VERSION)
-        self.warnings = patch_recipe.get(WARNINGS)
+        # Straight copy from inputs to patch metadata
+        self.description = input_dict.get(DESCRIPTION)
+        self.install_instructions = input_dict.get(INSTALL_INSTRUCTIONS)
+        self.summary = input_dict.get(SUMMARY)
+        self.sw_version = input_dict.get(SW_VERSION)
+        self.warnings = input_dict.get(WARNINGS)
 
         # Fields with default values
-        self.precheck_scripts_flag = patch_recipe.get(PRECHECK_SCRIPTS_FLAG) or DEFAULT_PRECHECK_SCRIPTS_FLAG
-        self.reboot_required = patch_recipe.get(REBOOT_REQUIRED) or DEFAULT_REBOOT_REQUIRED
-        self.status = patch_recipe.get(STATUS) or DEFAULT_STATUS
-        self.unremovable = patch_recipe.get(UNREMOVABLE) or DEFAULT_UNREMOVABLE
-
-        # Composed fields
-        self.patch_id = f"{patch_recipe.get(COMPONENT)}-{patch_recipe.get(SW_VERSION)}"
+        self.status = input_dict.get(STATUS) or DEFAULT_STATUS
 
         # Lists (removing the xml item tag)
-        self.stx_packages = self.parse_xml_list(patch_recipe, STX_PACKAGES, 'package')
-        self.binary_packages = self.parse_xml_list(patch_recipe, BINARY_PACKAGES, 'package')
-        self.requires = self.parse_xml_list(patch_recipe, REQUIRES, 'id')
+        self.stx_source_packages = xml_parsing.parse_xml_list(input_dict, STX_SOURCE_PACKAGES, PKG)
+        self.third_party_packages = xml_parsing.parse_xml_list(input_dict, THIRD_PARTY_PACKAGES, PKG)
+        self.requires = xml_parsing.parse_xml_list(input_dict, REQUIRES, ID)
 
-        # Various patch script fields, validating paths
-        self.patch_script_paths = {
-            script_id: self.check_script_path(patch_recipe.get(script_id, None))
-            for script_id in PATCH_SCRIPTS.keys()
-        }
+        # Deprecated lists, kept for backwards compatibility
+        self.stx_source_packages += xml_parsing.parse_xml_list(input_dict, STX_PACKAGES, PACKAGE)
+        self.third_party_packages += xml_parsing.parse_xml_list(input_dict, BINARY_PACKAGES, PACKAGE)
 
-        if ACTIVATION_SCRIPTS in patch_recipe and 'script' in patch_recipe[ACTIVATION_SCRIPTS]:
-            # the xml parser transform the 'script' value in string or in
-            # array depending on how much elements we add.
-            scripts_lst = []
-            if isinstance(patch_recipe[ACTIVATION_SCRIPTS]['script'], str):
-                scripts_lst.append(self.check_script_path(patch_recipe[ACTIVATION_SCRIPTS]['script']))
-            else:
-                for script in patch_recipe[ACTIVATION_SCRIPTS]['script']:
-                    scripts_lst.append(self.check_script_path(script))
-            self._validate_activation_script(scripts_lst)
-            self.activation_scripts = scripts_lst
+        # Input validations
 
-        if EXTRA_CONTENT in patch_recipe and 'item' in patch_recipe[EXTRA_CONTENT]:
-            # the xml parser transform the 'script' value in string or in
-            # array depending on how much elements we add.
-            if isinstance(patch_recipe[EXTRA_CONTENT]['item'], str):
-                extra_content_input = [patch_recipe[EXTRA_CONTENT]['item']]
-            else:
-                extra_content_input = patch_recipe[EXTRA_CONTENT]['item']
+        # Extra content
+        # Paths provided need some processing and validation
+        self.extra_content = []
+        extra_content_inputs = xml_parsing.parse_xml_list(input_dict, EXTRA_CONTENT, ITEM)
+        for path in extra_content_inputs:
+            processed_path = self._process_path(path)
+            if processed_path is not None:
+                self.extra_content.append(processed_path)
 
-            for item in extra_content_input:
-                candidate_item = self.validate_extra_content(item)
-                if candidate_item is not None:
-                    self.extra_content.append(candidate_item)
+        # Check if 'status' is valid
+        if self.status not in VALID_STATUSES:
+            raise Exception(f"Supported '{STATUS}' values are {VALID_STATUSES}. "
+                            "Received: {self.status}")
 
-        # Other Validations
-        if self.status != 'DEV' and self.status != 'REL':
-            raise Exception('Supported status are DEV and REL, selected')
+        logger.debug(f"Patch recipe parsed: {self}")
 
-        logger.debug("Patch recipe parsed: %s", self)
-
-
-    # TODO: This funtion is very similar to check_script_path()
-    # This code can be refactored to use just one of them.
-    # It's worth refactoring input validation in general.
-    def validate_extra_content(self, item):
-        """ Check if item corresponds to existing file/dir
+    def _process_path(self, path):
+        """
+        Check if :path: corresponds to existing file/dir
 
         If path is relative, look for content using as parent dir
         the current directory, then fallback to MY_REPO_ROOT_DIR
         (ie.: /localdisk/designer/USER/PROJECT/)
         """
-        if not item:
+        if not path:
             # No input provided
             return None
 
         # Cases: Absolute path and path relative to curdir
-        candidate = os.path.abspath(item)
+        candidate = os.path.abspath(path)
         if os.path.exists(candidate):
             return candidate
 
         # Case: Path relative to MY_REPO_ROOT_DIR
         parent = utils.get_env_variable('MY_REPO_ROOT_DIR')
-        candidate = os.path.join(parent, item)
+        candidate = os.path.join(parent, path)
         if os.path.exists(candidate):
             return candidate
 
-        msg = f"Extra content not found: {item}"
-        logger.error(msg)
-        raise FileNotFoundError(msg)
-
-
-    def parse_input_xml_data(self):
-        """
-        Convert the XML file into a python object,
-        validate it against the schema,
-        store the data into a dictionary,
-        then call parse_metadata() to process the input info.
-        """
-
-        # Parse and validate the XML
-        try:
-            xml_tree = etree.parse(self.patch_recipe_file)
-        except Exception as e:
-            logger.error(f"Error while parsing the input xml {e}")
-            sys.exit(1)
-
-        root = xml_tree.getroot()
-        xml_schema = etree.XMLSchema(etree.parse(INPUT_XML_SCHEMA))
-
-        # Validate the XML against the schema
-        is_valid = xml_schema.validate(root)
-        xml_dict = {}
-        if is_valid:
-            logger.info("XML is valid against the schema.")
-            xml_dict = self.__xml_to_dict(root)
-        else:
-            logger.error("XML is not valid against the schema. Validation errors:")
-            for error in xml_schema.error_log:
-                logger.error(f"Line {error.line}: {error.message}")
-            sys.exit(1)
-
-        self.parse_metadata(xml_dict)
-
-
-    def check_script_path(self, script_path):
-        """ Process and validate script path
-
-        Check if path points to an existing file.
-        If path is relative, look for the script using as parent dir
-        the current directory, then fallback to MY_REPO_ROOT_DIR
-        (ie.: /localdisk/designer/USER/PROJECT/)
-        """
-
-        # Case: No input provided
-        if not script_path:
-            return None
-
-        # Cases: Absolute path and path relative to curdir
-        candidate = os.path.abspath(script_path)
-        if os.path.isfile(candidate):
-            return candidate
-
-        # Case: Path relative to MY_REPO_ROOT_DIR
-        parent = utils.get_env_variable('MY_REPO_ROOT_DIR')
-        candidate = os.path.join(parent, script_path)
-        if os.path.isfile(candidate):
-            return candidate
-
-        msg = f"Script not found: {script_path}"
-        logger.error(msg)
-        raise FileNotFoundError(msg)
-
+        logger.error(f"File or Directory not found: {path}")
+        raise FileNotFoundError(path)
 
     def generate_patch_metadata(self, file_path):
-        # Generate patch metadata.xml
-        top_tag = ET.Element(PATCH_ROOT_TAG)
-        self.__add_text_tag_to_xml(top_tag, PATCH_ID, self.patch_id)
-        self.__add_text_tag_to_xml(top_tag, SW_VERSION, self.sw_version)
-        self.__add_text_tag_to_xml(top_tag, COMPONENT, self.component)
-        self.__add_text_tag_to_xml(top_tag, SUMMARY, self.summary)
-        self.__add_text_tag_to_xml(top_tag, DESCRIPTION, self.description)
-        self.__add_text_tag_to_xml(top_tag, INSTALL_INSTRUCTIONS, self.install_instructions)
-        self.__add_text_tag_to_xml(top_tag, WARNINGS, self.warnings)
-        self.__add_text_tag_to_xml(top_tag, STATUS, self.status)
+        """
+        Generate patch metadata XML
+        """
 
-        if self.unremovable.upper() in ["Y","N"]:
-            self.__add_text_tag_to_xml(top_tag, UNREMOVABLE, self.unremovable.upper())
-        else:
-            raise Exception('Supported values for "Unremovable" are Y or N, for "Yes" or "No" respectively')
+        top_element = etree.Element(PRODUCT_ROOT_TAG)
 
-        if self.reboot_required.upper() in ["Y","N"]:
-            self.__add_text_tag_to_xml(top_tag, REBOOT_REQUIRED, self.reboot_required.upper())
-        else:
-            raise Exception('Supported values for "Reboot Required" are Y or N, for "Yes" or "No" respectively')
+        xml_parsing.add_nested_element(top_element, ID, self.id)
+        xml_parsing.add_nested_element(top_element, SW_VERSION, self.sw_version)
+        xml_parsing.add_nested_element(top_element, STATUS, self.status)
+        xml_parsing.add_nested_element(top_element, SUMMARY, self.summary)
+        xml_parsing.add_nested_element(top_element, DESCRIPTION, self.description)
+        xml_parsing.add_nested_element(top_element, INSTALL_INSTRUCTIONS, self.install_instructions)
+        xml_parsing.add_nested_element(top_element, WARNINGS, self.warnings)
 
-        if self.precheck_scripts_flag.upper() in ["Y","N"]:
-            self.__add_text_tag_to_xml(top_tag, PRECHECK_SCRIPTS_FLAG, self.precheck_scripts_flag.upper())
-        else:
-            raise Exception('Supported values for "Precheck Scripts" are Y or N, for "Yes" or "No" respectively')
+        # XML list: Requires
+        list_items = sorted(self.requires)
+        xml_parsing.compose_xml_list(top_element, REQUIRES, REQUIRES_PATCH_ID, list_items)
 
-        self.__add_text_tag_to_xml(top_tag, SEMANTICS, self.semantics)
+        # XML list: Metapackages
+        list_items = [pkg if not pkg.startswith(constants.METAPACKAGE_NAME_PREFIX)
+                      else pkg.replace(constants.METAPACKAGE_NAME_PREFIX, "")
+                      for pkg in sorted(self.metapackages)]
+        xml_parsing.compose_xml_list(top_element, METAPACKAGES, PKG, list_items)
 
-        requires_atg = ET.SubElement(top_tag, REQUIRES)
-        for req_patch in sorted(self.requires):
-            self.__add_text_tag_to_xml(requires_atg, REQUIRES_PATCH_ID, req_patch)
+        # XML list: Debs
+        list_items = sorted(self.debs)
+        xml_parsing.compose_xml_list(top_element, PACKAGES, DEB, list_items)
 
-        for script_id, script_path in self.patch_script_paths.items():
-            script_name = ""
-            if script_path != None:
-                script_name = PATCH_SCRIPTS[script_id]
+        # XML list: Extra content
+        list_items = [os.path.basename(item) for item in self.extra_content]
+        xml_parsing.compose_xml_list(top_element, EXTRA_CONTENT, ITEM, list_items)
 
-            self.__add_text_tag_to_xml(top_tag, script_id, script_name)
-
-        if self.activation_scripts:
-            activation_scripts_tag = ET.SubElement(top_tag, ACTIVATION_SCRIPTS)
-            for script in self.activation_scripts:
-                self.__add_text_tag_to_xml(activation_scripts_tag, "script", script.split('/')[-1])
-        else:
-            self.__add_text_tag_to_xml(top_tag, ACTIVATION_SCRIPTS, "")
-
-        if self.extra_content:
-            extra_content_tag = ET.SubElement(top_tag, EXTRA_CONTENT)
-            for item in self.extra_content:
-                self.__add_text_tag_to_xml(extra_content_tag, "item", item.split('/')[-1])
-        else:
-            self.__add_text_tag_to_xml(top_tag, EXTRA_CONTENT, "")
-
-        packages_tag = ET.SubElement(top_tag, PACKAGES)
-        for package in sorted(self.debs):
-            self.__add_text_tag_to_xml(packages_tag, "deb", package)
-
-        # Save xml
-        outfile = open(file_path, "w")
-        tree = ET.tostring(top_tag)
-        outfile.write(minidom.parseString(tree).toprettyxml(indent="  "))
+        # Save metadata xml
+        etree.indent(top_element, space="  ")
+        tree = etree.ElementTree(top_element)
+        tree.write(file_path, xml_declaration=False, encoding="utf-8", pretty_print=True)
 
 
+# Running this will generate logs that reflect how the patch recipe was parsed.
+#
+# It cannot generate accurate patch metadata (using generate_patch_metadata())
+# without running the full patch-builder tool, as some info comes from
+# processing that takes place in other modules.
+#
+# Usage:
+#
+# python3 metadata.py <patch_recipe_path>
+#
 if __name__ == "__main__":
-    patch_recipe_file = f"${PATCH_BUILDER_PATH}/EXAMPLES/patch-recipe-sample.xml"
-    patch_metadata = PatchMetadata(patch_recipe_file)
-    patch_metadata.parse_input_xml_data()
+
+    patch_recipe_path = sys.argv[1]
+
+    try:
+        patch_metadata = PatchMetadata(patch_recipe_path)
+    except Exception:
+        logger.exception(f"Invalid input: {patch_recipe_path}")
+        sys.exit(1)

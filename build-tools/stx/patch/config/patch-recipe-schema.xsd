@@ -9,8 +9,6 @@
         <xs:element name="description" type="xs:string" minOccurs="0"/>
         <xs:element name="install_instructions" type="xs:string" minOccurs="0"/>
         <xs:element name="warnings" type="xs:string" minOccurs="0"/>
-        <xs:element name="reboot_required" type="xs:string" minOccurs="0"/>
-        <xs:element name="unremovable" type="xs:string" minOccurs="0"/>
         <xs:element name="status" type="xs:string" minOccurs="0"/>
         <xs:element name="requires" minOccurs="0">
           <xs:complexType>
@@ -19,23 +17,24 @@
             </xs:sequence>
           </xs:complexType>
         </xs:element>
-        <xs:element name="semantics" type="xs:string" minOccurs="0"/>
-        <xs:element name="precheck_scripts" type="xs:string" minOccurs="0"/>
-        <xs:element name="pre_start" type="xs:string" minOccurs="0"/>
-        <xs:element name="post_start" type="xs:string" minOccurs="0"/>
-        <xs:element name="pre_install" type="xs:string" minOccurs="0"/>
-        <xs:element name="post_install" type="xs:string" minOccurs="0"/>
-        <xs:element name="activation_scripts" minOccurs="0">
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="script" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
         <xs:element name="extra_content" minOccurs="0">
           <xs:complexType>
             <xs:sequence>
               <xs:element name="item" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="stx_source_packages" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="pkg" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="third_party_packages" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="pkg" type="xs:string" maxOccurs="unbounded" minOccurs="0"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>

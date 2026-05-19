@@ -1,33 +1,29 @@
 #
-# Copyright (c) 2024 Wind River Systems, Inc.
+# Copyright (c) 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-### Patch Scripts ###
-# Script IDs and their default names inside the patch
+import sys
 
-# Custom scripts executed at different steps in the patch apply process
-# TODO: This variable can be replaced by a function that replaces the '_' for
-# '-' and appends ".sh"
-# TODO: Can't these SCRIPT variables be turned into lists?
-PATCH_SCRIPTS = {
-    "pre_start": "pre-start.sh",
-    "post_start": "post-start.sh",
-    "pre_install": "pre-install.sh",
-    "post_install": "post-install.sh",
-}
+sys.path.append('..')
+import discovery
+import utils
 
-# Required when there are patching framework updates
-PRECHECK_SCRIPTS = {
-    "DEPLOY_PRECHECK": "deploy-precheck",
-    "UPGRADE_UTILS": "upgrade_utils.py",
-}
+# Source code directory
+# In general: /localdisk/designer/<USER>/<PROJECT>
+DESIGNER_ROOT = utils.get_env_variable('MY_REPO_ROOT_DIR')
 
+# Package binaries output directory
+# In general: /localdisk/loadbuild/<USER>/<PROJECT>
+LOADBUILD_ROOT = utils.get_env_variable('MY_BUILD_PKG_DIR')
 
-### Signing ###
+# Product (patches and ISOs) output directory
+DEPLOY_ROOT = "/localdisk/deploy"
 
-# Default path to the script that generates the upload path
-GET_UPLOAD_PATH = "/opt/signing/sign.sh"
-# Default path to the script that sign the patch
-REQUEST_SIGN = "/opt/signing/sign_patch.sh"
+# Distro
+STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
+
+# Metapackages
+METAPACKAGE_NAME_PREFIX = "meta-"
+METAPACKAGE_SECTION = "metapackages"

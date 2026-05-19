@@ -1,0 +1,10 @@
+<!-- Testing support for empty inputs -->
+<patch_recipe>
+    <sw_version>101.0</sw_version>
+    <component>starlingx</component>
+    <status>DEV</status>
+    <stx_source_packages>
+    </stx_source_packages>
+    <third_party_packages>
+    </third_party_packages>
+</patch_recipe>

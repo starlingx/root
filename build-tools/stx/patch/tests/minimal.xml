@@ -1,0 +1,5 @@
+<!-- Testing support for missing optional inputs -->
+<patch_recipe>
+    <sw_version>103.0</sw_version>
+    <component>starlingx</component>
+</patch_recipe>

@@ -1,0 +1,21 @@
+<!-- Testing behavior when recipe has STX packages, third party packages and metapackages -->
+<patch_recipe>
+    <sw_version>107.0</sw_version>
+    <component>starlingx</component>
+
+    <!-- Package inputs -->
+    <stx_source_packages>
+        <pkg>sysinv</pkg>
+    </stx_source_packages>
+    <third_party_packages>
+        <pkg>curl</pkg>
+    </third_party_packages>
+
+    <!-- Backwards compatibility inputs -->
+    <stx_packages>
+        <package>build-info</package>
+    </stx_packages>
+    <binary_packages>
+        <package>tzdata</package>
+    </binary_packages>
+</patch_recipe>

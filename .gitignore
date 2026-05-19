@@ -28,5 +28,7 @@ Thumbs.db
 *.log
 
 # Environment
+venv
+.venv
 .env
 *.bak

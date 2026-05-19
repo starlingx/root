@@ -1,0 +1,14 @@
+<patch_recipe>
+    <sw_version>106.0</sw_version>
+    <component>starlingx</component>
+
+    <!-- Kernel metapackage with pre-start-kernel.sh script is required -->
+    <stx_source_packages>
+        <pkg>meta-base</pkg>
+    </stx_source_packages>
+
+    <!-- Extra content be inserted -->
+    <extra_content>
+        <item>cgcs-root/stx/utilities</item>
+    </extra_content>
+</patch_recipe>

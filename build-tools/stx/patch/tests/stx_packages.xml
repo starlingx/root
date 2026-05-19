@@ -1,0 +1,8 @@
+<!-- Testing support for patching STX packages -->
+<patch_recipe>
+    <sw_version>104.0</sw_version>
+    <component>starlingx</component>
+    <stx_source_packages>
+        <pkg>software</pkg>
+    </stx_source_packages>
+</patch_recipe>

@@ -1,0 +1,8 @@
+<!-- Testing support for patching third party packages -->
+<patch_recipe>
+    <sw_version>105.0</sw_version>
+    <component>starlingx</component>
+    <third_party_packages>
+        <pkg>curl</pkg>
+    </third_party_packages>
+</patch_recipe>

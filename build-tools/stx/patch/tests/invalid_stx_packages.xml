@@ -1,0 +1,16 @@
+<!-- Testing behavior when one or more metapackages are invalid -->
+<patch_recipe>
+    <sw_version>102.0</sw_version>
+    <component>starlingx</component>
+    <stx_source_packages>
+
+        <!-- Invalid packages -->
+        <pkg>invalid_name_1</pkg>
+        <pkg>swmgmt</pkg>
+
+        <!-- Valid packages -->
+        <pkg>sysinv</pkg>
+        <pkg>build-info</pkg>
+
+    </stx_source_packages>
+</patch_recipe>

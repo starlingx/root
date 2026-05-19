@@ -1,0 +1,14 @@
+<!--
+Simple patch recipe example for testing an STX package update
+-->
+
+<patch_recipe>
+    <sw_version>100.0.0</sw_version>
+    <component>starlingx</component>
+    <summary>My designer patch</summary>
+
+    <!-- Starlingx source packages -->
+    <stx_source_packages>
+        <pkg>sysinv</pkg>
+    </stx_source_packages>
+</patch_recipe>

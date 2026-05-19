@@ -1,0 +1,29 @@
+<!--
+Patch recipe example for updating the kernel.
+
+IMPORTANT: Before building the patch:
+- Prepare the meta-base metapackage by adding the pre-start-kernel.sh host script.
+- Run 'build-image' in the builder container to create the StarlingX ISO
+
+Kernel patches use an alternative patching method in which the pre-start-kernel.sh
+script applies the ostree repo created by 'build-image' on the STX host.
+
+In other words, there is no need to update 'stx_source_packages' or 'extra_content' in this example.
+Your ISO's filesystem will be "copy-pasted" onto the host when the patch is applied.
+-->
+
+<patch_recipe>
+    <sw_version>100.0.0</sw_version>
+    <component>starlingx</component>
+    <summary>Summary</summary>
+
+    <!-- Starlingx source packages -->
+    <stx_source_packages>
+        <pkg>meta-base</pkg>
+    </stx_source_packages>
+
+    <!-- Extra content -->
+    <extra_content>
+        <item>/localdisk/deploy/ostree_repo</item>
+    </extra_content>
+</patch_recipe>

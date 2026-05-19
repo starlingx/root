@@ -1,0 +1,39 @@
+<!--
+Patch recipe example with all available fields.
+Only 'sw_version' and 'component' are mandatory.
+-->
+
+<patch_recipe>
+    <!-- Patch ID -->
+    <sw_version>100.0.0</sw_version>
+    <component>starlingx</component>
+
+    <!-- General Info -->
+    <summary>Summary</summary>
+    <description>Description</description>
+    <install_instructions>Instructions</install_instructions>
+    <warnings>Warnings</warnings>
+
+    <!-- Patch type. DEV for developer tests; REL for formal releases -->
+    <status>DEV</status>
+
+    <!-- Release to be patched -->
+    <requires>
+      <id>starlingx-99.0.0</id>
+    </requires>
+
+    <!-- Starlingx source packages -->
+    <stx_source_packages>
+        <pkg>sysinv</pkg>
+        <pkg>build-info</pkg>
+    </stx_source_packages>
+
+    <!-- Third party binary packages -->
+    <third_party_packages>
+        <pkg>curl</pkg>
+    </third_party_packages>
+
+    <!-- Extra content -->
+    <extra_content>
+    </extra_content>
+</patch_recipe>

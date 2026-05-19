@@ -1,0 +1,16 @@
+<!-- Testing behavior when one or more metapackages are invalid -->
+<patch_recipe>
+    <sw_version>102.1</sw_version>
+    <component>starlingx</component>
+    <third_party_packages>
+
+        <!-- Invalid packages -->
+        <pkg>invalid_name_2</pkg>
+        <pkg>meta-infra</pkg>
+
+        <!-- Valid packages -->
+        <pkg>curl</pkg>
+        <pkg>tzdata</pkg>
+
+    </third_party_packages>
+</patch_recipe>

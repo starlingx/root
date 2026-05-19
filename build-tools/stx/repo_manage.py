@@ -111,8 +111,12 @@ class AptFetch():
                     self.logger.warning("Local aptly repo's GPG key not found: '%s'",
                                         aptly_gpg_abspath)
 
-            os.makedirs(os.path.join(basedir, 'downloads', 'binary'))
-            os.makedirs(os.path.join(basedir, 'downloads', 'source'))
+            self.binary_downloads_dir = os.path.join(basedir, 'downloads', 'binary')
+            os.makedirs(self.binary_downloads_dir)
+
+            self.source_downloads_dir = os.path.join(basedir, 'downloads', 'source')
+            os.makedirs(self.source_downloads_dir)
+
         except Exception as e:
             self.logger.error(str(e))
             self.logger.error('Failed to construct workdir %s' % basedir)
@@ -153,18 +157,44 @@ class AptFetch():
             self.logger.error('apt cache init failed.')
             raise Exception('apt cache init failed.')
 
-    # Download a binary package into downloaded folder
-    def fetch_deb(self, pkg_name, pkg_version):
-        '''Download a binary package'''
 
-        if not pkg_name or not pkg_version:
+    def get_default_candidate_version(self, pkg_name):
+        """Return the default candidate version string for a given package name.
+
+        :param pkg_name: Name of the package to look up.
+        :return: Version string of the default candidate.
+        :raises KeyError: If the package is not found in the apt cache.
+        :raises Exception: If the package has no candidate version available.
+        """
+        try:
+            pkg = self.aptcache[pkg_name]
+        except KeyError:
+            self.logger.error("Package not found in apt cache: '%s'", pkg_name)
+            raise
+
+        if not pkg.candidate:
+            raise Exception("No candidate version available for package '%s'" % pkg_name)
+
+        return pkg.candidate.version
+
+
+    # Download a binary package into downloaded folder
+    def fetch_deb(self, pkg_name, pkg_version=None, fetch_latest=False):
+        """
+        Download a binary package.
+
+        If no :pkg_version: is specified and :fetch_latest: is set to True,
+        the latest version available will be downloaded.
+        """
+
+        if not pkg_name or (not pkg_version and not fetch_latest):
             ret = 'DEB-F missing parameter'
             return ret
 
         # Default return is a "download failed" message
-        ret = ' '.join(['DEB-F', pkg_name, pkg_version]).strip()
+        ret = ' '.join(['DEB-F', pkg_name, str(pkg_version)]).strip()
 
-        self.logger.info("Current downloading:%s:%s", pkg_name, pkg_version)
+        self.logger.info("Downloading deb: %s %s", pkg_name, pkg_version)
         destdir = os.path.join(self.workdir, 'downloads', 'binary')
         self.aptlock.acquire()
 
@@ -179,21 +209,28 @@ class AptFetch():
             available_versions = [str(v.version) for v in pkg.versions]
             self.logger.debug("Package '%s' versions available in repo: %s",
                               pkg_name, available_versions)
-            self.logger.debug("Package '%s' requested version: '%s'",
-                              pkg_name, pkg_version)
-            candidate = pkg.versions.get(pkg_version)
-            if not candidate:
-                if ':' in default_candidate.version:
-                    epoch, ver = default_candidate.version.split(':')
-                    if epoch.isdigit() and ver == pkg_version:
-                        self.logger.debug('epoch %s will be skipped for %s_%s', epoch, pkg_name, ver)
-                        candidate = default_candidate
+
+            if not pkg_version or fetch_latest:
+                candidate = default_candidate
+
+            else:
+                self.logger.debug("Package '%s' requested version: '%s'",
+                                pkg_name, pkg_version)
+                candidate = pkg.versions.get(pkg_version)
                 if not candidate:
-                    self.aptlock.release()
-                    self.logger.error("Failed to find a matching version for %s: "
-                                      "requested='%s' available=%s",
-                                      pkg_name, pkg_version, available_versions)
-                    return ret
+                    if ':' in default_candidate.version:
+                        epoch, ver = default_candidate.version.split(':')
+                        if epoch.isdigit() and ver == pkg_version:
+                            self.logger.debug('epoch %s will be skipped for %s_%s', epoch, pkg_name, ver)
+                            candidate = default_candidate
+
+            if not candidate:
+                self.aptlock.release()
+                self.logger.error("Failed to find a matching version for %s: "
+                                "requested='%s' available=%s",
+                                pkg_name, pkg_version, available_versions)
+                return ret
+
         except KeyError:
             self.aptlock.release()
             self.logger.error("Package not found in apt cache: '%s'", pkg_name)
@@ -219,7 +256,7 @@ class AptFetch():
             return ret
         else:
             self.logger.debug('Binary package %s %s downloaded.' % (pkg_name, pkg_version))
-            return ' '.join(['DEB', pkg_name, pkg_version]).strip()
+            return ' '.join(['DEB', pkg_name, str(pkg_version)]).strip()
 
     # Download a source package into downloaded folder
     def fetch_dsc(self, pkg_name, pkg_version=''):
