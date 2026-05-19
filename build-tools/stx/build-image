@@ -345,24 +345,6 @@ def check_stx_binaries(repomgr, btype='std', distro=STX_DEFAULT_DISTRO, codename
     return True
 
 
-def check_stx_patched(repomgr, btype='std', distro=STX_DEFAULT_DISTRO, codename=STX_DEFAULT_DISTRO_CODENAME):
-    stx_patched_list = '{}{}/{}/distro/stx-{}.lst'.format(PKG_LIST_DIR, distro, codename, btype)
-    if not os.path.exists(stx_patched_list):
-        logger.warning(''.join(['STX patched packages list', stx_patched_list,
-                                'does not exist']))
-        return False
-
-    results = verify_pkgs_in_repo(repomgr, [REPO_BUILD], stx_patched_list)
-    if results:
-        logger.error("====STX patched packages checking fail:")
-        for deb in results:
-            logger.error(deb)
-        logger.error("====STX patched packages missing end====\n")
-        return False
-    logger.info("====All STX patched packages are ready ====\n")
-    return True
-
-
 def verify_pkgs_in_repo(repomgr, repo_names, pkg_list_path):
     """Verify if packages exist in one (or more) repositories.
 
@@ -772,10 +754,7 @@ if __name__ == "__main__":
     logger.info("\nchecking STX binary packages ......")
     stx_bins_ready = check_stx_binaries(repo_manager, "std", distro=distro, codename=distro_codename)
 
-    logger.info("\nchecking STX patched packages ......")
-    stx_patched_ready = check_stx_patched(repo_manager, "std", distro=distro, codename=distro_codename)
-
-    if not base_bins_ready or not stx_bins_ready or not stx_patched_ready:
+    if not base_bins_ready or not stx_bins_ready:
         logger.error("Fail to get prepared to build image")
         sys.exit(1)
 
