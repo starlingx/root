@@ -1,7 +1,32 @@
+# Editors & IDEs
 *.swp
-.tox
+*~
+.vscode
+.idea
+
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.egg-info
+.cache/
+
+# Tox / Testing
+.tox
+
+# Build artifacts
 /local-build-data
 /local-repo
 /public-keys/
 wrs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+*.bak
