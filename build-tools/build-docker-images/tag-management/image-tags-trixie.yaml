@@ -1,0 +1,7 @@
+# yamllint disable rule:line-length
+---
+images:
+  #- name: docker.io/starlingx/IMAGE
+  #  src_build_tag: master-debian-bullseye-amd64-stable-TIMESTAMP.0
+  #  src_ref: https://opendev.org/starlingx/PROJECT/commit/SHA
+  #  tag: stx.13.0-v1.0.0-trixie
