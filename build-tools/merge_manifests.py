@@ -7,7 +7,7 @@
 
 import os
 import sys
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 
 def merge_dicts(main: dict, custom: dict) -> None:
     for key, value in custom.items():
@@ -18,9 +18,9 @@ def merge_dicts(main: dict, custom: dict) -> None:
 
 def handle_manifests_merge(main_manifests_path: str, custom_manifests_path: str):
     with open(main_manifests_path, 'r') as main_file, open(custom_manifests_path, 'r') as custom_file:
-        main_data = yaml.safe_load(main_file)
-        custom_data = yaml.safe_load(custom_file)
-
+        yaml_parser = YAML(typ='safe', pure=True)
+        main_data = yaml_parser.load(main_file)
+        custom_data = yaml_parser.load(custom_file)
     # If both main file data and custom data are identical, no merge is needed
     if main_data == custom_data:
         return
@@ -34,7 +34,9 @@ def handle_manifests_merge(main_manifests_path: str, custom_manifests_path: str)
     merge_dicts(merged_data, custom_data)
 
     with open(main_manifests_path, 'w') as main_file:
-        yaml.dump(merged_data, main_file, default_flow_style=False)
+        yaml_writer = YAML()
+        yaml_writer.default_flow_style = False
+        yaml_writer.dump(merged_data, main_file)
 
 if __name__ == "__main__":
 
