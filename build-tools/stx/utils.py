@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2025 Wind River Systems, Inc.
+# Copyright (c) 2021-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -122,7 +122,7 @@ def limited_walk(dir, max_depth=1):
             del dirs[:]
 
 
-def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR):
+def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR, cwd=None):
     if type(cmd) is str:
         shell = True
     elif type(cmd) in (tuple, list):
@@ -133,7 +133,7 @@ def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR):
     logger.info(f'[ Run - "{cmd}" ]')
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   universal_newlines=True, shell=shell)
+                                   universal_newlines=True, shell=shell, cwd=cwd)
     except Exception as e:
         msg = f'[ Failed to execute command: "{cmd}" Exception: "{e}" ]'
         logger.log(error_level, msg)
@@ -166,8 +166,8 @@ def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR):
     return outs.strip(),errs.strip()
 
 
-def run_shell_cmd(cmd, logger, error_level=logging.ERROR):
-    return run_shell_cmd_full(cmd, logger, error_level)[0]
+def run_shell_cmd(cmd, logger, error_level=logging.ERROR, cwd=None):
+    return run_shell_cmd_full(cmd, logger, error_level, cwd=cwd)[0]
 
 
 def url_to_os_mirror(url):
@@ -195,14 +195,16 @@ def get_download_url(url, strategy):
         rt_url = url
     elif strategy == "stx_mirror_first":
         try:
-            urllib.request.urlopen(os_mirror_url)
+            req = urllib.request.Request(os_mirror_url, method='HEAD')
+            urllib.request.urlopen(req, timeout=10)
             rt_url = os_mirror_url
             alt_rt_url = url
         except:
             rt_url = url
     elif strategy == "upstream_first":
         try:
-            urllib.request.urlopen(url)
+            req = urllib.request.Request(url, method='HEAD')
+            urllib.request.urlopen(req, timeout=10)
             rt_url = url
             alt_rt_url = os_mirror_url
         except:
