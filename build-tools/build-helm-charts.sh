@@ -353,7 +353,7 @@ function compare_custom_manifests {
         MAIN_MANIFESTS=$(ls usr/lib/fluxcd/${manifest})
         CUSTOM_MANIFESTS=$(ls usr/lib/fluxcd/custom-manifests/${manifest})
 
-        for manifest_file in ${MAIN_MANIFESTS}; do
+        for manifest_file in ${CUSTOM_MANIFESTS}; do
             ${PYTHON_2_OR_3} \
             $BUILD_HELM_CHARTS_DIR/merge_manifests.py \
             usr/lib/fluxcd/${manifest}/${manifest_file} \
