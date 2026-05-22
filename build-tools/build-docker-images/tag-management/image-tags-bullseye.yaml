@@ -95,17 +95,17 @@ images:
     # Tag based on upstream package version
     tag: stx.5.0-v0.7.0
   - name: docker.io/starlingx/stx-snmp
-    src_build_tag: master-debian-bullseye-amd64-stable-20260510T041000Z.0
+    src_build_tag: master-debian-bullseye-amd64-stable-20260521T041000Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b03ba4a903cfeb50fa0869887179293f8b729e2e
-    tag: stx.13.0-v1.0.0
+    tag: stx.13.0-v1.0.1-bullseye
   - name: docker.io/starlingx/stx-fm-subagent
-    src_build_tag: master-debian-bullseye-amd64-stable-20260510T041000Z.0
+    src_build_tag: master-debian-bullseye-amd64-stable-20260521T041000Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b03ba4a903cfeb50fa0869887179293f8b729e2e
-    tag: stx.13.0-v1.0.0
+    tag: stx.13.0-v1.0.1-bullseye
   - name: docker.io/starlingx/stx-fm-trap-subagent
-    src_build_tag: master-debian-bullseye-amd64-stable-20260510T041000Z.0
+    src_build_tag: master-debian-bullseye-amd64-stable-20260521T041000Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/b03ba4a903cfeb50fa0869887179293f8b729e2e
-    tag: stx.13.0-v1.0.0
+    tag: stx.13.0-v1.0.1-bullseye
   - name: docker.io/starlingx/notificationservice-base-v2
     src_build_tag: master-debian-stable-20260510T041000Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/b31d92e65927588d1aba77f6d2ce412f46c48f41
