@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Wind River Systems, Inc.
+# Copyright (c) 2021-2026 Wind River Systems, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import fnmatch
 import os
-import re
 import glob
 import yaml
 
@@ -182,7 +180,7 @@ def get_layer_build_types (layer, distro=STX_DEFAULT_DISTRO,
     return sort_build_type_list(bt_lst, layer, distro=distro, codename=codename)
 
 
-def get_all_build_types (distro=STX_DEFAULT_DISTRO, 
+def get_all_build_types (distro=STX_DEFAULT_DISTRO,
                          codename=STX_DEFAULT_DISTRO_CODENAME,
                          skip_non_buildable=True):
     bt_lst = [ "std" ]

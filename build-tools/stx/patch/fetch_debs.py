@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023-2025 Wind River Systems, Inc.
+# Copyright (c) 2023-2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -18,9 +18,6 @@ import debsentry
 import repo_manage
 import utils
 import discovery
-
-
-STX_DEFAULT_DISTRO_CODENAME = discovery.STX_DEFAULT_DISTRO_CODENAME
 
 
 logger = logging.getLogger('fetch_debs')
@@ -45,8 +42,6 @@ class FetchDebs(object):
         # TODO: These directories should be inputs, not hardcoded.
         self.output_dir = os.path.join(self.loadbuild_root, 'dl_debs')
         self.apt_src_file = os.path.join(self.loadbuild_root, 'aptsrc')
-
-        self.dist_codename = os.environ.get('DIST', STX_DEFAULT_DISTRO_CODENAME)
 
         self.setup_apt_source()
         self.debs_fetcher = repo_manage.AptFetch(logger, self.apt_src_file, self.output_dir)
@@ -98,9 +93,9 @@ class FetchDebs(object):
             with open(self.apt_src_file, 'w') as file:
                 repo_url = utils.get_env_variable('REPOMGR_DEPLOY_URL')
 
-                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-build {self.dist_codename} main\n"
+                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-build {discovery.STX_DEFAULT_DISTRO_CODENAME} main\n"
                 file.write(apt_repo)
-                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-binary {self.dist_codename} main\n"
+                apt_repo = f"deb [trusted=yes] {repo_url}deb-local-binary {discovery.STX_DEFAULT_DISTRO_CODENAME} main\n"
                 file.write(apt_repo)
 
                 logger.debug(f'Created apt source file {self.apt_src_file} to download debs')
@@ -132,8 +127,10 @@ class FetchDebs(object):
             if name not in dl_debs_dict:
                 dl_debs_dict[name] = version
 
-        # filter list based on stx-std.lst - Depecrated on master, replaced by debian_iso_image.inc on each repo
-        stx_pkg_list_file = self.get_debian_pkg_iso_list()
+        # Get list of STX packages that are installed into the ISO
+        stx_pkg_list_file = []
+        for build_type in discovery.get_all_build_types():
+            stx_pkg_list_file.extend(discovery.package_iso_list(build_type))
 
         debs_to_remove = []
         for deb in dl_debs_dict.keys():
@@ -141,6 +138,10 @@ class FetchDebs(object):
             if deb not in stx_pkg_list_file:
                 # remove if not found in all lines
                 debs_to_remove.append(deb)
+
+        if debs_to_remove:
+            logger.debug("These binaries are not installed into the STX ISO, and so they are not included in the patch:")
+            logger.debug(debs_to_remove)
 
         for deb in debs_to_remove:
             # If package is explicitly in the patch recipe it should NOT be removed
@@ -157,18 +158,6 @@ class FetchDebs(object):
         dl_debs_with_ver = [f'{k} {v}' for k, v in dl_debs_dict.items()]
         fetch_ret = self.download(dl_debs_with_ver)
 
-
-    def get_debian_pkg_iso_list(self):
-        pkgs = []
-        cgcs_root_dir = utils.get_env_variable('MY_REPO')
-        package_file_name = 'debian_iso_image.inc'
-
-        for root, dirs, files in os.walk(cgcs_root_dir):
-            for file in files:
-                if file == package_file_name:
-                    with open(os.path.join(root, package_file_name), 'r') as f:
-                        pkgs.extend(line.strip() for line in f if line.strip() and not line.startswith('#'))
-        return pkgs
 
     def fetch_external_binaries(self):
         '''
@@ -188,9 +177,9 @@ class FetchDebs(object):
             self.designer_root,
             "stx-tools",
             "debian-mirror-tools", "config", "debian",
-            self.dist_codename,
+            discovery.STX_DEFAULT_DISTRO_CODENAME,
             "common",
-            "base-" + self.dist_codename + ".lst")
+            "base-" + discovery.STX_DEFAULT_DISTRO_CODENAME + ".lst")
 
         if not os.path.isfile(external_binaries_list):
             msg = f"Could not find external binaries list: {external_binaries_list}"
