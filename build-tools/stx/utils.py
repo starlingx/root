@@ -12,6 +12,9 @@ import urllib.parse
 import urllib.request
 
 
+# How many seconds will we wait on a download url open request.
+TEST_URL_TIMEOUT = 10
+
 OS_MIRROR_URL = os.environ.get('OS_MIRROR_URL')
 OS_MIRROR_DL_PATH = os.environ.get('OS_MIRROR_DL_PATH', 'debian/')
 if OS_MIRROR_URL:
@@ -186,7 +189,6 @@ def url_to_os_mirror(url):
 
 
 def get_download_url(url, strategy):
-
     alt_rt_url = None
     os_mirror_url = url_to_os_mirror(url)
     if strategy == "stx_mirror":
@@ -196,7 +198,7 @@ def get_download_url(url, strategy):
     elif strategy == "stx_mirror_first":
         try:
             req = urllib.request.Request(os_mirror_url, method='HEAD')
-            urllib.request.urlopen(req, timeout=10)
+            urllib.request.urlopen(req, timeout=TEST_URL_TIMEOUT)
             rt_url = os_mirror_url
             alt_rt_url = url
         except:
@@ -204,7 +206,7 @@ def get_download_url(url, strategy):
     elif strategy == "upstream_first":
         try:
             req = urllib.request.Request(url, method='HEAD')
-            urllib.request.urlopen(req, timeout=10)
+            urllib.request.urlopen(req, timeout=TEST_URL_TIMEOUT)
             rt_url = url
             alt_rt_url = os_mirror_url
         except:
