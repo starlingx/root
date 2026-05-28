@@ -127,68 +127,6 @@ class PatchMetadata(object):
                 result[child.tag] = child_data
         return result
 
-    def generate_patch_metadata(self, file_path):
-        # Generate patch metadata.xml
-        top_tag = ET.Element(PATCH_ROOT_TAG)
-        self.__add_text_tag_to_xml(top_tag, PATCH_ID, self.patch_id)
-        self.__add_text_tag_to_xml(top_tag, SW_VERSION, self.sw_version)
-        self.__add_text_tag_to_xml(top_tag, COMPONENT, self.component)
-        self.__add_text_tag_to_xml(top_tag, SUMMARY, self.summary)
-        self.__add_text_tag_to_xml(top_tag, DESCRIPTION, self.description)
-        self.__add_text_tag_to_xml(top_tag, INSTALL_INSTRUCTIONS, self.install_instructions)
-        self.__add_text_tag_to_xml(top_tag, WARNINGS, self.warnings)
-        self.__add_text_tag_to_xml(top_tag, STATUS, self.status)
-
-        if self.unremovable.upper() in ["Y","N"]:
-            self.__add_text_tag_to_xml(top_tag, UNREMOVABLE, self.unremovable.upper())
-        else:
-            raise Exception('Supported values for "Unremovable" are Y or N, for "Yes" or "No" respectively')
-
-        if self.reboot_required.upper() in ["Y","N"]:
-            self.__add_text_tag_to_xml(top_tag, REBOOT_REQUIRED, self.reboot_required.upper())
-        else:
-            raise Exception('Supported values for "Reboot Required" are Y or N, for "Yes" or "No" respectively')
-
-        if self.precheck_scripts_flag.upper() in ["Y","N"]:
-            self.__add_text_tag_to_xml(top_tag, PRECHECK_SCRIPTS_FLAG, self.precheck_scripts_flag.upper())
-        else:
-            raise Exception('Supported values for "Precheck Scripts" are Y or N, for "Yes" or "No" respectively')
-
-        self.__add_text_tag_to_xml(top_tag, SEMANTICS, self.semantics)
-
-        requires_atg = ET.SubElement(top_tag, REQUIRES)
-        for req_patch in sorted(self.requires):
-            self.__add_text_tag_to_xml(requires_atg, REQUIRES_PATCH_ID, req_patch)
-
-        for script_id, script_path in self.patch_script_paths.items():
-            script_name = ""
-            if script_path != None:
-                script_name = PATCH_SCRIPTS[script_id]
-
-            self.__add_text_tag_to_xml(top_tag, script_id, script_name)
-
-        if self.activation_scripts:
-            activation_scripts_tag = ET.SubElement(top_tag, ACTIVATION_SCRIPTS)
-            for script in self.activation_scripts:
-                self.__add_text_tag_to_xml(activation_scripts_tag, "script", script.split('/')[-1])
-        else:
-            self.__add_text_tag_to_xml(top_tag, ACTIVATION_SCRIPTS, "")
-
-        if self.extra_content:
-            extra_content_tag = ET.SubElement(top_tag, EXTRA_CONTENT)
-            for item in self.extra_content:
-                self.__add_text_tag_to_xml(extra_content_tag, "item", item.split('/')[-1])
-        else:
-            self.__add_text_tag_to_xml(top_tag, EXTRA_CONTENT, "")
-
-        packages_tag = ET.SubElement(top_tag, PACKAGES)
-        for package in sorted(self.debs):
-            self.__add_text_tag_to_xml(packages_tag, "deb", package)
-
-        # Save xml
-        outfile = open(file_path, "w")
-        tree = ET.tostring(top_tag)
-        outfile.write(minidom.parseString(tree).toprettyxml(indent="  "))
 
     def __tag_to_list(self, tag_content):
         if type(tag_content) != list:
@@ -359,6 +297,70 @@ class PatchMetadata(object):
         msg = f"Script not found: {script_path}"
         logger.error(msg)
         raise FileNotFoundError(msg)
+
+
+    def generate_patch_metadata(self, file_path):
+        # Generate patch metadata.xml
+        top_tag = ET.Element(PATCH_ROOT_TAG)
+        self.__add_text_tag_to_xml(top_tag, PATCH_ID, self.patch_id)
+        self.__add_text_tag_to_xml(top_tag, SW_VERSION, self.sw_version)
+        self.__add_text_tag_to_xml(top_tag, COMPONENT, self.component)
+        self.__add_text_tag_to_xml(top_tag, SUMMARY, self.summary)
+        self.__add_text_tag_to_xml(top_tag, DESCRIPTION, self.description)
+        self.__add_text_tag_to_xml(top_tag, INSTALL_INSTRUCTIONS, self.install_instructions)
+        self.__add_text_tag_to_xml(top_tag, WARNINGS, self.warnings)
+        self.__add_text_tag_to_xml(top_tag, STATUS, self.status)
+
+        if self.unremovable.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, UNREMOVABLE, self.unremovable.upper())
+        else:
+            raise Exception('Supported values for "Unremovable" are Y or N, for "Yes" or "No" respectively')
+
+        if self.reboot_required.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, REBOOT_REQUIRED, self.reboot_required.upper())
+        else:
+            raise Exception('Supported values for "Reboot Required" are Y or N, for "Yes" or "No" respectively')
+
+        if self.precheck_scripts_flag.upper() in ["Y","N"]:
+            self.__add_text_tag_to_xml(top_tag, PRECHECK_SCRIPTS_FLAG, self.precheck_scripts_flag.upper())
+        else:
+            raise Exception('Supported values for "Precheck Scripts" are Y or N, for "Yes" or "No" respectively')
+
+        self.__add_text_tag_to_xml(top_tag, SEMANTICS, self.semantics)
+
+        requires_atg = ET.SubElement(top_tag, REQUIRES)
+        for req_patch in sorted(self.requires):
+            self.__add_text_tag_to_xml(requires_atg, REQUIRES_PATCH_ID, req_patch)
+
+        for script_id, script_path in self.patch_script_paths.items():
+            script_name = ""
+            if script_path != None:
+                script_name = PATCH_SCRIPTS[script_id]
+
+            self.__add_text_tag_to_xml(top_tag, script_id, script_name)
+
+        if self.activation_scripts:
+            activation_scripts_tag = ET.SubElement(top_tag, ACTIVATION_SCRIPTS)
+            for script in self.activation_scripts:
+                self.__add_text_tag_to_xml(activation_scripts_tag, "script", script.split('/')[-1])
+        else:
+            self.__add_text_tag_to_xml(top_tag, ACTIVATION_SCRIPTS, "")
+
+        if self.extra_content:
+            extra_content_tag = ET.SubElement(top_tag, EXTRA_CONTENT)
+            for item in self.extra_content:
+                self.__add_text_tag_to_xml(extra_content_tag, "item", item.split('/')[-1])
+        else:
+            self.__add_text_tag_to_xml(top_tag, EXTRA_CONTENT, "")
+
+        packages_tag = ET.SubElement(top_tag, PACKAGES)
+        for package in sorted(self.debs):
+            self.__add_text_tag_to_xml(packages_tag, "deb", package)
+
+        # Save xml
+        outfile = open(file_path, "w")
+        tree = ET.tostring(top_tag)
+        outfile.write(minidom.parseString(tree).toprettyxml(indent="  "))
 
 
 if __name__ == "__main__":
