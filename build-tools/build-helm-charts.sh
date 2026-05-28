@@ -963,6 +963,15 @@ if [ -d "plugins" ]; then
     fi
 fi
 
+# Stage application-owned ansible playbooks, if present
+if [ -d "usr/lib/application/ansible" ]; then
+    cp -R usr/lib/application/ansible staging/ansible
+    if [ $? -ne 0 ]; then
+        echo "Failed to copy the application playbooks from ${BUILD_OUTPUT_PATH}/usr/lib/application/ansible to ${BUILD_OUTPUT_PATH}/staging/ansible" >&2
+        exit 1
+    fi
+fi
+
 # Stage metadata file, if present
 if [ -e usr/lib/application/metadata.yaml ]; then
     cp usr/lib/application/metadata.yaml staging/.
