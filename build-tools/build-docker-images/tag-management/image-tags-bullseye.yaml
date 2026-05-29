@@ -201,3 +201,15 @@ images:
     src_build_tag: master-debian-stable-20260215T051000Z.0
     src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/9b8a408aa82a9e3f4427d794ad8ad2395e397578
     tag: stx.12.0-v1.0.0
+  - name: docker.io/starlingx/stx-ovs-manager-operator
+    src_build_tag: master-debian-bullseye-amd64-stable-20260528T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/255f9d05bdaf439851cd4c384820f9841fd26b17
+    tag: stx.13.0-v1.0.0-bullseye
+  - name: docker.io/starlingx/stx-ovs-container
+    src_build_tag: master-debian-bullseye-amd64-stable-20260528T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/255f9d05bdaf439851cd4c384820f9841fd26b17
+    tag: stx.13.0-v1.0.0-bullseye
+  - name: docker.io/starlingx/stx-ovs-agent-operator
+    src_build_tag: master-debian-bullseye-amd64-stable-20260529T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/255f9d05bdaf439851cd4c384820f9841fd26b17
+    tag: stx.13.0-v1.0.0-bullseye
