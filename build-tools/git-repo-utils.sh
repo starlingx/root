@@ -144,7 +144,7 @@ git_repo_review_method () {
     review_host="$(grep host= ${GIT_DIR}/.gitreview | sed 's#^host=##' | head -n 1)"
     remote_url="$(git_repo_remote_url)" || return 1
     remote_host="$(url_to_host "${remote_url}")"
-    if [ "${review_host}" == "{remote_host}" ]; then
+    if [ "${review_host}" == "${remote_host}" ]; then
         # Will review against same host as we pulled from.  All is well
         echo 'gerrit'
         return 0

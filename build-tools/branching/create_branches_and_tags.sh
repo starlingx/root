@@ -230,30 +230,31 @@ update_gitreview () {
                 echo_stderr "running git review -s in ${DIR}"
                 with_retries -d 45 -t 15 -k 5 5 git review -s >&2
                 if [ $? != 0 ] ; then
-                    if [ ${new_host} -eq 0 ]; then
-                        echo_stderr "ERROR: 3: failed to setup git review in ${DIR}"
-                        exit 1
-                    fi
-
-                    need_rm=1
-                    message="Delete .gitreview for ${branch}"
+                    # git review -s failed. This could be a transient network
+                    # issue rather than a genuine host mismatch. Fail hard
+                    # so the operator can investigate, rather than silently
+                    # deleting .gitreview.
+                    echo_stderr "ERROR: failed to setup git review in ${DIR}"
+                    echo_stderr "       If the review host is incompatible, re-run"
+                    echo_stderr "       with a different --gitreview-host or remove"
+                    echo_stderr "       .gitreview manually."
+                    exit 1
                 fi
                 echo_stderr "finished git review -s in ${DIR}"
-            else
-                need_rm=1
-                message="Delete .gitreview for ${branch}"
-            fi
 
-            if [ ${need_rm} -eq 1 ]; then
-                git rm -f .gitreview
+                git add .gitreview
                 if [ $? != 0 ] ; then
                     echo_stderr "ERROR: failed to add .gitreview in ${DIR}"
                     exit 1
                 fi
             else
-                git add .gitreview
+                # Non-gerrit review method: remove .gitreview to prevent
+                # accidentally sending reviews to an incompatible host.
+                message="Delete .gitreview for ${branch}"
+
+                git rm -f .gitreview
                 if [ $? != 0 ] ; then
-                    echo_stderr "ERROR: failed to add .gitreview in ${DIR}"
+                    echo_stderr "ERROR: failed to remove .gitreview in ${DIR}"
                     exit 1
                 fi
             fi
