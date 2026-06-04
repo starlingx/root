@@ -30,6 +30,9 @@ FROM debian:${RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Limit apt retries to prevent infinite retry loops that flood build logs
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
+
 # Disable upstream debian repos
 RUN mv /etc/apt/sources.list /etc/apt/sources.list.disabled
 

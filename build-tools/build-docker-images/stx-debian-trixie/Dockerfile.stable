@@ -27,6 +27,9 @@ FROM debian:${RELEASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Limit apt retries to prevent infinite retry loops that flood build logs
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
+
 # FIXME: Remove group entries from /etc/gshadow that conflict with systemd-sysusers
 # basic.conf. The upstream debian image pre-populates these via base-passwd;
 # systemd-sysusers will recreate them correctly when systemd is installed.
