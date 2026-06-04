@@ -826,10 +826,14 @@ class Deb_aptly():
         for publish in publish_list:
             # Remove all related publish including quick publish
             if publish.prefix.startswith(name + '-') or publish.prefix == name:
-                task = self.aptly.publish.drop(prefix=publish.prefix, distribution=DEBIAN_DISTRIBUTION, force_delete=True)
-                task_state = self.__wait_for_task(task)
-                if task_state != 'SUCCEEDED':
-                    self.logger.warning('Drop publish failed %s : %s', name, task_state)
+                try:
+                    task = self.aptly.publish.drop(prefix=publish.prefix, distribution=DEBIAN_DISTRIBUTION, force_delete=True)
+                    task_state = self.__wait_for_task(task)
+                    if task_state != 'SUCCEEDED':
+                        self.logger.warning('Drop publish failed %s : %s', name, task_state)
+                except Exception as e:
+                    self.logger.warning('Drop publish %s/%s: %s (ignored)',
+                                        publish.prefix, DEBIAN_DISTRIBUTION, e)
 
         # find and remove related snapshot
         snap_list = self.aptly.snapshots.list()
