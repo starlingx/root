@@ -29,3 +29,7 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260528T220100Z.0
     src_ref: https://opendev.org/starlingx/app-openvswitch/commit/255f9d05bdaf439851cd4c384820f9841fd26b17
     tag: stx.13.0-v1.0.0-trixie
+  - name: docker.io/starlingx/stx-kubevirt-app
+    src_build_tag: master-debian-trixie-amd64-stable-20260603T220101Z.0
+    src_ref: https://opendev.org/starlingx/app-kubevirt/commit/1031c18dbafd48454b5f1455fed5ca542f9c78e9
+    tag: stx.13.0-v1.8.2-trixie
