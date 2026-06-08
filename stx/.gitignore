@@ -27,6 +27,7 @@ installer-prebuilt
 /app-oran-o2
 /apt-ostree
 /app-power-metrics
+/app-prometheus
 /app-ptp-metrics-exporter
 /app-reloader
 /app-rook-ceph
