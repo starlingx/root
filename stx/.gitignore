@@ -28,6 +28,7 @@ installer-prebuilt
 /apt-ostree
 /app-power-metrics
 /app-ptp-metrics-exporter
+/app-reloader
 /app-rook-ceph
 /app-seaweedfs
 /app-security-profiles-operator
