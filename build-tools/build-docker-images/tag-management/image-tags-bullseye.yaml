@@ -177,9 +177,9 @@ images:
     tag: stx.9.0-v2.3.0
     # Tag based on upstream package version
   - name: docker.io/starlingx/telegraf
-    src_build_tag: master-debian-stable-20251216T051000Z.0
-    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/40d003f066e58003cc711a317a2a8c7587f08f28
-    tag: stx.12.0-v1.36.4
+    src_build_tag: master-debian-bullseye-amd64-stable-20260607T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/5b407f90ff59de0c9a6b0cedfa7748b992ffefae
+    tag: stx.13.0-v1.38.3-bullseye
   - name: docker.io/starlingx/metrics-exporter-api
     src_build_tag: master-debian-stable-20260211T051000Z.0
     src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/21d23854280037a4f8c86be050a0a5b642bcdc97
