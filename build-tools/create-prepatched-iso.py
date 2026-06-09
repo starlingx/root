@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2024 Wind River Systems,Inc
+# Copyright (C) 2024-2026 Wind River Systems,Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 # - Should be run from inside the LAT container, part of the STX build env,
 #   as this requires several env variables and dependencies readily available
 #   in it.
-# - tools repo present in MY_REPO_ROOT_DIR, as 'base-bullseye.yaml' is used;
+# - tools repo present in MY_REPO_ROOT_DIR, as 'base-<codename>.yaml' is used;
 #
 
 # This enables usage of "A|B" type hints, which are not available in py39 yet
@@ -58,25 +58,33 @@ logging.basicConfig(level=logging.INFO,
 
 # === Get env variables === #
 
+# TODO: Either have the script check if it's running inside LAT or have it be
+#       able to run outside the build containers. Checking for env variables
+#       without any info about how the user can define them is a bad idea.
 # Note all these variables are automatically set inside a LAT container
 REQUIRED_ENV_VARIABLES = [
+    "DIST",
     "HTTP_SERVER_IP",
     "MY_REPO_ROOT_DIR",
     "MYUNAME",
     "PROJECT",
 ]
 
+DIST = os.environ.get("DIST")
 HTTP_SERVER_IP = os.environ.get("HTTP_CONTAINER_IP")
 MY_REPO_ROOT_DIR = os.environ.get("MY_REPO_ROOT_DIR", default="")
 MYUNAME = os.environ.get("MYUNAME")
 PROJECT = os.environ.get("PROJECT")
 
+# TODO: apt-ostree support for Trixie is not available yet, so apt-ostree calls
+#       currently set "bullseye" as the "release" param
+
 
 # === Parameters === #
 
-BASE_BULLSEYE_YAML_PATH = os.path.join(
+BASE_DIST_YAML_PATH = os.path.join(
     MY_REPO_ROOT_DIR, "stx-tools", "debian-mirror-tools", "config", "debian",
-    "common", "base-bullseye.yaml")
+    DIST, "common", f"base-{DIST}.yaml")
 
 # This is used to help validate content packed into the output ISO
 EXPECTED_ISO_CONTENTS = {
@@ -320,7 +328,7 @@ def unmount_iso(mountpoint: str) -> None:
 
 
 def get_value_from_yaml(concatenated_key: str,
-                        yaml_path: str = BASE_BULLSEYE_YAML_PATH) -> Any:
+                        yaml_path: str = BASE_DIST_YAML_PATH) -> Any:
     """Get value associated to a composed key from a yaml file.
 
     :param concatenated_key: Key for searching a value. For selecting
@@ -329,8 +337,12 @@ def get_value_from_yaml(concatenated_key: str,
     :returns: Value for the key
     """
 
-    with open(yaml_path, mode="r") as stream:
-        data = yaml.safe_load(stream)
+    try:
+        with open(yaml_path, mode="r") as stream:
+            data = yaml.safe_load(stream)
+    except FileNotFoundError:
+        error_msg = "Yaml file not found. "
+        raise YamlParsingException(error_msg, concatenated_key, yaml_path)
 
     keys = concatenated_key.split(".")
     for key in keys:
@@ -951,6 +963,7 @@ def main():
 
         # Here we setup our gpg client if needed
         if sign_gpg:
+            logger.debug(f"Extracting GPG signing info from: {BASE_DIST_YAML_PATH}")
             setup_gpg_client()
 
         # We delete the patches folder from the base iso and recreate it
