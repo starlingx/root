@@ -61,6 +61,7 @@ installer-prebuilt
 /monitoring
 /nfv
 /nginx-ingress-controller-armada-app
+/oauth2-proxy-app
 /oidc-auth-armada-app
 /openstack-armada-app
 /platform-armada-app
