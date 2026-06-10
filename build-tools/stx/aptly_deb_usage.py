@@ -60,10 +60,33 @@ class Deb_aptly():
         self.url = url
         self.aptly = Client(self.url)
         self.logger.info('Aptly connected, version: %s', self.aptly.misc.version())
+        self._db_health_check()
         if origin:
             self.origin = origin.strip() or None
         else:
             self.origin = None
+
+    def _db_health_check(self):
+        '''Verify the aptly database is usable by listing repos.
+        If the DB is corrupt (e.g. Go time format mismatch after an
+        aptly/container upgrade), detect it early and provide a clear
+        error message with recovery instructions.'''
+        try:
+            self.aptly.repos.list()
+        except Exception as e:
+            err_str = str(e)
+            if 'UnmarshalBinary' in err_str or ('500' in err_str and 'Internal Server Error' in err_str):
+                recovery_msg = (
+                    'Aptly database is corrupt: %s\n'
+                    'This typically happens when reusing a workspace created '
+                    'by a different version of the build tools.\n'
+                    'To fix, run the following commands outside of "stx shell":\n'
+                    "  stx shell --container repomgr -c 'rm -rf /var/aptly/db'\n"
+                    '  stx control stop --wait\n'
+                    '  stx control start --wait\n' % e)
+                self.logger.error(recovery_msg)
+                raise Exception(recovery_msg) from e
+            raise
 
     # Create a remote mirror(make sure the name has specified prefix)
     # Input
