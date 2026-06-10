@@ -37,3 +37,7 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260607T220101Z.0
     src_ref: https://opendev.org/starlingx/app-power-metrics/commit/5b407f90ff59de0c9a6b0cedfa7748b992ffefae
     tag: stx.13.0-v1.38.3-trixie
+  - name: docker.io/starlingx/stx-audit
+    src_build_tag: master-debian-trixie-amd64-stable-20260609T220101Z.0
+    src_ref: https://opendev.org/starlingx/audit-armada-app/commit/959e2f85913a63acf71dec9927e4c2d862eaa568
+    tag: stx.13.0-v1.0.1-trixie
