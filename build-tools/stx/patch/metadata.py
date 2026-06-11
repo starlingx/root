@@ -137,19 +137,35 @@ class PatchMetadata(object):
         return result
 
 
-    # Note this is used as a helper to parse lists from XML inputs.
-    def __assert_type_is_list(self, intended_list):
+    def parse_xml_list(self, patch_recipe, list_tag, item_tag):
         """
-        Return a list of strings, converting the input data type when necessary.
+        Parse list extracted from the patch recipe XML.
+        If the XML list has no items, return an empty list.
+        If the XML list has a single item, return it inside a list.
         """
 
-        if isinstance(intended_list, str):
-            return [intended_list]
+        target_list = patch_recipe.get(list_tag)
 
-        if isinstance(intended_list, list):
-            return intended_list
+        # XML list has no items
+        if not target_list:
+            return []
 
-        raise Exception(f"Valid inputs are 'str' and 'list'. Input received: {intended_list}")
+        try:
+            data = target_list[item_tag]
+        except KeyError:
+            err_msg = f"'{item_tag}' is not the item tag used for XML list '{list_tag}'"
+            raise Exception(err_msg)
+
+        # XML list has a single item. The conversion to a dict will store it
+        # as a string instead a list with the string inside.
+        if isinstance(data, str):
+            return [data]
+
+        # XML list with many items
+        if isinstance(data, list):
+            return data
+
+        raise Exception(f"Failed to extract XML list from patch recipe: {list_tag}")
 
 
     # TODO: The feature of searching for content in MY_REPO_ROOT_DIR needs to
@@ -197,9 +213,9 @@ class PatchMetadata(object):
         self.patch_id = f"{patch_recipe.get(COMPONENT)}-{patch_recipe.get(SW_VERSION)}"
 
         # Lists (removing the xml item tag)
-        self.stx_packages = self.__assert_type_is_list(patch_recipe.get(STX_PACKAGES, {}).get('package', []))
-        self.binary_packages = self.__assert_type_is_list(patch_recipe.get(BINARY_PACKAGES, {}).get('package', []))
-        self.requires = self.__assert_type_is_list(patch_recipe.get(REQUIRES, {}).get('id', []))
+        self.stx_packages = self.parse_xml_list(patch_recipe, STX_PACKAGES, 'package')
+        self.binary_packages = self.parse_xml_list(patch_recipe, BINARY_PACKAGES, 'package')
+        self.requires = self.parse_xml_list(patch_recipe, REQUIRES, 'id')
 
         # Various patch script fields, validating paths
         self.patch_script_paths = {
