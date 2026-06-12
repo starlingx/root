@@ -800,6 +800,10 @@ function build_image_docker {
         BASE_BUILD_ARGS+=(--build-arg no_proxy=$NO_PROXY)
     fi
 
+    if [ ! -z "$WHEELS" ]; then
+        BASE_BUILD_ARGS+=(--build-arg WHEELS=${WHEELS})
+    fi
+
     BASE_BUILD_ARGS+=(--tag ${build_image_name})
     docker_build_with_retries ${BASE_BUILD_ARGS[@]} 2>&1 | tee ${WORKDIR}/docker-${LABEL}-${OS_LABEL}-${BUILD_STREAM}.log
 
