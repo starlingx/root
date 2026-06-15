@@ -46,3 +46,11 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260609T220101Z.0
     src_ref: https://opendev.org/starlingx/audit-armada-app/commit/959e2f85913a63acf71dec9927e4c2d862eaa568
     tag: stx.13.0-v1.0.1-trixie
+  - name: docker.io/starlingx/stx-ipsec-policy-agent-operator
+    src_build_tag: master-debian-trixie-amd64-stable-20260614T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/ab771224d69a695fb0ef5def98724472012577ec
+    tag: stx.13.0-v1.0.0-trixie
+  - name: docker.io/starlingx/stx-ipsec-policy-manager-operator
+    src_build_tag: master-debian-trixie-amd64-stable-20260614T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/ab771224d69a695fb0ef5def98724472012577ec
+    tag: stx.13.0-v1.0.0-trixie
