@@ -18,7 +18,8 @@ def merge_dicts(main: dict, custom: dict) -> None:
 
 def handle_manifests_merge(main_manifests_path: str, custom_manifests_path: str):
     with open(main_manifests_path, 'r') as main_file, open(custom_manifests_path, 'r') as custom_file:
-        yaml_parser = YAML(typ='safe', pure=True)
+        yaml_parser = YAML()
+        yaml_parser.preserve_quotes = True
         main_data = yaml_parser.load(main_file)
         custom_data = yaml_parser.load(custom_file)
     # If both main file data and custom data are identical, no merge is needed
@@ -35,6 +36,7 @@ def handle_manifests_merge(main_manifests_path: str, custom_manifests_path: str)
 
     with open(main_manifests_path, 'w') as main_file:
         yaml_writer = YAML()
+        yaml_writer.preserve_quotes = True
         yaml_writer.default_flow_style = False
         yaml_writer.dump(merged_data, main_file)
 
