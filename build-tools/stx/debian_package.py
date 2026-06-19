@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Copyright (C) 2026 WindRiver Corporation
+# Copyright (C) 2024-2026 Wind River Systems, Inc.
 
 #!/usr/bin/env python3
 # VERSION: 2026-02-17-16:20 - Fixed Build-Depends-Arch reading
@@ -130,6 +130,7 @@ class DebianSourcePackage:
         'need-build', 'reusable',
         'reuse-downloading', 'reuse-downloaded',
         'unbuilt', 'building', 'built', 'build-failed',
+        'dep-blocked', 'dep-failed',
         'uploading', 'uploaded', 'published'
     }
 
@@ -153,6 +154,11 @@ class DebianSourcePackage:
         self.layer = None  # Layer name (e.g., 'distro', 'flock')
         self.build_type = None  # Build type (e.g., 'std', 'rt')
         self.package_dir = None  # Package root directory path
+
+        # Build state (used by build-pkgs-2.0)
+        self.dsc_path = None        # Path to .dsc after repack
+        self.build_count = 0        # Build retry counter
+        self.reuse_source = None    # 'local_cache', 'remote_shared', None
 
     def get_status(self):
         """Get the current status."""
