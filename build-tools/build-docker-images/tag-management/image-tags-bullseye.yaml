@@ -193,10 +193,10 @@ images:
     src_ref: https://opendev.org/starlingx/openstack-armada-app/commit/fbb747ca744fe2161401c342654b725c374cba84
     tag: stx.10.0-v1.0.0
   - name: docker.io/starlingx/security-profiles-operator
-    src_build_tag: master-debian-stable-20251201T051000Z.0
-    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/20aaa28c2279bf406520fb74120e9a019fa7c91c
+    src_build_tag: master-debian-bullseye-amd64-stable-20260709T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/67f2f0b13601eb17ea52c28fc1d2a171d9a8dd43
     # Tag based on upstream package version
-    tag: stx.12.0-v0.8.3-1
+    tag: stx.13.0-v1.0.0-1-bullseye
   - name: docker.io/starlingx/kmm-builder
     src_build_tag: master-debian-stable-20260215T051000Z.0
     src_ref: https://opendev.org/starlingx/app-kernel-module-management/commit/9b8a408aa82a9e3f4427d794ad8ad2395e397578

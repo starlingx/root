@@ -62,3 +62,8 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260707T220100Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/675da623dc2bfb840914fa983df49d8f7a665897
     tag: stx.13.0-v1.0.12-trixie
+  - name: docker.io/starlingx/security-profiles-operator
+    src_build_tag: master-debian-trixie-amd64-stable-20260708T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/67f2f0b13601eb17ea52c28fc1d2a171d9a8dd43
+    # Tag based on upstream package version
+    tag: stx.13.0-v1.0.0-1-trixie
