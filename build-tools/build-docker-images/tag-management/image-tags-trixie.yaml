@@ -54,3 +54,7 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260614T220100Z.0
     src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/ab771224d69a695fb0ef5def98724472012577ec
     tag: stx.13.0-v1.0.0-trixie
+  - name: docker.io/starlingx/metrics-exporter-api
+    src_build_tag: master-debian-trixie-amd64-stable-20260625T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-node-interface-metrics-exporter/commit/b4b3a10f6d3699d4868209f5cbca92f3dc1aa6f9
+    tag: stx.13.0-v3.0.0-trixie
