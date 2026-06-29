@@ -35,6 +35,7 @@ installer-prebuilt
 /app-security-profiles-operator
 /app-sriov-fec-operator
 /app-sts-silicom/
+/app-upgrade-operator
 /audit-armada-app
 /cert-manager-armada-app
 /clients
