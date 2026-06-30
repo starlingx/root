@@ -64,9 +64,9 @@ images:
     # Tag determined based on release tag associated with upstream commit
     tag: stx.4.0-v2.14.0-1
   - name: docker.io/starlingx/stx-kubevirt-app
-    src_build_tag: master-debian-bullseye-amd64-stable-20260623T041000Z.0
-    src_ref: https://opendev.org/starlingx/app-kubevirt/commit/304f3d9c4e5e5436cc2e955a112607446fb4d111
-    tag: stx.13.0-v1.8.2-1-bullseye
+    src_build_tag: master-debian-bullseye-amd64-stable-20260630T041000Z.0
+    src_ref: https://opendev.org/starlingx/app-kubevirt/commit/e894f8c4fefb3b387e4d26e885c026ea2c3a1524
+    tag: stx.13.0-v1.8.2-2-bullseye
   - name: docker.io/starlingx/n3000-opae
     src_build_tag: master-debian-stable-20220912T060002Z.0
     src_ref: https://opendev.org/starlingx/integ/commit/896bd432a2d934c55a2ec793de8b2190e992f3e3
