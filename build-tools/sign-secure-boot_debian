@@ -59,15 +59,15 @@ if [ -z "${SHIM_VERSION}" ]; then
 fi
 
 # Get grub-efi deb version number.
-GRUB_EFI_DEB=$(ls ${MY_WORKSPACE}/std/grub-efi/grub-efi-amd64_*_amd64.deb)
+GRUB_EFI_DEB=$(ls ${MY_WORKSPACE}/std/grub2/grub-efi-amd64-bin_*_amd64.deb)
 GRUB_EFI_DEB=${GRUB_EFI_DEB##*/}
 if [ -z "${GRUB_EFI_DEB}" ]; then
-    echo "No grub-efi-amd64 deb!"
+    echo "No grub-efi-amd64-bin deb!"
     exit 1
 fi
 GRUB_EFI_VERSION=$(echo ${GRUB_EFI_DEB} | cut -d '_' -f 2)
 if [ -z "${GRUB_EFI_VERSION}" ]; then
-    echo "Wrong grub-efi-amd64 deb version!"
+    echo "Wrong grub-efi-amd64-bin deb version!"
     exit 1
 fi
 
@@ -127,16 +127,16 @@ repo_manage.py upload_pkg -r deb-local-build -p ./shim-unsigned_${SHIM_VERSION}_
 echo "***Finish signing shim***"
 
 echo "***(2) Start signing grub***"
-cd ${MY_WORKSPACE}/std/grub-efi
+cd ${MY_WORKSPACE}/std/grub2
 ls sign > /dev/null && echo "Removing old sign folder!" && sudo rm sign -rf
 mkdir sign
-cp grub-efi-amd64_${GRUB_EFI_VERSION}_amd64.deb ./sign \
-    || { echo "No right grub-efi-amd64 deb!"; exit 1; }
+cp grub-efi-amd64-bin_${GRUB_EFI_VERSION}_amd64.deb ./sign \
+    || { echo "No right grub-efi-amd64-bin deb!"; exit 1; }
 cd sign
-# Raw-extract grub-efi-amd64 deb
-sudo dpkg-deb -R grub-efi-amd64_${GRUB_EFI_VERSION}_amd64.deb ./grub-efi-amd64 \
-    || { echo "Fail to extract grub-efi-amd64 deb"; exit 1; }
-cd ./grub-efi-amd64/boot/efi/EFI/BOOT
+# Raw-extract grub-efi-amd64-bin deb
+sudo dpkg-deb -R grub-efi-amd64-bin_${GRUB_EFI_VERSION}_amd64.deb ./grub-efi-amd64-bin \
+    || { echo "Fail to extract grub-efi-amd64-bin deb"; exit 1; }
+cd ./grub-efi-amd64-bin/boot/efi/EFI/BOOT
 
 # Copy grubx64.efi to signing server
 scp ${SSH_OPTION_NOCHECKING} grubx64.efi ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
@@ -151,12 +151,12 @@ sudo scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PAT
 
 cd -
 # Repack the grub-efi-amd64 package and replace the one in the repo
-dpkg-deb -b ./grub-efi-amd64 grub-efi-amd64_${GRUB_EFI_VERSION}_amd64.deb \
-    || { echo "Fail to repack the grub-efi-amd64 package!"; exit 1; }
-repo_manage.py delete_pkg -r deb-local-build -p grub-efi-amd64 -t binary -v ${GRUB_EFI_VERSION} \
-    || { echo "Fail to delete the old grub-efi-amd64 package from repo!"; exit 1; }
-repo_manage.py upload_pkg -r deb-local-build -p ./grub-efi-amd64_${GRUB_EFI_VERSION}_amd64.deb \
-    || { echo "Fail to upload the new grub-efi-amd64 package to repo!"; exit 1; }
+dpkg-deb -b ./grub-efi-amd64-bin grub-efi-amd64-bin_${GRUB_EFI_VERSION}_amd64.deb \
+    || { echo "Fail to repack the grub-efi-amd64-bin package!"; exit 1; }
+repo_manage.py delete_pkg -r deb-local-build -p grub-efi-amd64-bin -t binary -v ${GRUB_EFI_VERSION} \
+    || { echo "Fail to delete the old grub-efi-amd64-bin package from repo!"; exit 1; }
+repo_manage.py upload_pkg -r deb-local-build -p ./grub-efi-amd64-bin_${GRUB_EFI_VERSION}_amd64.deb \
+    || { echo "Fail to upload the new grub-efi-amd64-bin package to repo!"; exit 1; }
 echo "***Finish signing grub***"
 
 echo "***(3) Prepare gpg signing for lat genimage***"
