@@ -101,7 +101,7 @@ class PackageMetadata:
         v = self._raw.get('debver', '')
         if not v:
             raise ValueError(f"No debver in {self._meta_file}")
-        return v.rstrip('@')
+        return str(v).rstrip('@')
 
     @property
     def tarball_size(self):
