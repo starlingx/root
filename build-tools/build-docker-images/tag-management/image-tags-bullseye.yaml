@@ -55,9 +55,9 @@ images:
     src_ref: https://opendev.org/starlingx/app-ipsec-policy-operator/commit/ab771224d69a695fb0ef5def98724472012577ec
     tag: stx.13.0-v1.0.0-bullseye
   - name: docker.io/starlingx/stx-oidc-client
-    src_build_tag: master-debian-bullseye-amd64-stable-20260526T041000Z.0
-    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/e50dc1bf7dd7ae14de0e980f6a0651e5488a5f26
-    tag: stx.13.0-v1.0.11
+    src_build_tag: master-debian-bullseye-amd64-stable-20260708T041000Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/675da623dc2bfb840914fa983df49d8f7a665897
+    tag: stx.13.0-v1.0.12-bullseye
   - name: docker.io/starlingx/dex
     src_build_tag: master-centos-stable-20200204T162546Z.0
     src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/5d6701bdf214e77f460f2e3dd2b6f7d3186830c8
