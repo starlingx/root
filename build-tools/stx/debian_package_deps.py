@@ -75,8 +75,14 @@ class DependencyAnalyzer:
 
     def _build_mappings(self):
         """Build the binary->source and source->binaries mappings."""
+        # Use binary_packages_unified if available, otherwise fall back to
+        # binary_packages_from_source (populated by load_source_from_starlingx_sources)
+        bin_packages = self.package_set.binary_packages_unified
+        if not bin_packages:
+            bin_packages = self.package_set.binary_packages_from_source
+
         # Map all binary packages to their source packages
-        for bin_name, bin_pkg in self.package_set.binary_packages_unified.items():
+        for bin_name, bin_pkg in bin_packages.items():
             if bin_pkg.source_package:
                 self.binary_to_source[bin_name] = bin_pkg.source_package
 
@@ -144,28 +150,94 @@ class DependencyAnalyzer:
     _KERNEL_VERSIONED_RE = re.compile(
         r'^linux(?:-rt)?-(?:headers|image|kbuild|modules|support|compiler-gcc-\d+)-\d')
 
-    def is_dep_satisfied(self, dep_name: str, apt_cache=None) -> bool:
+    def is_dep_satisfied(self, dep_name: str, apt_cache=None, dep_str: str = None) -> bool:
         """Check if a dependency is satisfied by the unified package set.
 
         Checks:
-        1. Direct presence in binary_packages_unified
+        1. Direct presence in binary_packages_unified (with version check if constraint given)
         2. Virtual package with a provider in the unified set
         3. Kernel-versioned package whose source we build
+        4. Available in apt cache at a satisfying version
+
+        Args:
+            dep_name: Clean package name (no version constraint)
+            apt_cache: Optional apt cache for fallback checks
+            dep_str: Optional full dependency string with version constraint
+                     (e.g., 'libpq5 (= 13.23)')
         """
-        if dep_name in self.package_set.binary_packages_unified:
+        # Parse version constraint if dep_str provided
+        relation, req_version = self._parse_version_constraint(dep_str) if dep_str else (None, None)
+
+        # Check binary_packages_unified
+        bin_packages = self.package_set.binary_packages_unified
+        if not bin_packages:
+            bin_packages = self.package_set.binary_packages_from_source
+        if dep_name in bin_packages:
+            if relation and req_version:
+                pkg = bin_packages[dep_name]
+                if pkg.version and not self._version_satisfies(pkg.version, relation, req_version):
+                    return False
             return True
+
         # Check virtual package providers
-        if apt_cache and apt_cache.is_virtual_package(dep_name):
+        if apt_cache and dep_name in apt_cache and apt_cache.is_virtual_package(dep_name):
             providers = apt_cache.get_providing_packages(dep_name)
-            if any(p.name in self.package_set.binary_packages_unified for p in providers):
+            if any(p.name in bin_packages for p in providers):
                 return True
+
         # Check kernel-versioned packages (e.g. linux-headers-6.6.0-1-amd64)
         # These are produced at build time by source packages we compile
         m = self._KERNEL_VERSIONED_RE.match(dep_name)
         if m and ('linux' in self.package_set.source_packages or
                   'linux-rt' in self.package_set.source_packages):
             return True
+
+        # Check apt cache — package available from upstream at satisfying version
+        if apt_cache and dep_name in apt_cache:
+            pkg = apt_cache[dep_name]
+            if pkg.candidate:
+                if relation and req_version:
+                    return self._version_satisfies(pkg.candidate.version, relation, req_version)
+                return True
+
         return False
+
+    @staticmethod
+    def _parse_version_constraint(dep_str):
+        """Extract version relation and version from a dep string.
+
+        Examples:
+            'libpq5 (= 13.23)' -> ('=', '13.23')
+            'libc6 (>= 2.31)' -> ('>=', '2.31')
+            'libfoo' -> (None, None)
+        """
+        if not dep_str:
+            return None, None
+        match = re.search(r'\(\s*([><=!]+)\s*([^)]+)\)', dep_str)
+        if match:
+            return match.group(1).strip(), match.group(2).strip()
+        return None, None
+
+    @staticmethod
+    def _version_satisfies(have_version, relation, req_version):
+        """Check if have_version satisfies the relation against req_version."""
+        try:
+            cmp = apt_pkg.version_compare(have_version, req_version)
+        except Exception:
+            return True  # Can't compare — assume satisfied
+        if relation == '=':
+            return cmp == 0
+        elif relation == '>=':
+            return cmp >= 0
+        elif relation == '>>':
+            return cmp > 0
+        elif relation == '<=':
+            return cmp <= 0
+        elif relation == '<<':
+            return cmp < 0
+        elif relation == '!=':
+            return cmp != 0
+        return True
 
     def get_unsatisfied_build_deps(self, build_types: List[str] = None,
                                    apt_cache=None,
@@ -188,7 +260,8 @@ class DependencyAnalyzer:
         skipped_templates = []
 
         for src_name, src_pkg in self.package_set.source_packages.items():
-            for dep_str in src_pkg.build_depends:
+            all_build_deps = src_pkg.build_depends + src_pkg.build_depends_indep
+            for dep_str in all_build_deps:
                 dep_name = self._clean_dependency(dep_str)
                 if not dep_name:
                     continue
@@ -264,9 +337,21 @@ class DependencyAnalyzer:
         Returns:
             Dict mapping binary_pkg_name -> {'missing': [dep_names], 'source': source_pkg_name}
             Only packages with unsatisfied deps are included.
+
+            Also sets self._missing_dep_details: dict mapping dep_name -> {
+                'required': version constraint string (e.g. '(= 1.2.3)') or None,
+                'available': version available in unified/apt or None,
+                'reason': short explanation string
+            }
         """
         # First pass: find direct missing deps of packages we have
         all_missing = {}  # dep_name -> set of packages needing it
+        self._missing_dep_details = {}  # dep_name -> version/reason info
+
+        bin_packages = self.package_set.binary_packages_unified
+        if not bin_packages:
+            bin_packages = self.package_set.binary_packages_from_source
+
         for bin_name, bin_pkg in self.package_set.binary_packages_unified.items():
             for dep_str in bin_pkg.depends + bin_pkg.pre_depends:
                 if '${' in dep_str:
@@ -278,15 +363,38 @@ class DependencyAnalyzer:
                     if not dep_name:
                         satisfied = True
                         break
-                    if self.is_dep_satisfied(dep_name, apt_cache):
+                    if self.is_dep_satisfied(dep_name, apt_cache, dep_str=alt):
                         satisfied = True
                         break
                 if not satisfied:
                     dep_name = self._clean_dependency(alternatives[0])
                     if dep_name:
-                        # Only report if the package exists in apt (real package we could add)
-                        if apt_cache and dep_name in apt_cache:
-                            all_missing.setdefault(dep_name, set()).add(bin_name)
+                        # Only report if the package exists in apt (real
+                        # downloadable package).  Virtual packages and ABI
+                        # markers (e.g. perlapi-5.32.0, qtbase-abi-5-15-2)
+                        # are not downloadable — they're provided by real
+                        # packages that should already be in our set.
+                        if not apt_cache or dep_name not in apt_cache:
+                            continue
+                        all_missing.setdefault(dep_name, set()).add(bin_name)
+                        # Record version details if not already captured
+                        if dep_name not in self._missing_dep_details:
+                            relation, req_ver = self._parse_version_constraint(alternatives[0])
+                            avail_ver = None
+                            reason = 'not in unified set or apt'
+                            if dep_name in bin_packages:
+                                avail_ver = bin_packages[dep_name].version
+                                reason = 'version mismatch (unified)'
+                            elif apt_cache[dep_name].candidate:
+                                avail_ver = apt_cache[dep_name].candidate.version
+                                reason = 'version mismatch (apt)'
+                            else:
+                                reason = 'no candidate version'
+                            self._missing_dep_details[dep_name] = {
+                                'required': f"({relation} {req_ver})" if relation else None,
+                                'available': avail_ver,
+                                'reason': reason,
+                            }
 
         # Transitive pass: chase deps of missing packages through apt cache
         if apt_cache:
@@ -305,11 +413,36 @@ class DependencyAnalyzer:
                             rd = base_dep.name
                             if rd in resolved:
                                 continue
-                            if self.is_dep_satisfied(rd, apt_cache):
+                            # Build dep_str with version for version-aware check
+                            rd_str = None
+                            if base_dep.relation:
+                                rd_str = f"{rd} ({base_dep.relation} {base_dep.version})"
+                            if self.is_dep_satisfied(rd, apt_cache, dep_str=rd_str):
+                                continue
+                            # Skip virtual/non-downloadable packages
+                            if rd not in apt_cache:
                                 continue
                             resolved.add(rd)
                             new_missing.add(rd)
                             all_missing.setdefault(rd, set()).add(dep_name)
+                            # Record version details for transitive dep
+                            if rd not in self._missing_dep_details:
+                                avail_ver = None
+                                reason = 'not in unified set or apt'
+                                if rd in bin_packages:
+                                    avail_ver = bin_packages[rd].version
+                                    reason = 'version mismatch (unified)'
+                                elif apt_cache[rd].candidate:
+                                    avail_ver = apt_cache[rd].candidate.version
+                                    reason = 'version mismatch (apt)'
+                                else:
+                                    reason = 'no candidate version'
+                                req_constraint = f"({base_dep.relation} {base_dep.version})" if base_dep.relation else None
+                                self._missing_dep_details[rd] = {
+                                    'required': req_constraint,
+                                    'available': avail_ver,
+                                    'reason': reason,
+                                }
                 to_resolve = new_missing
 
         # Convert to per-package format
@@ -326,7 +459,7 @@ class DependencyAnalyzer:
                     if not dep_name:
                         satisfied = True
                         break
-                    if self.is_dep_satisfied(dep_name, apt_cache):
+                    if self.is_dep_satisfied(dep_name, apt_cache, dep_str=alt):
                         satisfied = True
                         break
                 if not satisfied:
@@ -380,6 +513,8 @@ class DependencyAnalyzer:
                 # Get the binary package
                 bin_pkg = self.package_set.binary_packages_unified.get(pkg_name)
                 if not bin_pkg:
+                    bin_pkg = self.package_set.binary_packages_from_source.get(pkg_name)
+                if not bin_pkg:
                     continue
 
                 # Add all runtime dependencies
@@ -405,7 +540,7 @@ class DependencyAnalyzer:
         for src_name, src_pkg in self.package_set.source_packages.items():
             # Get all binary packages this source build-depends on
             build_deps = set()
-            for dep_str in src_pkg.build_depends:
+            for dep_str in src_pkg.build_depends + src_pkg.build_depends_indep:
                 dep_name = self._clean_dependency(dep_str)
                 if dep_name:
                     build_deps.add(dep_name)
