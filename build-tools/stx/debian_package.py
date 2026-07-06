@@ -93,11 +93,18 @@ class DebianBinaryPackage:
         self.source_package = pkg.candidate.source_name
 
         for dep_group in pkg.candidate.dependencies:
-            dep_list = [d.name for d in dep_group]
+            dep_strs = []
+            for d in dep_group:
+                if d.relation:
+                    dep_strs.append(f"{d.name} ({d.relation} {d.version})")
+                else:
+                    dep_strs.append(d.name)
+            # Store as alternates joined by ' | '
+            dep_str = ' | '.join(dep_strs)
             if dep_group.rawtype == 'PreDepends':
-                self.pre_depends.extend(dep_list)
+                self.pre_depends.append(dep_str)
             elif dep_group.rawtype == 'Depends':
-                self.depends.extend(dep_list)
+                self.depends.append(dep_str)
 
         if pkg.candidate.provides:
             self.provides = [p if isinstance(p, str) else p.name for p in pkg.candidate.provides]
