@@ -67,3 +67,15 @@ images:
     src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/67f2f0b13601eb17ea52c28fc1d2a171d9a8dd43
     # Tag based on upstream package version
     tag: stx.13.0-v1.0.0-1-trixie
+  - name: docker.io/starlingx/notificationservice-base-v2
+    src_build_tag: master-debian-trixie-amd64-stable-20260707T220100Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/89008e178d7bc214ef7eef7f7e759a3474101060
+    tag: stx.13.0-v2.6.0
+  - name: docker.io/starlingx/locationservice-base
+    src_build_tag: master-debian-trixie-amd64-stable-20260707T220100Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/89008e178d7bc214ef7eef7f7e759a3474101060
+    tag: stx.13.0-v2.3.0
+  - name: docker.io/starlingx/notificationclient-base
+    src_build_tag: master-debian-trixie-amd64-stable-20260707T220100Z.0
+    src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/89008e178d7bc214ef7eef7f7e759a3474101060
+    tag: stx.13.0-v2.5.0
