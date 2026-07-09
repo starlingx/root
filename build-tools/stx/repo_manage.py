@@ -56,22 +56,23 @@ class AptFetch():
         '''construct some directories for repo and temporary files'''
         # In case the sources_list is specified:
         #
-        # ├── apt-root               # For apt cache
+        # ├── apt-root                        # For apt cache
         # │   ├── etc
         # │   │   └── apt
-        # │   │       └── sources.list
+        # │   │       ├── sources.list
+        # │   │       └── trusted.gpg.d
         # │   └── var
         # │       ├── cache/apt
         # │       │   ├── lists/partial
         # │       │   └── archives/partial
         # │       └── lib/apt/lists/partial
-        # └── downloads              # Sub directory to store downloaded packages
+        # └── downloads                       # Sub directory to store downloaded packages
         #       ├── binary
         #       └── source
         #
         # In case the sources_list is ''
         # |
-        # └── downloads              # Sub directory to store downloaded packages
+        # └── downloads                       # Sub directory to store downloaded packages
         #       ├── binary
         #       └── source
         basedir = self.workdir
@@ -93,10 +94,23 @@ class AptFetch():
                 # Pre-creating with exist_ok=True is a safe no-op if apt
                 # handles it, and prevents lock failures when it does not.
                 apt_root = os.path.join(basedir, 'apt-root')
-                for d in ['var/cache/apt/lists/partial',
+                for d in ['etc/apt/trusted.gpg.d',
+                          'var/cache/apt/lists/partial',
                           'var/cache/apt/archives/partial',
                           'var/lib/apt/lists/partial']:
                     os.makedirs(os.path.join(apt_root, d), exist_ok=True)
+
+                # Adding local aptly gpg key
+                aptly_gpg_relpath = 'etc/apt/trusted.gpg.d/aptly_pubkey.gpg'
+                aptly_gpg_abspath = os.path.join('/', aptly_gpg_relpath)
+                aptly_gpg_copy = os.path.join(apt_root, aptly_gpg_relpath)
+                if os.path.isfile(aptly_gpg_abspath):
+                    shutil.copyfile(aptly_gpg_abspath,
+                                    aptly_gpg_copy)
+                else:
+                    self.logger.warning("Local aptly repo's GPG key not found: '%s'",
+                                        aptly_gpg_abspath)
+
             os.makedirs(os.path.join(basedir, 'downloads', 'binary'))
             os.makedirs(os.path.join(basedir, 'downloads', 'source'))
         except Exception as e:
@@ -113,6 +127,7 @@ class AptFetch():
         try:
             apt_root = os.path.join(self.workdir, 'apt-root')
             cachedir = os.path.join(apt_root, 'var', 'cache', 'apt')
+
             # Explicitly set apt_pkg config paths so update() uses our
             # rootdir instead of a random temp dir. Without this,
             # apt_pkg resolves Dir::State::Lists to a different path
@@ -121,6 +136,13 @@ class AptFetch():
             apt_pkg.config.set("Dir::Etc", os.path.join(apt_root, "etc", "apt"))
             apt_pkg.config.set("Dir::State::lists", os.path.join(cachedir, "lists"))
             apt_pkg.config.set("Dir::Cache::archives", os.path.join(cachedir, "archives"))
+
+            # Clear config defined in /etc/apt/apt.conf.d/docker-clean
+            # as it is meant to generate light docker images and that context
+            # does not apply to this case
+            apt_pkg.config.clear("APT::Update::Post-Invoke")
+            apt_pkg.config.clear("APT::Update::Post-Invoke-Success")
+
             self.aptcache = apt.Cache(rootdir=apt_root)
             ret = self.aptcache.update()
             if not ret:
