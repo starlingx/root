@@ -192,6 +192,11 @@ images:
     src_build_tag: master-debian-stable-20240402T160056Z.0
     src_ref: https://opendev.org/starlingx/openstack-armada-app/commit/fbb747ca744fe2161401c342654b725c374cba84
     tag: stx.10.0-v1.0.0
+  - name: docker.io/starlingx/oauth2-proxy
+    src_build_tag: master-debian-bullseye-amd64-stable-20260710T041005Z.0
+    src_ref: https://opendev.org/starlingx/oidc-auth-armada-app/commit/44ac3c293dcb1fb4ea3b027ce8ba9a8e133f9f9b
+    # Tag based on upstream oauth2-proxy version built from source
+    tag: stx.13.0-v7.15.2-bullseye
   - name: docker.io/starlingx/security-profiles-operator
     src_build_tag: master-debian-bullseye-amd64-stable-20260709T041000Z.0
     src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/67f2f0b13601eb17ea52c28fc1d2a171d9a8dd43
