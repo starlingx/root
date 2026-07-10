@@ -5,6 +5,7 @@ apache2
 apparmor-utils
 apt-utils
 auditd
+augeas-tools
 bash-completion
 bc
 bind9-dnsutils
@@ -302,6 +303,7 @@ targetcli-fb
 tasksel
 tasksel-data
 tcpdump
+thin-provisioning-tools
 time
 traceroute
 tuned
