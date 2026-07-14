@@ -428,12 +428,42 @@ if [ ${#MODULE_SRC[@]} -gt 0 ]; then
             exit 1
         fi
     done
+
+    # Build wheels from source modules on the host, so that the
+    # container does not need setuptools or wheel installed.
+    WHEELS_FROM_MODULES_DIR=${WORKDIR}/pip-packages/wheels
+    mkdir -p ${WHEELS_FROM_MODULES_DIR}
+    for mod_dir in ${MODULES_DIR}/*/; do
+        if [ ! -f "${mod_dir}/setup.py" ]; then
+            continue
+        fi
+        pushd ${mod_dir} >/dev/null || exit 1
+        python3 setup.py bdist_wheel -d ${WHEELS_FROM_MODULES_DIR}
+        if [ $? -ne 0 ]; then
+            echo "Failed to build wheel from: ${mod_dir}" >&2
+            exit 1
+        fi
+        popd >/dev/null || exit 1
+    done
+
+    for built_whl in ${WHEELS_FROM_MODULES_DIR}/*.whl; do
+        if [[ "$(basename ${built_whl})" != *-py3-none-any.whl ]] && \
+           [[ "$(basename ${built_whl})" != *-py2.py3-none-any.whl ]]; then
+            echo "Error: wheel is platform-specific and may be incompatible" >&2
+            echo "  ${built_whl}" >&2
+            echo "  Expected: py3-none-any.whl" >&2
+            exit 1
+        fi
+    done
+
+    rm -rf ${MODULES_DIR}
 fi
 
 popd
 
 # Finally, copy the internal-update-stx-image.sh script
 cp ${MY_SCRIPT_DIR}/internal-update-stx-image.sh ${WORKDIR}/
+cp ${MY_SCRIPT_DIR}/install_wheel.py ${WORKDIR}/
 
 # WORKDIR is setup, let's pull the image and update it
 

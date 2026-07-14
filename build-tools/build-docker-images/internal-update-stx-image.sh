@@ -11,6 +11,7 @@ UPDATES_DIR=/image-update
 PIP_PACKAGES_DIR=${UPDATES_DIR}/pip-packages
 DIST_PACKAGES_DIR=${UPDATES_DIR}/dist-packages
 CUSTOMIZATION_SCRIPT=${UPDATES_DIR}/customize.sh
+INSTALL_WHEEL_SCRIPT=${UPDATES_DIR}/install_wheel.py
 
 OS_NAME=$(source /etc/os-release && echo ${NAME})
 
@@ -82,21 +83,17 @@ function install_dist_packages {
 }
 
 function install_pip_packages {
-    local modules
     local wheels
-    modules=$(find ${PIP_PACKAGES_DIR}/modules/* -maxdepth 0 -type d 2>/dev/null)
+
     wheels=$(find ${PIP_PACKAGES_DIR}/wheels/ -type f -name '*.whl' 2>/dev/null)
 
-    if [ -z "${modules}" -a -z "${wheels}" ]; then
-        # Nothing to do
+    if [ -z "${wheels}" ]; then
         return 0
     fi
 
-    pip install -vvv --no-deps --no-index --pre --no-cache-dir --only-binary :all: --no-compile --force-reinstall \
-        ${modules} ${wheels}
-
+    python3 ${INSTALL_WHEEL_SCRIPT} ${wheels}
     if [ $? -ne 0 ]; then
-        echo "Failed pip install" >&2
+        echo "Failed wheel installation" >&2
         exit 1
     fi
 }
