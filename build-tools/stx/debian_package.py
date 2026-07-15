@@ -254,6 +254,10 @@ class DebianSourcePackage:
         self.name = meta.name
         self.version = meta.version
 
+        # Load scheduling hints from metadata
+        if meta.compile_priority_boost:
+            self.compile_priority_boost = meta.compile_priority_boost
+
         # Read control file if it exists to get binary packages and dependencies.
         control_path = meta.recipes_dir / 'deb_folder' / 'control'
         if control_path.exists():
@@ -433,6 +437,38 @@ class DebianSourcePackage:
                         except Exception:
                             pass
 
+        # If no size found from paths, estimate from downloaded tarballs
+        # dl_files/dl_path packages have compressed tarballs in the mirror
+        if total_size == 0 and self.meta_data:
+            meta = self.meta_data if isinstance(self.meta_data, PackageMetadata) else None
+            if meta:
+                dl_items = meta.downloads()
+                if dl_items:
+                    # Look for tarballs in the source mirror directory
+                    mirror_base = os.environ.get('OS_MIRROR', '')
+                    if mirror_base:
+                        pkg_mirror_dir = os.path.join(mirror_base, 'sources', self.name)
+                    else:
+                        # Fallback: try common mirror location
+                        pkg_mirror_dir = None
+                    for item in dl_items:
+                        tarball_path = None
+                        if pkg_mirror_dir:
+                            tarball_path = os.path.join(pkg_mirror_dir, item.name)
+                        if tarball_path and os.path.isfile(tarball_path):
+                            compressed_size = os.path.getsize(tarball_path)
+                        else:
+                            # Can't find on disk — skip this item
+                            continue
+                        # Estimate decompressed size from compression ratio
+                        if item.name.endswith(('.tar.xz', '.txz')):
+                            total_size += compressed_size * 7
+                        elif item.name.endswith(('.tar.bz2', '.tbz2')):
+                            total_size += compressed_size * 6
+                        else:
+                            # .tar.gz, .tgz, or unknown
+                            total_size += compressed_size * 5
+
         self.code_size = total_size
         return total_size
 
@@ -450,9 +486,15 @@ class DebianSourcePackage:
             return self.compile_complexity
 
         # Check if explicitly provided in metadata
-        if self.meta_data and 'compile_time' in self.meta_data:
-            self.compile_complexity = self.meta_data['compile_time']
-            return self.compile_complexity
+        if self.meta_data:
+            ct = None
+            if isinstance(self.meta_data, PackageMetadata):
+                ct = self.meta_data.compile_time
+            elif isinstance(self.meta_data, dict) and 'compile_time' in self.meta_data:
+                ct = self.meta_data['compile_time']
+            if ct:
+                self.compile_complexity = ct
+                return self.compile_complexity
 
         # Estimate from code size if available
         if self.code_size is None:

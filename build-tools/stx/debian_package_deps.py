@@ -150,6 +150,45 @@ class DependencyAnalyzer:
     _KERNEL_VERSIONED_RE = re.compile(
         r'^linux(?:-rt)?-(?:headers|image|kbuild|modules|support|compiler-gcc-\d+)-\d')
 
+    # Regex for static kernel meta-packages (e.g. linux-headers-stx-amd64,
+    # linux-rt-keys, linux-rt-headers-stx-amd64).  These are produced by
+    # the kernel build but don't appear in binary_to_source because the
+    # kernel uses dl_hook instead of a static debian/control.
+    _KERNEL_STATIC_RE = re.compile(
+        r'^linux(-rt)?-(headers-stx-|keys|image-stx-|support-|perf$)')
+
+    # Non-linux-prefixed binaries produced by the kernel build
+    _KERNEL_EXTRA_BINARIES = frozenset([
+        'bpftool', 'hyperv-daemons', 'libcpupower1', 'libcpupower-dev', 'usbip',
+    ])
+
+    def _infer_kernel_source(self, bin_name: str) -> Optional[str]:
+        """Infer the source package for a kernel binary not in binary_to_source.
+
+        Returns 'linux' or 'linux-rt' if the binary name matches kernel patterns
+        and that source package exists in our set, otherwise None.
+        """
+        # Check versioned pattern (linux-headers-6.6.0-1-amd64)
+        m = self._KERNEL_VERSIONED_RE.match(bin_name)
+        if m:
+            src = 'linux-rt' if '-rt-' in bin_name or bin_name.startswith('linux-rt') else 'linux'
+            if src in self.package_set.source_packages:
+                return src
+
+        # Check static meta-package pattern (linux-headers-stx-amd64, linux-keys)
+        m = self._KERNEL_STATIC_RE.match(bin_name)
+        if m:
+            src = 'linux-rt' if m.group(1) else 'linux'
+            if src in self.package_set.source_packages:
+                return src
+
+        # Check non-linux-prefixed binaries produced by the kernel
+        if bin_name in self._KERNEL_EXTRA_BINARIES:
+            if 'linux' in self.package_set.source_packages:
+                return 'linux'
+
+        return None
+
     def is_dep_satisfied(self, dep_name: str, apt_cache=None, dep_str: str = None) -> bool:
         """Check if a dependency is satisfied by the unified package set.
 
@@ -529,31 +568,114 @@ class DependencyAnalyzer:
 
         return all_deps
 
-    def analyze_source_dependencies(self):
+    def analyze_source_dependencies(self, build_types: List[str] = None, dsc_overrides: dict = None):
         """Analyze dependencies between source packages.
 
         For each source package:
         1. Get its Build-Depends (binary packages)
         2. Trace runtime dependencies of those packages
         3. Map back to source packages
+
+        Args:
+            build_types: List of build types for @KERNEL_TYPE@ expansion.
+                         Defaults to ['std', 'rt'].
+            dsc_overrides: Optional {pkg_name: dsc_path} mapping to read
+                          Build-Depends from specific .dsc files rather than
+                          src_pkg.build_depends. Used to ensure build-type-specific
+                          dependencies are resolved correctly (e.g., rt .dsc has
+                          linux-rt-headers-stx-amd64, std .dsc has linux-headers-stx-amd64).
         """
+        if not build_types:
+            build_types = ['std', 'rt']
+
         for src_name, src_pkg in self.package_set.source_packages.items():
             # Get all binary packages this source build-depends on
             build_deps = set()
-            for dep_str in src_pkg.build_depends + src_pkg.build_depends_indep:
+
+            # Use dsc_overrides to get correct build-type-specific Build-Depends
+            pkg_build_depends = src_pkg.build_depends
+            pkg_build_depends_indep = src_pkg.build_depends_indep
+            if dsc_overrides and src_name in dsc_overrides:
+                dsc_path = dsc_overrides[src_name]
+                try:
+                    from debian import deb822
+                    with open(dsc_path, 'r') as f:
+                        dsc = deb822.Dsc(f)
+                    if 'Build-Depends' in dsc:
+                        pkg_build_depends = [d.strip() for d in str(dsc['Build-Depends']).split(',')]
+                    if 'Build-Depends-Indep' in dsc:
+                        pkg_build_depends_indep = [d.strip() for d in str(dsc['Build-Depends-Indep']).split(',')]
+                except Exception as e:
+                    if self.logger:
+                        self.logger.debug("Could not read dsc override for %s: %s", src_name, e)
+
+            for dep_str in pkg_build_depends + pkg_build_depends_indep:
                 dep_name = self._clean_dependency(dep_str)
                 if dep_name:
-                    build_deps.add(dep_name)
+                    # Expand @KERNEL_TYPE@ templates
+                    expanded = self.expand_template_dep(dep_name, build_types)
+                    build_deps.update(expanded)
 
             # Get all transitive runtime dependencies
             all_deps = self.get_runtime_dependencies(build_deps)
 
             # Map binary packages back to source packages
             source_deps = set()
+            # Check build_deps directly first (catches deps not in binary package set,
+            # like kernel packages with dynamic control files)
+            for bin_name in build_deps:
+                src = self.binary_to_source.get(bin_name)
+                if not src:
+                    src = self._infer_kernel_source(bin_name)
+                if src and src != src_name:
+                    source_deps.add(src)
+            # Then check transitive runtime deps
             for bin_name in all_deps:
                 src = self.binary_to_source.get(bin_name)
-                if src and src != src_name:  # Don't include self
+                if not src:
+                    src = self._infer_kernel_source(bin_name)
+                if src and src != src_name:
                     source_deps.add(src)
+
+            # Filter out false kernel cross-variant dependencies.
+            #
+            # Both 'linux' and 'linux-rt' produce identically-named binaries
+            # (e.g. linux-compiler-gcc-10-x86) that share a single slot in
+            # binary_packages_from_source (last loaded wins).  This causes
+            # transitive runtime dep tracing to map those shared binaries to
+            # the wrong kernel source.  For example, an rt package that
+            # build-depends on linux-rt-headers-stx-amd64 traces through
+            # linux-compiler-gcc-10-x86 and incorrectly picks up 'linux' (std)
+            # because the std variant was loaded last.
+            #
+            # Fix: determine which kernel variant the direct build-deps
+            # actually reference.  If the build-deps explicitly reference rt
+            # kernel packages (linux-rt-headers-stx-*, linux-rt-keys, etc.)
+            # then remove 'linux' from source_deps — the package clearly only
+            # needs linux-rt.  Vice versa for std.
+            if 'linux' in source_deps and 'linux-rt' in source_deps:
+                # Check direct build-deps for kernel variant indicators
+                has_rt_kernel_dep = any(
+                    'linux-rt-' in dep or dep == 'linux-rt-keys'
+                    for dep in build_deps
+                )
+                has_std_kernel_dep = any(
+                    dep.startswith('linux-') and 'linux-rt' not in dep
+                    and self._infer_kernel_source(dep) == 'linux'
+                    for dep in build_deps
+                )
+                if has_rt_kernel_dep and not has_std_kernel_dep:
+                    source_deps.discard('linux')
+                elif has_std_kernel_dep and not has_rt_kernel_dep:
+                    source_deps.discard('linux-rt')
+                elif build_types == ['rt']:
+                    # Fallback: if analyzing for rt only and we can't determine
+                    # from build_deps (e.g., dsc_override failed to load), assume
+                    # rt packages don't need std kernel
+                    source_deps.discard('linux')
+                elif build_types == ['std']:
+                    # Same for std — don't need rt kernel
+                    source_deps.discard('linux-rt')
 
             self.source_depends_on[src_name] = source_deps
 
@@ -622,8 +744,14 @@ class DependencyAnalyzer:
         # Initialize priorities based on compile complexity
         for src in self.source_depends_on.keys():
             src_pkg = self.package_set.source_packages.get(src)
-            if src_pkg and src_pkg.compile_complexity:
-                self.build_priority[src] = src_pkg.compile_complexity
+            if src_pkg:
+                # Trigger lazy calculation if not already done
+                if src_pkg.compile_complexity is None:
+                    src_pkg.calculate_compile_complexity()
+                if src_pkg.compile_complexity:
+                    self.build_priority[src] = src_pkg.compile_complexity
+                else:
+                    self.build_priority[src] = 10
             else:
                 self.build_priority[src] = 10
 
