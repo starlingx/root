@@ -39,9 +39,9 @@ images:
     # Tag based on latest kubectl package version used in image
     tag: stx.13.0-v1.35.5-trixie
   - name: docker.io/starlingx/telegraf
-    src_build_tag: master-debian-trixie-amd64-stable-20260607T220101Z.0
-    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/5b407f90ff59de0c9a6b0cedfa7748b992ffefae
-    tag: stx.13.0-v1.38.3-trixie
+    src_build_tag: master-debian-trixie-amd64-stable-20260713T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-power-metrics/commit/8a3b1bb1759f161f129832dcb17142ab9e9d64fa
+    tag: stx.13.0-v1.38.3-1-trixie
   - name: docker.io/starlingx/stx-audit
     src_build_tag: master-debian-trixie-amd64-stable-20260609T220101Z.0
     src_ref: https://opendev.org/starlingx/audit-armada-app/commit/959e2f85913a63acf71dec9927e4c2d862eaa568
