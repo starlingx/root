@@ -69,6 +69,10 @@ class IsolatedApt:
         apt_pkg_module.config.set("Acquire::http::Timeout", "30")
         apt_pkg_module.config.set("Acquire::https::Timeout", "30")
         apt_pkg_module.config.set("Acquire::ftp::Timeout", "30")
+        # Clear docker-clean hooks that silently delete downloaded .deb files
+        # from apt cache (defined in /etc/apt/apt.conf.d/docker-clean).
+        apt_pkg_module.config.clear("APT::Update::Post-Invoke")
+        apt_pkg_module.config.clear("APT::Update::Post-Invoke-Success")
         apt_pkg_module.init_system()
 
         self.cache = apt.Cache(rootdir=str(self.base_dir))
