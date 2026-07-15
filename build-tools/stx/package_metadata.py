@@ -114,6 +114,20 @@ class PackageMetadata:
         return self._raw.get('compile_time')
 
     @property
+    def compile_priority_boost(self):
+        """Priority boost to force early build scheduling, or None."""
+        return self._raw.get('compile_priority_boost')
+
+    @property
+    def always_build(self):
+        """Whether this package should always be rebuilt (never cached).
+
+        Used for packages like build-info that embed timestamps or
+        build metadata that must be fresh every build.
+        """
+        return bool(self._raw.get('always_build', False))
+
+    @property
     def serial(self):
         """Whether this package requires serial (non-parallel) build."""
         return bool(self._raw.get('serial'))
@@ -277,6 +291,19 @@ class PackageMetadata:
         changes even if this package's source is unchanged.
         """
         return self._raw.get('rebuild_triggers', [])
+
+    @property
+    def content_depends(self):
+        """List of source packages whose version affects binary output.
+
+        Union of 'content_depends' and 'rebuild_triggers' fields.
+        When set, only these dependencies trigger rebuilds (instead of
+        the blanket reverse-dep cascade). Their versions are also
+        included in the checksum and version suffix.
+        """
+        cd = self._raw.get('content_depends', [])
+        rt = self._raw.get('rebuild_triggers', [])
+        return sorted(set(cd + rt))
 
     # --- Checksumming ---
 

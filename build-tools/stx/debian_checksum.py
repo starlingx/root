@@ -22,6 +22,7 @@ not git history. This is more consistent and predictable for reuse detection.
 import hashlib
 import logging
 import os
+import re
 from package_metadata import PackageMetadata
 
 
@@ -91,6 +92,69 @@ class PackageChecksumCalculator:
                 self.logger.warning(f"Failed to read {f}: {e}")
         return content
 
+    # Known build tools that never affect binary content
+    _BUILD_TOOLS = {
+        'debhelper', 'debhelper-compat', 'dh-python', 'dh-autoreconf',
+        'dh-strip-nondeterminism', 'dh-exec', 'dh-golang', 'dh-make',
+        'dpkg-dev', 'build-essential', 'fakeroot', 'cmake', 'meson',
+        'ninja-build', 'pkg-config', 'autoconf', 'automake', 'libtool',
+        'quilt', 'gem2deb', 'javahelper', 'ant', 'maven-debian-helper',
+        'sphinx-common', 'python3-sphinx', 'doxygen', 'helm',
+        'python3-pytest', 'python3-nose', 'python3-mock',
+        'python3-setuptools', 'python3-all', 'python3-wheel', 'python3-pip',
+        'python3-build', 'python3-installer', 'pybuild-plugin-pyproject',
+    }
+
+    def _derive_content_deps_from_control(self, pkgpath, meta_data):
+        """Auto-derive content-affecting deps from deb_folder/control.
+
+        Returns sorted list of package names whose versions should be
+        included in the checksum.
+        """
+        # Find the control file in the deb_folder
+        control_path = None
+        if isinstance(meta_data, PackageMetadata) and meta_data._meta_file:
+            deb_dir = meta_data._meta_file.parent
+            candidate = deb_dir / 'deb_folder' / 'control'
+            if candidate.is_file():
+                control_path = str(candidate)
+
+        if not control_path:
+            # Try standard location relative to pkgpath
+            candidate = os.path.join(pkgpath, 'debian', 'control')
+            if os.path.isfile(candidate):
+                control_path = candidate
+
+        if not control_path:
+            return []
+
+        deps = []
+        try:
+            with open(control_path, 'r') as f:
+                content = f.read()
+            # Parse only the source paragraph (before first empty line after Package:)
+            # Simple approach: read Build-Depends lines
+            for field in ('Build-Depends', 'Build-Depends-Arch', 'Build-Depends-Indep'):
+                match = re.search(
+                    rf'^{field}:\s*(.+?)(?=^\S|\Z)',
+                    content, re.MULTILINE | re.DOTALL)
+                if match:
+                    field_text = match.group(1)
+                    for dep_str in field_text.split(','):
+                        dep_str = dep_str.split('|')[0].strip()
+                        name = re.split(r'[\s(:[]', dep_str)[0].strip()
+                        if name and name not in self._BUILD_TOOLS:
+                            # Only -dev, -wheels, and build-info affect binary content
+                            if name.endswith('-dev') or name.endswith('-wheels') or name == 'build-info':
+                                deps.append(name)
+        except Exception as e:
+            self.logger.debug("Failed to parse Build-Depends from %s: %s",
+                             control_path, e)
+
+        # Deduplicate and sort
+        pkg_name = meta_data._raw.get('debname', '') if isinstance(meta_data, PackageMetadata) else ''
+        return sorted(set(d for d in deps if d and d != pkg_name))
+
     def calculate(self, pkgpath, meta_data, debfolder=None, version_resolver=None):
         """
         Calculate checksum for a package based on file contents only.
@@ -117,12 +181,29 @@ class PackageChecksumCalculator:
         # Read file contents
         content = self._read_file_contents(files_list)
 
-        # Append rebuild trigger versions to hash input
+        # Append content-affecting dependency versions to hash input.
+        # Uses explicit content_depends/rebuild_triggers if set, otherwise
+        # auto-derives from Build-Depends in deb_folder/control.
         if version_resolver and isinstance(meta_data, PackageMetadata):
-            for dep in sorted(meta_data.rebuild_triggers):
-                ver = version_resolver(dep)
-                if ver:
-                    content += f"\n__rebuild_trigger__:{dep}={ver}"
+            trigger_list = None
+            cd = meta_data._raw.get('content_depends')
+            if cd:
+                trigger_list = cd
+            elif meta_data.rebuild_triggers:
+                trigger_list = meta_data.rebuild_triggers
+
+            if trigger_list:
+                for dep in sorted(trigger_list):
+                    ver = version_resolver(dep)
+                    if ver:
+                        content += f"\n__rebuild_trigger__:{dep}={ver}"
+            else:
+                # Auto-derive from deb_folder/control Build-Depends
+                auto_deps = self._derive_content_deps_from_control(pkgpath, meta_data)
+                for dep in auto_deps:
+                    ver = version_resolver(dep)
+                    if ver:
+                        content += f"\n__content_dep__:{dep}={ver}"
 
         # Calculate and return MD5 hash (no git history)
         return get_str_md5(content)
