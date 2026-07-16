@@ -956,6 +956,9 @@ class BuildController():
             if reused_deb_list:
                 for deb in reused_deb_list:
                     reused_debs.append(deb.replace('_', ' '))
+                logger.debug("Total reused debs to download: %d", len(reused_debs))
+                for rd in reused_debs:
+                    logger.debug("Reused deb entry: '%s'", rd)
             else:
                 logger.error("Reused deb package list is NULL")
                 return False
