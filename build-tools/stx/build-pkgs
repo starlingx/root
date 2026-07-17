@@ -969,14 +969,17 @@ class BuildController():
                 logger.error("Exception has when fetching the reused debs with repo_manage")
                 return False
 
+            dl_bin_debs_dir = os.path.join(reuse_dl_dir, 'downloads/binary')
             if len(fetch_ret['deb-failed']) == 0:
-                dl_bin_debs_dir=os.path.join(reuse_dl_dir, 'downloads/binary')
                 logger.info("Successfully downloaded all reused debs to %s", dl_bin_debs_dir)
-                move_debs_to_build_dir(dl_bin_debs_dir)
-                return True
             else:
                 for failed_deb in fetch_ret['deb-failed']:
-                    logger.error("Failed to download reused debs: %s", ','.join(fetch_ret['deb-failed']))
+                    logger.warning("Could not download reused deb: %s (will be built locally)", failed_deb)
+                logger.warning("Failed to download %d reused debs, continuing with local build",
+                               len(fetch_ret['deb-failed']))
+            if os.path.exists(dl_bin_debs_dir):
+                move_debs_to_build_dir(dl_bin_debs_dir)
+            return True
         return False
 
     def set_reuse(self, cache_dir):
