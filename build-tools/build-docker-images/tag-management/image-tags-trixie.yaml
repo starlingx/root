@@ -88,3 +88,7 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260707T220100Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/89008e178d7bc214ef7eef7f7e759a3474101060
     tag: stx.13.0-v2.5.0
+  - name: docker.io/starlingx/ptp-metrics-exporter
+    src_build_tag: master-debian-trixie-amd64-stable-20260724T221504Z.0
+    src_ref: https://opendev.org/starlingx/app-ptp-metrics-exporter/commit/7f7e511e2a2bca19591c97858c9088b2737d0cf9
+    tag: stx.13.0-v1.0.0
