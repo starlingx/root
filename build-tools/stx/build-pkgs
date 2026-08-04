@@ -1344,6 +1344,19 @@ class BuildController():
             if os.path.exists(pkg_build_dir):
                 try:
                     shutil.rmtree(pkg_build_dir)
+                except PermissionError:
+                    logger.warning(
+                        "Permission denied on rmtree(%s), trying sudo rm -rf",
+                        pkg_build_dir)
+                    ret = subprocess.run(
+                        ["sudo", "rm", "-rf", pkg_build_dir],
+                        capture_output=True, text=True)
+                    if ret.returncode != 0 or os.path.exists(pkg_build_dir):
+                        logger.error("Failed to remove %s: %s",
+                                     pkg_build_dir, ret.stderr)
+                    else:
+                        logger.debug("Successfully cleaned the old %s", pkg_build_dir)
+                        os.makedirs(pkg_build_dir)
                 except Exception as e:
                     logger.error(str(e))
                 else:

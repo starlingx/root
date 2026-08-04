@@ -999,7 +999,18 @@ class Parser():
         self.setup(pkgpath)
 
         if os.path.exists(self.pkginfo["packdir"]):
-            shutil.rmtree(self.pkginfo["packdir"])
+            try:
+                shutil.rmtree(self.pkginfo["packdir"])
+            except PermissionError:
+                self.logger.warning(
+                    "Permission denied on rmtree(%s), trying sudo rm -rf",
+                    self.pkginfo["packdir"])
+                ret = subprocess.run(
+                    ["sudo", "rm", "-rf", self.pkginfo["packdir"]],
+                    capture_output=True, text=True)
+                if ret.returncode != 0 or os.path.exists(self.pkginfo["packdir"]):
+                    raise PermissionError(
+                        f"Cannot remove {self.pkginfo['packdir']}: {ret.stderr}")
         os.mkdir(self.pkginfo["packdir"])
 
         self.set_build_type()
