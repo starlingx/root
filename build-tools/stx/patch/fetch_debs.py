@@ -130,7 +130,7 @@ class FetchDebs(object):
         # Get list of STX packages that are installed into the ISO
         stx_pkg_list_file = []
         for build_type in discovery.get_all_build_types():
-            stx_pkg_list_file.extend(discovery.package_iso_list(build_type))
+            stx_pkg_list_file.extend(discovery.package_iso_list(build_type=build_type))
 
         debs_to_remove = []
         for deb in dl_debs_dict.keys():
