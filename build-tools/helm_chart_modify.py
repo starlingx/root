@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2020 Wind River Systems, Inc.
+# Copyright (c) 2020, 2026 Wind River Systems, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -181,6 +181,12 @@ def main(argv):
             document_out[document_name] = document
 
     # Save modified yaml to file
+    # Suppress %YAML 1.1 directive in output. When a file is
+    # processed more than once (multiple image records), the
+    # first pass strips the explicit document-start marker.
+    # On the second pass ruamel emits %YAML 1.1 because no
+    # marker is present, which breaks kubectl kustomize.
+    yaml_rt.version = None
     yaml_rt.default_flow_style = False
     with open(yaml_output, 'w') as f:
         yaml_rt.dump_all(document_out.values(), f)
