@@ -22,17 +22,17 @@ images:
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/4060c91d45c55aae38c8b7668bcbcb687046744e
     tag: stx.13.0-v1.0.2-trixie
   - name: docker.io/starlingx/stx-ovs-manager-operator
-    src_build_tag: master-debian-trixie-amd64-stable-20260713T220100Z.0
-    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/c085e423a3c3b53da7d7f1f1ff2108b35f522db9
-    tag: stx.13.0-v1.1.0-trixie
+    src_build_tag: master-debian-trixie-amd64-stable-20260814T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/5d2935409ba66ec59978611ba311278e485071de
+    tag: stx.13.0-v1.2.0-trixie
   - name: docker.io/starlingx/stx-ovs-container
-    src_build_tag: master-debian-trixie-amd64-stable-20260713T220100Z.0
-    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/c085e423a3c3b53da7d7f1f1ff2108b35f522db9
-    tag: stx.13.0-v1.1.0-trixie
+    src_build_tag: master-debian-trixie-amd64-stable-20260814T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/5d2935409ba66ec59978611ba311278e485071de
+    tag: stx.13.0-v1.2.0-trixie
   - name: docker.io/starlingx/stx-ovs-agent-operator
-    src_build_tag: master-debian-trixie-amd64-stable-20260713T220100Z.0
-    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/c085e423a3c3b53da7d7f1f1ff2108b35f522db9
-    tag: stx.13.0-v1.1.0-trixie
+    src_build_tag: master-debian-trixie-amd64-stable-20260814T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-openvswitch/commit/5d2935409ba66ec59978611ba311278e485071de
+    tag: stx.13.0-v1.2.0-trixie
   - name: docker.io/starlingx/stx-kubevirt-app
     src_build_tag: master-debian-trixie-amd64-stable-20260629T220100Z.0
     src_ref: https://opendev.org/starlingx/app-kubevirt/commit/e894f8c4fefb3b387e4d26e885c026ea2c3a1524
