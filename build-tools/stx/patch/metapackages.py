@@ -122,6 +122,17 @@ def edit_metapackage(apt_fetcher, metapackage_deb_path, target_dependencies=None
                 new_contents_dirpath = os.path.join(parent_dir, target_version)
                 os.rename(old_contents_dirpath, new_contents_dirpath)
 
+                # Replace old version string in the contents of all files in the contents dir
+                for basedir, _, files in os.walk(new_contents_dirpath):
+                    for filename in files:
+                        filepath = os.path.join(basedir, filename)
+                        with open(filepath, 'r', encoding="utf-8") as f:
+                            content = f.read()
+                        if old_version in content:
+                            content = content.replace(old_version, target_version)
+                            with open(filepath, 'w', encoding="utf-8") as f:
+                                f.write(content)
+
             # Write back the modified control file
             with open(control_path, 'w', encoding="utf-8") as f:
                 f.write("".join(control_content))
