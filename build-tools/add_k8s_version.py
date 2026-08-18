@@ -33,18 +33,29 @@
 #
 # Prerequisites:
 #
+#   apt install python3-packaging
 #   source <project-env-file>
 #
 # Usage:
 #
-#   add_k8s_version.py <k8s_version>
+#   add_k8s_version.py <k8s_version> [--reference-k8s <version>]
 #
-#     k8s_version: Kubernetes version to add (e.g., 1.36.1 or v1.36.1)
+#     k8s_version:     Kubernetes version to add (e.g., 1.36.1 or v1.36.1)
+#     --reference-k8s: (Optional) Existing K8s version to use as reference
+#                      base. If not specified, the default version is used
+#                      when adding a newer version, or the highest existing
+#                      version below the new one when adding an older version.
+#                      Use this when adding multiple versions sequentially to
+#                      base the new version on a previously added one.
 #
 # Sample usage:
 #   ./add_k8s_version.py 1.36.1
+#   ./add_k8s_version.py 1.37.0 --reference-k8s 1.36.1
 #
 
+from __future__ import annotations
+
+import argparse
 import hashlib
 import json
 import os
@@ -58,6 +69,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+from packaging.version import Version, InvalidVersion
 
 
 def eprint(*args, **kwargs):
@@ -78,22 +91,6 @@ def deb_ver_is_older(ver_a, ver_b):
     return result.returncode == 0
 
 
-if "REPO_ROOT" not in os.environ:
-    sys.exit("ERROR: REPO_ROOT environment variable is not set.\n"
-             "  export REPO_ROOT=\"/path/to/your/repo\"")
-
-PROJECT_ROOT = Path(os.environ["REPO_ROOT"])
-if not (PROJECT_ROOT / "cgcs-root").is_dir():
-    sys.exit(f"ERROR: Invalid REPO_ROOT: {PROJECT_ROOT}\n"
-             f"  Directory 'cgcs-root' not found under REPO_ROOT.")
-INTEG_DIR = PROJECT_ROOT / "cgcs-root/stx/integ"
-COMPILE_DIR = PROJECT_ROOT / "cgcs-root/stx/compile"
-STX_TOOLS_DIR = PROJECT_ROOT / "stx-tools"
-K8S_PKG_DIR = INTEG_DIR / "kubernetes"
-ANSIBLE_DIR = PROJECT_ROOT / "cgcs-root/stx/ansible-playbooks/playbookconfig/src/playbooks/roles"
-
-VARS_MAIN_YML = ANSIBLE_DIR / "bootstrap/validate-config/vars/main.yml"
-
 ANSIBLE_SYMLINK_DIRS = [
     "bootstrap/prepare-env/vars",
     "common/bringup-kubemaster/templates",
@@ -101,18 +98,43 @@ ANSIBLE_SYMLINK_DIRS = [
     "k8s-storage-backends/snapshot-controller/templates",
     "k8s-storage-backends/snapshot-controller/files",
 ]
-if not os.environ.get("USER_NAME") or not os.environ.get("USER_EMAIL"):
-    sys.exit("ERROR: Please set USER_NAME and USER_EMAIL environment variables.\n"
-             "  export USER_NAME=\"Your Full Name\"\n"
-             "  export USER_EMAIL=\"your.email@domain.com\"")
-EXECUTED_BY = f"{os.environ['USER_NAME']} {os.environ['USER_EMAIL']}"
 
-BASE_LST_TRIXIE = STX_TOOLS_DIR / "debian-mirror-tools/config/debian/trixie/common/base-trixie.lst"
-BASE_LST_BULLSEYE = STX_TOOLS_DIR / "debian-mirror-tools/config/debian/bullseye/common/base-bullseye.lst"
 
-TITANIUM_TOOLS_DIR = PROJECT_ROOT / "cgcs-root/wrs/titanium-tools"
-PREBUILT_IMAGES_TRIXIE = TITANIUM_TOOLS_DIR / "docker-images/WRCP-prebuilt-images-trixie.lst"
-PREBUILT_IMAGES_BULLSEYE = TITANIUM_TOOLS_DIR / "docker-images/WRCP-prebuilt-images-bullseye.lst"
+def setup_environment():
+    """Validate environment variables and set up global paths."""
+    global PROJECT_ROOT, INTEG_DIR, COMPILE_DIR, STX_TOOLS_DIR, K8S_PKG_DIR
+    global ANSIBLE_DIR, VARS_MAIN_YML, EXECUTED_BY
+    global BASE_LST_TRIXIE, BASE_LST_BULLSEYE
+    global TITANIUM_TOOLS_DIR, PREBUILT_IMAGES_TRIXIE, PREBUILT_IMAGES_BULLSEYE
+
+    if "REPO_ROOT" not in os.environ:
+        sys.exit("ERROR: REPO_ROOT environment variable is not set.\n"
+                 "  export REPO_ROOT=\"/path/to/your/repo\"")
+
+    PROJECT_ROOT = Path(os.environ["REPO_ROOT"])
+    if not (PROJECT_ROOT / "cgcs-root").is_dir():
+        sys.exit(f"ERROR: Invalid REPO_ROOT: {PROJECT_ROOT}\n"
+                 f"  Directory 'cgcs-root' not found under REPO_ROOT.")
+    INTEG_DIR = PROJECT_ROOT / "cgcs-root/stx/integ"
+    COMPILE_DIR = PROJECT_ROOT / "cgcs-root/stx/compile"
+    STX_TOOLS_DIR = PROJECT_ROOT / "stx-tools"
+    K8S_PKG_DIR = INTEG_DIR / "kubernetes"
+    ANSIBLE_DIR = PROJECT_ROOT / "cgcs-root/stx/ansible-playbooks/playbookconfig/src/playbooks/roles"
+
+    VARS_MAIN_YML = ANSIBLE_DIR / "bootstrap/validate-config/vars/main.yml"
+
+    if not os.environ.get("USER_NAME") or not os.environ.get("USER_EMAIL"):
+        sys.exit("ERROR: Please set USER_NAME and USER_EMAIL environment variables.\n"
+                 "  export USER_NAME=\"Your Full Name\"\n"
+                 "  export USER_EMAIL=\"your.email@domain.com\"")
+    EXECUTED_BY = f"{os.environ['USER_NAME']} {os.environ['USER_EMAIL']}"
+
+    BASE_LST_TRIXIE = STX_TOOLS_DIR / "debian-mirror-tools/config/debian/trixie/common/base-trixie.lst"
+    BASE_LST_BULLSEYE = STX_TOOLS_DIR / "debian-mirror-tools/config/debian/bullseye/common/base-bullseye.lst"
+
+    TITANIUM_TOOLS_DIR = PROJECT_ROOT / "cgcs-root/wrs/titanium-tools"
+    PREBUILT_IMAGES_TRIXIE = TITANIUM_TOOLS_DIR / "docker-images/WRCP-prebuilt-images-trixie.lst"
+    PREBUILT_IMAGES_BULLSEYE = TITANIUM_TOOLS_DIR / "docker-images/WRCP-prebuilt-images-bullseye.lst"
 
 
 def fetch_go_version(k8s_ver):
@@ -171,7 +193,7 @@ def get_integ_base_srcrev():
 
 def find_latest_k8s_version(new_ver):
     """Find the latest existing kubernetes-X.Y.Z directory that is less than new_ver."""
-    new_ver_tuple = list(map(int, new_ver.split(".")))
+    new_ver_tuple = list(map(int, str(new_ver).split(".")))
     versions = []
     for d in K8S_PKG_DIR.iterdir():
         m = re.match(r"kubernetes-(\d+\.\d+\.\d+)$", d.name)
@@ -257,11 +279,11 @@ def create_k8s_package(new_ver, ref_ver, go_ver, ref_go_ver, sha256):
 
     # Rename and update versioned files
     for f in list(deb_dir.glob(f"kubernetes-{ref_ver}*")):
-        new_name = f.name.replace(ref_ver, new_ver)
+        new_name = f.name.replace(str(ref_ver), str(new_ver))
         new_path = f.parent / new_name
         f.rename(new_path)
         content = new_path.read_text()
-        new_path.write_text(content.replace(ref_ver, new_ver))
+        new_path.write_text(content.replace(str(ref_ver), str(new_ver)))
 
     eprint(f"  Created: {dst}")
 
@@ -436,7 +458,7 @@ def add_golang_to_base_lists(go_ver, ref_go_ver, new_k8s_ver):
         # Same minor - replace with newer patch if available
         updated = update_golang_entries(golang_pkg, go_ver, ref_go_ver)
         if updated:
-            other_k8s = [v for v in k8s_using_this_golang if v != new_k8s_ver]
+            other_k8s = [v for v in k8s_using_this_golang if v != str(new_k8s_ver)]
             if other_k8s:
                 eprint("")
                 eprint(f"  *** NOTE: Replaced golang-{golang_pkg} to support kubernetes-{new_k8s_ver}. ***")
@@ -458,7 +480,7 @@ def add_golang_to_base_lists(go_ver, ref_go_ver, new_k8s_ver):
             # golang already present - check if patch version needs updating
             updated = update_golang_entries(golang_pkg, go_ver, "")
             if updated:
-                other_k8s = [v for v in k8s_using_this_golang if v != new_k8s_ver]
+                other_k8s = [v for v in k8s_using_this_golang if v != str(new_k8s_ver)]
                 if other_k8s:
                     eprint("")
                     eprint(f"  *** NOTE: Updated golang-{golang_pkg} to support kubernetes-{new_k8s_ver}. ***")
@@ -483,10 +505,10 @@ def check_compile_repo(golang_pkg):
 
 def find_k8s_versions_using_golang(golang_pkg, new_k8s_ver):
     """Find all K8s versions (including the new one) that Build-Depend on this golang package."""
-    versions = [new_k8s_ver]
+    versions = [str(new_k8s_ver)]
     for d in sorted(K8S_PKG_DIR.iterdir()):
         m = re.match(r"kubernetes-(\d+\.\d+\.\d+)$", d.name)
-        if not m or m.group(1) == new_k8s_ver:
+        if not m or m.group(1) == str(new_k8s_ver):
             continue
         control = d / "debian/all/deb_folder/control"
         if control.exists() and f"golang-{golang_pkg}" in control.read_text():
@@ -1040,27 +1062,79 @@ def add_images_to_prebuilt_lists(images):
             eprint(f"  {lst_file.name}: all images already present")
 
 
-def main():
-    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        eprint("Usage: ./add_k8s_version.py <k8s_version>")
-        eprint("")
-        eprint("  The Kubernetes version can be specified with or without the 'v' prefix.")
-        eprint("  The script auto-detects the latest existing version as reference,")
-        eprint("  fetches the Go version and source SHA256 from GitHub, and creates")
-        eprint("  all necessary package, listing, ansible, and image entries.")
-        eprint("")
-        eprint("  Docker must be running to generate prebuilt-images entries.")
-        eprint("  If Docker is unavailable, the script will prompt to continue without it.")
-        eprint("")
-        eprint("Example:")
-        eprint("  ./add_k8s_version.py 1.37.1")
-        sys.exit(0 if len(sys.argv) >= 2 else 1)
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Automate adding a new Kubernetes version to the project.",
+        epilog=(
+            "Examples:\n"
+            "  %(prog)s 1.37.1\n"
+            "  %(prog)s 1.37.1 --reference-k8s 1.36.1\n"
+            "\n"
+            "By default, the script auto-detects the reference version:\n"
+            "  - If new version > default version: uses the default version\n"
+            "  - If new version < default version: uses the highest existing version < new\n"
+            "\n"
+            "Use --reference-k8s to explicitly specify which existing version to\n"
+            "use as the reference base. This is useful when adding multiple versions\n"
+            "sequentially (e.g., adding 1.37.0 based on previously added 1.36.1\n"
+            "rather than the default 1.35.2).\n"
+            "\n"
+            "Docker must be running to generate prebuilt-images entries.\n"
+            "If Docker is unavailable, the script will skip that step."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "k8s_version",
+        help="Kubernetes version to add (e.g., 1.36.1 or v1.36.1)",
+    )
+    parser.add_argument(
+        "--reference-k8s",
+        metavar="VERSION",
+        help=(
+            "Existing Kubernetes version to use as reference base "
+            "(e.g., 1.36.1). If not specified, the script auto-detects "
+            "the reference version."
+        ),
+    )
+    return parser.parse_args()
 
-    new_ver = sys.argv[1].lstrip("v")
+
+def k8s_version(dirname: str) -> str | None:
+    """Extract kubernetes version from directory name.
+
+    Returns the version string if dirname matches 'kubernetes-X.Y.Z',
+    otherwise returns None.
+    """
+    if not dirname.startswith("kubernetes-"):
+        return None
+    version = dirname.removeprefix("kubernetes-")
+    return version if re.fullmatch(r"\d+\.\d+\.\d+", version) else None
+
+
+def main():
+    args = parse_args()
+
+    # Validate environment and set up global paths
+    setup_environment()
+
+    new_ver = args.k8s_version.lstrip("v")
 
     # Validate version format
-    if not re.match(r"^\d+\.\d+\.\d+$", new_ver):
-        sys.exit(f"ERROR: Invalid version format '{new_ver}'. Expected X.Y.Z (e.g., 1.37.1)")
+    try:
+        new_ver = Version(new_ver)
+    except InvalidVersion:
+        sys.exit(
+            f"ERROR: Invalid version format '{args.k8s_version}'. "
+            "Expected X.Y.Z (e.g., 1.37.1)"
+        )
+
+    if len(new_ver.release) != 3 or new_ver != Version(".".join(map(str, new_ver.release))):
+        sys.exit(
+            f"ERROR: Invalid version format '{args.k8s_version}'. "
+            "Expected X.Y.Z (e.g., 1.37.1)"
+        )
 
     # Validate version exists on GitHub
     try:
@@ -1071,12 +1145,78 @@ def main():
         sys.exit(f"ERROR: Kubernetes v{new_ver} does not exist on GitHub.\n"
                  f"  Check https://github.com/kubernetes/kubernetes/releases for valid versions.")
 
-
-
     # Pre-check: already exists?
     if (K8S_PKG_DIR / f"kubernetes-{new_ver}").exists():
         eprint(f"kubernetes-{new_ver} is already present in the repo.")
         sys.exit(0)
+
+    # Determine reference version (validate before network calls)
+    if args.reference_k8s:
+        # User explicitly specified a reference version
+        ref_ver = args.reference_k8s.lstrip("v")
+        if not re.match(r"^\d+\.\d+\.\d+$", ref_ver):
+            sys.exit(f"ERROR: Invalid --reference-k8s format '{ref_ver}'. Expected X.Y.Z (e.g., 1.36.1)")
+        ref_pkg_dir = K8S_PKG_DIR / f"kubernetes-{ref_ver}"
+        if not ref_pkg_dir.exists():
+            # List available kubernetes versions, excluding non-version dirs like kubernetes-unversioned
+            available = sorted(
+                (
+                    version
+                    for d in K8S_PKG_DIR.iterdir()
+                    if d.is_dir()
+                    and (version := k8s_version(d.name)) is not None
+                ),
+                key=Version,
+            )
+            sys.exit(f"ERROR: Reference version package kubernetes-{ref_ver} not found in {K8S_PKG_DIR}\n"
+                     f"  Available versions: {', '.join(available)}")
+        ref_rules_file = ref_pkg_dir / "debian/all/deb_folder/rules"
+        if not ref_rules_file.exists():
+            sys.exit(f"ERROR: Reference version kubernetes-{ref_ver} is incomplete (missing debian/all/deb_folder/rules).\n"
+                     f"  Please specify a fully built reference version.")
+        ref_ver = Version(ref_ver)
+        if ref_ver >= new_ver:
+            sys.exit(f"ERROR: --reference-k8s version ({ref_ver}) must be older than "
+                     f"the new version ({new_ver}).")
+        # Validate reference is from the immediate previous minor version
+        if new_ver.release[0] != ref_ver.release[0]:
+            sys.exit(f"ERROR: --reference-k8s version ({ref_ver}) has a different major version "
+                     f"than the new version ({new_ver}).\n"
+                     f"  Cross-major-version references are not supported.")
+        if new_ver.release[1] - ref_ver.release[1] > 1:
+            sys.exit(f"ERROR: --reference-k8s version ({ref_ver}) is not from the immediate "
+                     f"previous minor release.\n"
+                     f"  When adding kubernetes {new_ver} (minor {new_ver.release[1]}), the reference "
+                     f"must be from minor {new_ver.release[1] - 1} (e.g., 1.{new_ver.release[1] - 1}.x).\n"
+                     f"  Please use a 1.{new_ver.release[1] - 1}.x version as the reference.")
+        ref_source = "user-specified"
+    else:
+        # Auto-detect reference version:
+        # If new version > default version, use default as reference (known-good baseline)
+        # If new version < default version, use the highest existing version < new_ver
+        default_ver = get_default_k8s_version()
+
+        if new_ver > Version(default_ver):
+            if not (K8S_PKG_DIR / f"kubernetes-{default_ver}").exists():
+                sys.exit(f"ERROR: Default version package kubernetes-{default_ver} not found in {K8S_PKG_DIR}")
+            ref_ver = default_ver
+        else:
+            ref_ver = find_latest_k8s_version(new_ver)
+
+        # Validate auto-detected reference is from the immediate previous minor version
+        ref_ver = Version(ref_ver)
+        if new_ver.release[0] != ref_ver.release[0]:
+            sys.exit(f"ERROR: Auto-detected reference version ({ref_ver}) has a different major "
+                     f"version than the new version ({new_ver}).\n"
+                     f"  Cross-major-version references are not supported.")
+        if new_ver.release[1] - ref_ver.release[1] > 1:
+            sys.exit(f"ERROR: Auto-detected reference version ({ref_ver}) is not from the "
+                     f"immediate previous minor release.\n"
+                     f"  When adding kubernetes {new_ver} (minor {new_ver.release[1]}), the reference "
+                     f"must be from minor {new_ver.release[1] - 1} (e.g., 1.{new_ver.release[1] - 1}.x).\n"
+                     f"  Please add kubernetes 1.{new_ver.release[1] - 1}.x first, or if already in the "
+                     f"load, provide a 1.{new_ver.release[1] - 1}.x reference with --reference-k8s.")
+        ref_source = "auto-detected"
 
     # Fetch Go version dynamically
     eprint(f"Fetching Go version for Kubernetes v{new_ver}...")
@@ -1086,19 +1226,6 @@ def main():
     eprint(f"Fetching SHA256 for v{new_ver} tarball...")
     sha256 = fetch_tar_sha256(new_ver)
 
-    # Find latest existing version as reference
-    # If new version > default version, use default as reference (known-good baseline)
-    # If new version < default version, use the highest existing version < new_ver
-    default_ver = get_default_k8s_version()
-    new_ver_tuple = list(map(int, new_ver.split(".")))
-    default_ver_tuple = list(map(int, default_ver.split(".")))
-
-    if new_ver_tuple > default_ver_tuple:
-        if not (K8S_PKG_DIR / f"kubernetes-{default_ver}").exists():
-            sys.exit(f"ERROR: Default version package kubernetes-{default_ver} not found in {K8S_PKG_DIR}")
-        ref_ver = default_ver
-    else:
-        ref_ver = find_latest_k8s_version(new_ver)
     ref_go_ver = ""
     rules_file = K8S_PKG_DIR / f"kubernetes-{ref_ver}/debian/all/deb_folder/rules"
     for line in rules_file.read_text().splitlines():
@@ -1106,10 +1233,9 @@ def main():
             ref_go_ver = line.split(":=")[1].strip()
             break
 
-
     eprint("=" * 50)
     eprint(f" Adding Kubernetes {new_ver}")
-    eprint(f" Reference: kubernetes-{ref_ver} (auto-detected)")
+    eprint(f" Reference: kubernetes-{ref_ver} ({ref_source})")
     eprint(f" Go: {go_ver} (ref: {ref_go_ver})")
     eprint(f" Golang pkg: golang-{go_major_minor(go_ver)}")
     eprint("=" * 50)
