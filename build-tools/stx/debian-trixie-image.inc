@@ -80,6 +80,7 @@ gunicorn
 gpsd
 gzip
 hdparm
+hwloc
 hostname
 ifenslave
 init
@@ -182,6 +183,7 @@ nano
 ncurses-base
 ncurses-bin
 ndisc6
+numactl
 netcat-openbsd
 nfs-kernel-server
 nftables
