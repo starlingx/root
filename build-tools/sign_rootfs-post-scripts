@@ -48,16 +48,26 @@
   scp ${SSH_OPTION_NOCHECKING} ${KERNEL_RT_PATH}/${KERNEL_RT_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy kernel-rt image to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
-      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t kernel -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign kernel-rt image!"; exit 1; }
+  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_RT_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
+      || { echo "Fail to GPG sign kernel-rt image!"; exit 1; }
+  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_RT_FILE} ${KERNEL_RT_PATH} \
+      || { echo "Fail to copy back kernel-rt image signed file!"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_RT_FILE}.sig ${KERNEL_RT_PATH} \
       || { echo "Fail to copy back kernel-rt image sig file!"; exit 1; }
   echo "(3) Sign kernel-std"
   scp ${SSH_OPTION_NOCHECKING} ${KERNEL_PATH}/${KERNEL_FILE} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH} \
       || { echo "Fail to copy kernel-std image to signing server!"; exit 1; }
   ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
+      sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_FILE} -t kernel -k ${SIGNING_KEY_NAME}  \
+      || { echo "Fail to sign kernel-std image!"; exit 1; }
+  ssh ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER} \
       sudo /opt/signing/sign-debian.sh -i ${UPLOAD_PATH}/${KERNEL_FILE} -t grub-gpg -k ${SIGNING_KEY_NAME}  \
       || { echo "Fail to sign kernel-std image!"; exit 1; }
+  scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_FILE} ${KERNEL_PATH} \
+      || { echo "Fail to copy back kernel-std image sig file"; exit 1; }
   scp ${SSH_OPTION_NOCHECKING} ${SIGNING_USER}@${SIGNING_SERVER}:${UPLOAD_PATH}/${KERNEL_FILE}.sig ${KERNEL_PATH} \
       || { echo "Fail to copy back kernel-std image sig file"; exit 1; }
   echo "***Finish signing part of rootfs-post-scripts***"
