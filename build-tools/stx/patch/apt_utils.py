@@ -16,18 +16,33 @@ import repo_manage
 import utils
 
 
-APT_REPOS = ["deb-local-build", "deb-local-binary"]
-
-TEMP_APT_SRC_PATH = "/tmp/patch_apt_source_list"
-
 DEFAULT_APT_WORKSPACE = os.path.join(constants.LOADBUILD_ROOT, 'patch_workspace')
+TEMP_APT_SRC_PATH = "/tmp/patch_apt_source_list"
 
 
 logger = logging.getLogger(__name__)
 utils.set_logger(logger)
 
 
-def get_apt_fetcher(workspace_dir = DEFAULT_APT_WORKSPACE):
+def get_local_repo_names() -> list[str]:
+    """Get list of local aptly repo names from the running aptly instance."""
+
+    try:
+        repomgr = repo_manage.RepoMgr(
+            'aptly',
+            utils.get_env_variable('REPOMGR_URL'),
+            '/tmp',
+            utils.get_env_variable('REPOMGR_ORIGIN'),
+            logger
+        )
+    except Exception:
+        logger.error("Failed to get a list of aptly repos")
+        raise
+
+    return repomgr.repo.list_local(quiet=True)
+
+
+def get_apt_fetcher(workspace_dir:str = DEFAULT_APT_WORKSPACE) -> repo_manage.AptFetch:
     """
     Set up apt wrapper configured with the build environment's local apt repo
     """
@@ -38,11 +53,13 @@ def get_apt_fetcher(workspace_dir = DEFAULT_APT_WORKSPACE):
 
     os.makedirs(workspace_dir)
 
+    apt_repos = get_local_repo_names()
+
     # Setup input apt source file
     with open(TEMP_APT_SRC_PATH, 'w', encoding="utf-8") as apt_src_file:
         repo_url = utils.get_env_variable('REPOMGR_DEPLOY_URL')
 
-        for apt_repo in APT_REPOS:
+        for apt_repo in apt_repos:
             apt_repo = f"deb [trusted=yes] {repo_url}{apt_repo} {constants.STX_DEFAULT_DISTRO_CODENAME} main\n"
             apt_src_file.write(apt_repo)
 
