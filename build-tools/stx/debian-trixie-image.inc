@@ -95,6 +95,7 @@ ipxe-qemu
 iscsiuio
 iotop
 isomd5sum
+jq
 kbd
 less
 libapache2-mod-wsgi-py3
