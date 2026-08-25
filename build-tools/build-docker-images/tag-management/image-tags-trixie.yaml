@@ -97,3 +97,7 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260724T221504Z.0
     src_ref: https://opendev.org/starlingx/app-ptp-metrics-exporter/commit/7f7e511e2a2bca19591c97858c9088b2737d0cf9
     tag: stx.13.0-v1.0.0
+  - name: docker.io/starlingx/kmm-builder
+    src_build_tag: master-debian-trixie-amd64-stable-20260824T220100Z.0
+    src_ref: https://opendev.org/starlingx/kernel/commit/595683640ccaec6f70d399756a611a2335513391
+    tag: stx.13.0-v1.0.0
