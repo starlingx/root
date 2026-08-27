@@ -77,10 +77,10 @@ images:
     # Tag based on upstream oauth2-proxy version built from source
     tag: stx.13.0-v7.15.2-trixie
   - name: docker.io/starlingx/security-profiles-operator
-    src_build_tag: master-debian-trixie-amd64-stable-20260728T220101Z.0
-    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/e5ee188d755197a5aa3f87275a38af74a47e658f
+    src_build_tag: master-debian-trixie-amd64-stable-20260826T220100Z.0
+    src_ref: https://opendev.org/starlingx/app-security-profiles-operator/commit/46fe6f44edd886121a41e1572d5974a49217d815
     # Tag based on upstream package version
-    tag: stx.13.0-v1.0.0-2-trixie
+    tag: stx.13.0-v1.0.0-4-trixie
   - name: docker.io/starlingx/notificationservice-base-v2
     src_build_tag: master-debian-trixie-amd64-stable-20260809T220100Z.0
     src_ref: https://opendev.org/starlingx/ptp-notification-armada-app/commit/121126563a844f1203b947393e634bc2c6189775
