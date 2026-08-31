@@ -101,3 +101,8 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20260824T220100Z.0
     src_ref: https://opendev.org/starlingx/kernel/commit/595683640ccaec6f70d399756a611a2335513391
     tag: stx.13.0-v1.0.0
+  - name: docker.io/starlingx/multus-cni
+    src_build_tag: master-debian-trixie-amd64-stable-20260828T220100Z.0
+    # multus-cni v4.3.0 + PR#1521 (IP leak fix), commit 1688144
+    src_ref: https://github.com/k8snetworkplumbingwg/multus-cni/commit/16881445687c9a445cb97ff6450f0719393fd10b
+    tag: stx.13.0-v1.0.0
