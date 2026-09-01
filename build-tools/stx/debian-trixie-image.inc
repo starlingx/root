@@ -330,6 +330,7 @@ vlan
 w3m
 wget
 whiptail
+wtmpdb
 xclip
 xfsprogs
 zip
