@@ -240,7 +240,6 @@ python3-passlib
 python3-pastescript
 python3-pecan
 python3-pexpect
-python3-pip
 python3-psutil
 python3-pyelftools
 python3-pyghmi
