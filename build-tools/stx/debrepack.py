@@ -18,6 +18,7 @@ import debian.deb822
 from debian.debian_support import BaseVersion
 import discovery
 import git
+import glob
 import hashlib
 import logging
 import os
@@ -1034,6 +1035,18 @@ class Parser():
         if "dl_hook" in self.meta_data:
             self.run_dl_hook()
         elif "dl_path" in self.meta_data:
+            # Remove any orig.tar.* files copied from the shared mirror that
+            # don't belong to this package version. The mirror may contain
+            # orig tarballs from other branches/versions with the same upstream
+            # version but different compression (e.g. .tar.xz vs .tar.gz).
+            # create_orig_tarball() will recreate the correct one.
+            orig_pattern = os.path.join(
+                self.pkginfo["packdir"],
+                self.pkginfo["debname"] + '_' + self.versions["upstream_version"] + '.orig.tar.*'
+            )
+            for stale_orig in glob.glob(orig_pattern):
+                self.logger.info("Removing stale orig tarball from mirror: %s", stale_orig)
+                os.remove(stale_orig)
             self.extract_tarball()
         elif "src_path" in self.meta_data:
             self.create_src_package()
