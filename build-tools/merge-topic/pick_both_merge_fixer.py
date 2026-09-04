@@ -77,9 +77,16 @@ if CHERRY_PICKING in out:
             if rc != SUCCESS:
                 exit(rc)
 
-            # Don't call this, it will freeze the terminal
             # Git cherry-pick --continue
-            rc, out = run_cmd(['git', 'cherry-pick', '--continue'], env={'GIT_EDITOR': 'true'})
+            #
+            # `--continue` wants to create the commit, and by default it opens
+            # an editor on the (reused) commit message. In a non-interactive
+            # CI run that either hangs waiting for editor input or fails with
+            # no output. Passing GIT_EDITOR=true is not sufficient on its own
+            # (the sequencer's commit step launched the editor anyway), so use
+            # --no-edit to keep the existing message and never open an editor.
+            rc, out = run_cmd(['git', 'cherry-pick', '--continue', '--no-edit'],
+                              env={'GIT_EDITOR': 'true'})
             if rc != SUCCESS:
                 exit(rc)
 
