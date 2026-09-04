@@ -22,8 +22,10 @@ def run_cmd(cmd, env=None, shell=False, halt_on_exception=False):
     try:
         print('Running {} with env {}:\n'.format(cmd, env))
         oldenv = os.environ.copy()
-        # env = oldenv | env
-        env = { **oldenv, **env }
+        # Merge any caller-supplied overrides onto the current environment.
+        # env may be None (the common case), so guard against it — {**None}
+        # raises "TypeError: 'NoneType' object is not a mapping".
+        env = { **oldenv, **(env or {}) }
         output = subprocess.check_output(
             cmd
             , env=env

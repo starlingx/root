@@ -97,18 +97,84 @@ def gerritQuery(query):
     if query['verbose'] >= 1:
         print('gerritQuery string: {}'.format(query_string))
     params = {'q': query_string,
-              'o': ['CURRENT_REVISION', 'DOWNLOAD_COMMANDS']}
+              'o': ['CURRENT_REVISION', 'CURRENT_COMMIT', 'DOWNLOAD_COMMANDS']}
     r = requests.get(url=url_query, params=params)
     content = responseCorrection(r.text)
     data = json.loads(content)
     if query['verbose'] >= 5:
         print('gerritQuery results:')
         pprint.pprint(data)
-    sorted_data = sorted(data, key=lambda x: x["_number"])
+    sorted_data = topoSortChanges(data)
     if query['verbose'] >= 4:
         print('gerritQuery results:')
         pprint.pprint(sorted_data)
     return sorted_data
+
+
+def topoSortChanges(data):
+    """Order changes so a change is applied AFTER any of its ancestors that
+    are also in the set (parent commit before child commit).
+
+    merge-topic cherry-picks each change's current patch set. A child change's
+    diff is computed against its parent's tree, so applying a child before its
+    parent produces spurious conflicts. Change numbers reflect creation order,
+    not dependency order (a low-numbered change can be re-parented onto a
+    higher-numbered one), so sorting by _number is not sufficient.
+
+    Build the commit->change map from CURRENT_COMMIT/CURRENT_REVISION and emit
+    changes in topological (ancestor-first) order. Ties and changes with no
+    in-set parent are ordered by _number for stability. Falls back to _number
+    order if commit/parent metadata is unavailable.
+    """
+    def current_commit(change):
+        cur = change.get('current_revision')
+        revs = change.get('revisions') or {}
+        rev = revs.get(cur) or {}
+        return cur, rev.get('commit')
+
+    # Map commit sha -> change; record each change's in-set parent sha (if any).
+    sha_to_change = {}
+    have_metadata = True
+    for c in data:
+        sha, commit = current_commit(c)
+        if not sha or not commit:
+            have_metadata = False
+            break
+        sha_to_change[sha] = c
+
+    if not have_metadata:
+        # Metadata missing (older Gerrit / query without CURRENT_COMMIT):
+        # preserve previous behaviour.
+        return sorted(data, key=lambda x: x["_number"])
+
+    parent_in_set = {}
+    for c in data:
+        sha, commit = current_commit(c)
+        parents = [p.get('commit') for p in commit.get('parents', [])]
+        parent_in_set[sha] = next((p for p in parents if p in sha_to_change), None)
+
+    # Emit ancestors before descendants. Process roots (no in-set parent)
+    # first, in _number order, then walk down to children.
+    ordered = []
+    visited = set()
+
+    def emit(sha):
+        # Emit all in-set ancestors first, then this change.
+        chain = []
+        cur = sha
+        while cur is not None and cur not in visited:
+            chain.append(cur)
+            cur = parent_in_set.get(cur)
+        for s in reversed(chain):
+            if s not in visited:
+                visited.add(s)
+                ordered.append(sha_to_change[s])
+
+    for c in sorted(data, key=lambda x: x["_number"]):
+        sha, _ = current_commit(c)
+        emit(sha)
+
+    return ordered
 
 def truncate_ns_to_us(ts: str) -> datetime:
     if '.' in ts:
@@ -245,11 +311,20 @@ def validateHandleRepoArgs(dargs):
     print('Using download strategy {}'.format(dargs['download_strategy']))
     # print('Using review statuses {}'.format(dargs['status']))
     if dargs['merge_fixer']:
-        if os.path.exists(dargs['merge_fixer']):
+        # The fixer is typically passed as a bare filename (e.g.
+        # 'pick_both_merge_fixer.py') and lives alongside this tool, not in the
+        # current working directory (which is chdir'd into each project during
+        # the run).  Resolve it the same way runMergeFixer() does — relative to
+        # the tool directory — so the existence check is meaningful.
+        tool_cwd = os.path.dirname(os.path.abspath(__file__))
+        fixer_path = dargs['merge_fixer']
+        if not os.path.isabs(fixer_path):
+            fixer_path = os.path.join(tool_cwd, fixer_path)
+        if os.path.exists(fixer_path):
             print('Using script to attempt automatic merge conflicts '
-                  'resolution: {}'.format(dargs['merge_fixer']))
+                  'resolution: {}'.format(fixer_path))
         else:
-            print('File {} does not exist'.format(dargs['merge_fixer']))
+            print('File {} does not exist'.format(fixer_path))
             return False
     return True
 
@@ -260,7 +335,9 @@ def handleRepo(args):
     """
     global REPO_MANIFEST
     dargs = vars(args)
-    validateHandleRepoArgs(dargs)
+    if not validateHandleRepoArgs(dargs):
+        print('Argument validation failed, aborting!!!')
+        return False
     tool_cwd = os.path.dirname(os.path.abspath(__file__))
     REPO_MANIFEST = readRepoManifest(dargs['repo_root_dir'])
     for project in RepoManifestProjectList(REPO_MANIFEST):
