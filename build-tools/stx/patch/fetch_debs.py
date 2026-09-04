@@ -287,6 +287,8 @@ class FetchDebs(object):
         and add them to the :self.binaries_to_download: list
         """
 
+        logger.debug(f"Selecting corresponding metapackages...")
+
         orphan_packages = []
         metapackages_to_include = set()
 
@@ -299,16 +301,19 @@ class FetchDebs(object):
 
         for pkg_name,pkg_version in self.binaries_to_download.items():
 
-            logger.debug(f"Searching metapkg for: {pkg_name}")
-
-            # Assume STX metapackages start with constants.METAPACKAGE_NAME_PREFIX. Skip these.
+            # Assume STX metapackages are the only pkgs starting with constants.METAPACKAGE_NAME_PREFIX.
+            # For these, the corresponding metapackage is itself
             if pkg_name.startswith(constants.METAPACKAGE_NAME_PREFIX):
+                logger.debug(f"Metapackage for '{pkg_name}': '{pkg_name}'")
+                metapackages_to_include.add(pkg_name)
                 continue
+
+            # For all others, check the STX metapackages dependency mapping
 
             metapackage_candidate = dep_to_metapackage_dict.get(pkg_name)
 
             if metapackage_candidate:
-                logger.debug(f"Found: {metapackage_candidate}")
+                logger.debug(f"Metapackage for '{pkg_name}': '{metapackage_candidate}'")
                 metapackages_to_include.add(metapackage_candidate)
             else:
                 orphan_packages.append(pkg_name)
