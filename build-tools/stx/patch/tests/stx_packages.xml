@@ -4,5 +4,6 @@
     <component>starlingx</component>
     <stx_source_packages>
         <pkg>software</pkg>
+        <pkg>meta-infra</pkg>
     </stx_source_packages>
 </patch_recipe>
