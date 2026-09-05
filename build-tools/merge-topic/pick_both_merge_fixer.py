@@ -51,7 +51,9 @@ if rc != SUCCESS:
 
 if CHERRY_PICKING in out:
     print('Detected cherry-picking {}'.format(os.getcwd()))
-    for status_line in out.splitlines():
+    status_out = out
+    resolved_any = False
+    for status_line in status_out.splitlines():
         if BOTH_ADDED in status_line or BOTH_MODIFIED in status_line:
             # Get file
             conflict_file = status_line.split(':')[1].strip()
@@ -73,20 +75,29 @@ if CHERRY_PICKING in out:
                 f.truncate()
 
             # Git add file
-            rc, out = run_cmd(['git', 'add', conflict_file])
+            rc, _ = run_cmd(['git', 'add', conflict_file])
             if rc != SUCCESS:
                 exit(rc)
+            resolved_any = True
 
-            # Git cherry-pick --continue
-            #
-            # `--continue` wants to create the commit, and by default it opens
-            # an editor on the (reused) commit message. In a non-interactive
-            # CI run that either hangs waiting for editor input or fails with
-            # no output. Passing GIT_EDITOR=true is not sufficient on its own
-            # (the sequencer's commit step launched the editor anyway), so use
-            # --no-edit to keep the existing message and never open an editor.
-            rc, out = run_cmd(['git', 'cherry-pick', '--continue', '--no-edit'],
-                              env={'GIT_EDITOR': 'true'})
-            if rc != SUCCESS:
-                exit(rc)
+    # Git cherry-pick --continue
+    #
+    # This MUST run exactly once, AFTER every conflicted file has been
+    # staged -- not once per file inside the loop. `--continue` completes
+    # the whole cherry-pick and creates the commit; calling it again on a
+    # second loop iteration finds no cherry-pick in progress and fails
+    # (its error goes to stderr, which run_cmd does not capture, so the
+    # failure looked silent). When more than one file conflicts (e.g. a
+    # rerere-resolved base-bullseye.lst alongside another file) the old
+    # per-file placement caused exactly that silent failure.
+    #
+    # `--continue` also wants to open an editor on the reused commit
+    # message. GIT_EDITOR=true is not sufficient on its own (the
+    # sequencer's commit step still launched the editor), so --no-edit is
+    # used to keep the existing message and never open an editor.
+    if resolved_any:
+        rc, out = run_cmd(['git', 'cherry-pick', '--continue', '--no-edit'],
+                          env={'GIT_EDITOR': 'true'})
+        if rc != SUCCESS:
+            exit(rc)
 
