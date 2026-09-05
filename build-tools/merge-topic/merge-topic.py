@@ -400,7 +400,15 @@ def handleRepo(args):
                 if dargs['merge_fixer'] and not dargs['dry_run']:
                     print('Using merge fixer!')
                     rc = runMergeFixer(dargs, project_path, tool_cwd)
-                    return rc
+                    if not rc:
+                        # Fixer could not resolve this change: stop and fail.
+                        return False
+                    # Fixer resolved the conflict and completed the
+                    # cherry-pick. Continue with the remaining changes rather
+                    # than returning here -- returning would silently abandon
+                    # every change after the first conflict (with rc=0),
+                    # applying only a partial topic.
+                    continue
                 else:
                     print('Check for unresolved merge conflict')
                     return False
