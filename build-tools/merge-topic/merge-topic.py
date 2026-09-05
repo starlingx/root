@@ -416,6 +416,11 @@ def runMergeFixer(dargs, project_path, tool_cwd):
     if fixer_rc == FAILURE:
         print('Fixer failed, aborting!!!')
         return False
+    # The fixer resolved the conflict and completed the cherry-pick.
+    # Return success explicitly; falling off the end here returns None
+    # (falsy), which the caller propagates as a topic-apply failure and
+    # turns into a non-zero exit even though the fixer succeeded.
+    return True
 
 
 def run_cmd(cmd, shell=False, halt_on_exception=False):
