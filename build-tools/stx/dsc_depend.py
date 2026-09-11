@@ -288,10 +288,19 @@ class Simple_dsc_order():
         assert self.count['pkg'] == \
                self.count['can_build'] + self.count['wait']
 
-    def __depth_t(self, node, dependencies, chain):
+    def __depth_t(self, node, dependencies, chain, visited=None):
         '''
         Search the dependency tree. Once circular dependency detected, dump it.
+
+        'chain' is the active DFS path (recursion stack): a node appearing in it
+        again is a true back-edge (a real cycle). 'visited' tracks nodes already
+        fully explored via any path; re-reaching such a node is a harmless shared
+        dependency (diamond) in a DAG, not a cycle, so it is skipped. Without the
+        'visited' set, packages reachable by more than one path (e.g. a common
+        build dependency) were misreported as circular.
         '''
+        if visited is None:
+            visited = set()
         if node in chain:
             self.logger.error('Dependency error!')
             start = False
@@ -302,12 +311,14 @@ class Simple_dsc_order():
                     self.logger.error('%s build depend on ' % dsc)
             self.logger.error('%s' % node)
             raise Exception('UNEXPECTED CIRCULAR DEPENDENCY.')
+        if node in visited:
+            return
         chain.append(node)
-        if node in list(dependencies.keys()) and dependencies[node]:
+        if node in dependencies and dependencies[node]:
             for nd in dependencies[node]:
-                self.__depth_t(nd, dependencies, chain)
-        else:
-            chain.pop()
+                self.__depth_t(nd, dependencies, chain, visited)
+        chain.pop()
+        visited.add(node)
 
     def __set_priority(self):
         '''
@@ -725,19 +736,28 @@ class Circular_break():
 
         return ret_pkgs
 
-    def __depth_t(self, node, dependencies, circular_chain):
+    def __depth_t(self, node, dependencies, circular_chain, visited=None):
         # Search the dependency tree. Once a circular dependency detected, raise exception.
+        # 'circular_chain' is the active DFS path (recursion stack); 'visited' holds
+        # nodes already fully explored. A node re-appearing in the active path is a
+        # real cycle; a node merely already-visited via another path is a shared
+        # dependency (diamond) in a DAG and must be skipped, not flagged.
+        if visited is None:
+            visited = set()
         if node in circular_chain:
             for p in circular_chain:
                 self.logger.error("Circular dependency member: %s." % str(p))
             while node is not circular_chain[0]:
                 circular_chain.remove(circular_chain[0])
             raise Exception('CIRCULAR DEPENDENCY DETECTED.')
+        if node in visited:
+            return
         circular_chain.append(node)
-        if node in set(dependencies.keys()) and dependencies[node]:
+        if node in dependencies and dependencies[node]:
             for nd in dependencies[node]:
-                self.__depth_t(nd, dependencies, circular_chain)
-                circular_chain.pop()
+                self.__depth_t(nd, dependencies, circular_chain, visited)
+        circular_chain.pop()
+        visited.add(node)
 
     def __get_all_deps(self, node, depends):
         # Get all packages depend on/by(Based on parameter "depends") "node"
