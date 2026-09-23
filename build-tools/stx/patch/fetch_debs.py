@@ -26,6 +26,7 @@ EXTERNAL_BINARIES_DIR = os.path.join(
     constants.DESIGNER_ROOT, "stx-tools", "debian-mirror-tools", "config", "debian",
     constants.STX_DEFAULT_DISTRO_CODENAME)
 
+# TODO: These should be derived from build-tools/stx/image-layers.conf
 EXTERNAL_BINARIES_LISTS = [
     os.path.join(EXTERNAL_BINARIES_DIR, "common", "base-" + constants.STX_DEFAULT_DISTRO_CODENAME + ".lst"),
     os.path.join(EXTERNAL_BINARIES_DIR, "distro", "os-std.lst"),
@@ -47,11 +48,20 @@ utils.set_logger(logger)
 #       - Write functions to parse the dsc files in loadbuild
 #       - Use build-tools/stx/debian_package.py for this
 
+# TODO: The log "Downloading deb: PKGNAME VERSION" isn't clear if the version is None. It should have say <DEFAULT_VERSION> instead
+
+# TODO: This is just a nice-to-have feature. It would be useful if fetch_debs were callable.
+#       - Use 'click' module to add flags and help messages
+#       - Make file executable
+#       - Downloading metapkgs corresponding to requested pkgs should be a flag.
+#         - Default to false if fetch_debs is called directly, but patch-builder must use it by default.
+#       - Default verbosity should cut off DEBUG logs. Add verbose flag to activate.
+
 
 class FetchDebs(object):
 
     def __init__(self,
-                 apt_fetcher:repo_manage.AptFetch = None,
+                 apt_fetcher:repo_manage.AptFetch,
                  stx_source_packages:list[str]|None = None,
                  third_party_packages:list[str]|None = None,
                  external_binaries_lists:list[str] = EXTERNAL_BINARIES_LISTS
@@ -71,6 +81,10 @@ class FetchDebs(object):
         self.third_party_packages = third_party_packages
 
         self.apt_fetcher = apt_fetcher
+
+        if self.apt_fetcher.aptcache is None:
+            msg = "Failed to initialize aptly interface 'AptFetch'"
+            raise Exception(msg)
 
         # Validate lists of external third-party packages available in local apt repo
         if not all(os.path.isfile(item) for item in external_binaries_lists):
@@ -221,7 +235,7 @@ class FetchDebs(object):
 
                     if pkg_name in valid_external_binaries:
                         msg = f"More than one version value defined for the same third-party binary in reference lists: {pkg_name}"
-                        raise Exception(msg)
+                        logger.warning(msg)
 
                     valid_external_binaries.update({pkg_name: pkg_version})
 
@@ -274,8 +288,6 @@ class FetchDebs(object):
                 deps.append((base_dep.name, base_dep.version))
 
             result[pkg.name] = deps
-
-        logger.debug(f"STX metapackages currently available: {result.keys()}")
 
         return result
 
