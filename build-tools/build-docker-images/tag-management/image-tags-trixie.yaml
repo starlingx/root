@@ -6,9 +6,9 @@ images:
   #  src_ref: https://opendev.org/starlingx/PROJECT/commit/SHA
   #  tag: stx.13.0-v1.0.0-trixie
   - name: docker.io/starlingx/stx-platformclients
-    src_build_tag: master-debian-trixie-amd64-stable-20260831T220100Z.0
-    src_ref: https://opendev.org/starlingx/upstream/commit/8cdc41d429fcafa2fccd57f1e739044dad98fbee
-    tag: stx.13.0-v1.0.2-trixie
+    src_build_tag: master-debian-trixie-amd64-stable-20260927T220100Z.0
+    src_ref: https://opendev.org/starlingx/config/commit/e3d68471210f4165752d18863c00a00a8efd7021
+    tag: stx.13.0-v1.0.3-trixie
   - name: docker.io/starlingx/stx-snmp
     src_build_tag: master-debian-trixie-amd64-stable-20260713T220100Z.0
     src_ref: https://opendev.org/starlingx/snmp-armada-app/commit/4060c91d45c55aae38c8b7668bcbcb687046744e
