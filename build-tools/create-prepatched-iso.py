@@ -45,6 +45,7 @@ import tarfile
 import tempfile
 import xml.etree.ElementTree as ET
 import yaml
+import sys
 
 
 # === Logging === #
@@ -64,20 +65,17 @@ logging.basicConfig(level=logging.INFO,
 # Note all these variables are automatically set inside a LAT container
 REQUIRED_ENV_VARIABLES = [
     "DIST",
-    "HTTP_SERVER_IP",
+    "HTTP_CONTAINER_IP",
     "MY_REPO_ROOT_DIR",
     "MYUNAME",
     "PROJECT",
 ]
 
 DIST = os.environ.get("DIST")
-HTTP_SERVER_IP = os.environ.get("HTTP_CONTAINER_IP")
+HTTP_CONTAINER_IP = os.environ.get("HTTP_CONTAINER_IP")
 MY_REPO_ROOT_DIR = os.environ.get("MY_REPO_ROOT_DIR", default="")
 MYUNAME = os.environ.get("MYUNAME")
 PROJECT = os.environ.get("PROJECT")
-
-# TODO: apt-ostree support for Trixie is not available yet, so apt-ostree calls
-#       currently set "bullseye" as the "release" param
 
 
 # === Parameters === #
@@ -108,7 +106,7 @@ EXPECTED_ISO_CONTENTS = {
 }
 
 GPG_HOME = "/tmp/.lat_gnupg_root"
-HTTP_FULL_ADDR = f"http://{HTTP_SERVER_IP}:8088"
+HTTP_FULL_ADDR = f"http://{HTTP_CONTAINER_IP}:8088"
 LAT_SDK_SYSROOT = "/opt/LAT/SDK/sysroots/x86_64-wrlinuxsdk-linux"
 PATCHES_FEED_PATH = f"/localdisk/loadbuild/{MYUNAME}/{PROJECT}/patches_feed"
 
@@ -186,8 +184,10 @@ def run_command(cmd: list[str], ignore_errors: bool = False,
         else:
             output = result.stdout
 
-        logger.debug(log_message(" - stdout: ", output))
-        logger.debug(log_message(" - stderr: ", result.stderr))
+        if output.strip():
+            logger.debug(log_message(" - stdout: ", output.strip()))
+        if result.stderr.strip():
+            logger.debug(log_message(" - stderr: ", result.stderr.strip()))
 
     return result.stdout
 
@@ -447,7 +447,7 @@ def update_metadata_info(metadata_xml_path: str, iso_path: str) -> None:
 
     repo_history = get_ostree_history(f"{iso_path}/ostree_repo")
 
-    logger.debug("Ostree repo history:\n{repo_history}")
+    logger.debug(f"Ostree repo history:\n{repo_history}")
 
     checksum = re.findall(pattern=r"^ContentChecksum:\s*([\w\d]+)",
                           string=repo_history, flags=re.MULTILINE)[0]
@@ -488,7 +488,7 @@ def update_metadata_info(metadata_xml_path: str, iso_path: str) -> None:
         element_reboot_required.text = 'Y'
     else:
         msg = "Patch metadata does not contain 'reboot_required' field"
-        raise Exception(msg)
+        logger.warning(msg)
 
     logger.info("Remove: requires")
     requires = root.find("requires")
@@ -927,7 +927,7 @@ def main():
         # instead of being returned to the caller via stdio
         logger.info(f'=> Setting up package feed in {PATCHES_FEED_PATH}...')
         cmd = ["apt-ostree", "repo", "init", "--feed", PATCHES_FEED_PATH,
-               "--release", "bullseye", "--origin", "updates"]
+               "--release", DIST, "--origin", "updates"]
         run_command(cmd)
 
         logger.info('=> Unpacking patches...')
@@ -947,11 +947,9 @@ def main():
                     # Get sw_version value and save metadata.xml using sw_version as suffix
                     xml_root = ET.parse(f"{extract_folder}/metadata.xml").getroot()
                     sw_version = xml_root.find('sw_version').text
-                    component = xml_root.find('component').text
                     patch_id = xml_root.find('id').text
                     os.makedirs(f"{patch_tempdir}/{sw_version}/metadata")
-                    metadata_path = (f"{patch_tempdir}/{sw_version}/metadata/{component}-{sw_version}"
-                        "-metadata.xml")
+                    metadata_path = f"{patch_tempdir}/{sw_version}/metadata/{patch_id}-metadata.xml"
                     shutil.copy(f"{extract_folder}/metadata.xml", metadata_path)
 
                     # From inside software.tar we extract every .deb file
@@ -1032,23 +1030,24 @@ def main():
                 debs = os.listdir(debs_dir)
                 for deb in debs:
                     cmd = ["apt-ostree", "repo", "add", "--feed", PATCHES_FEED_PATH,
-                        "--release", "bullseye", "--component", patch['sw_version'],
+                        "--release", DIST, "--component", patch['sw_version'],
                         os.path.join(f"{patch['path']}/debs/", deb)]
                     logger.debug('Running command: %s', cmd)
                     subprocess.check_call(cmd, shell=False)
 
                 # Now with every deb loaded we commit it in the ostree repository
-                # apt-ostree requires an http connection to access the host files
-                # so we give the full http path using the ip
-                full_feed_path = f'\"{HTTP_FULL_ADDR}{PATCHES_FEED_PATH} bullseye\"'
+                # Note apt-ostree requires an http connection to access files on the host,
+                # the 'feed' parameter provides a URL to the PATCHES_FEED_PATH directory
+
                 cmd = ["apt-ostree", "compose", "install", "--repo", f"{build_tempdir}/ostree_repo"]
                 # If we have ostree setup we will use the gpg key
                 if sign_gpg:
                     gpg_key = get_value_from_yaml("gpg.ostree.gpgid")
                     cmd += ["--gpg-key", gpg_key]
                 pkgs = " ".join(patch["packages"])
-                cmd += ["--branch", "starlingx", "--feed", full_feed_path, "--component",
-                    patch['sw_version'], pkgs]
+                cmd += ["--branch", "starlingx",
+                        "--feed", f"{HTTP_FULL_ADDR}{PATCHES_FEED_PATH}",
+                        "--component", f"{DIST}/{patch['sw_version']}", pkgs]
 
                 logger.debug('Running command: %s', cmd)
                 subprocess.check_call(cmd, shell=False)
@@ -1099,14 +1098,16 @@ def main():
     except Exception as e:
         logger.error("[EXECUTION FAILED]")
         logger.exception(f"Summary: {e}")
+        sys.exit(1)
 
-    # Clean up temporary folders
-    shutil.rmtree(build_tempdir, ignore_errors=True)
-    shutil.rmtree(patch_tempdir, ignore_errors=True)
+    finally:
+        # Clean up temporary folders
+        shutil.rmtree(build_tempdir, ignore_errors=True)
+        shutil.rmtree(patch_tempdir, ignore_errors=True)
 
-    # Clean reprepro feed
-    if os.path.exists(PATCHES_FEED_PATH):
-        shutil.rmtree(PATCHES_FEED_PATH, ignore_errors=True)
+        # Clean reprepro feed
+        if os.path.exists(PATCHES_FEED_PATH):
+            shutil.rmtree(PATCHES_FEED_PATH, ignore_errors=True)
 
 
 if __name__ == "__main__":
