@@ -561,6 +561,33 @@ def remove_ostree_remotes(ostree_repo: str) -> None:
 # across this script, can be implemented as a separate file for "ostree utils".
 # Define a class with the repo path as it's defining property and several
 # methods to operate on it.
+def get_ostree_refs_by_commit(ostree_repo: str) -> dict[str, list[str]]:
+    """Map each commit checksum to the ostree refs that point at it.
+
+    Lists every ref in the repo and resolves it to its target commit
+    checksum, returning a mapping of commit -> list of refs.
+
+    :param ostree_repo: Path to the ostree repository
+
+    :returns: Dict mapping commit checksum to the list of refs pointing at it
+    """
+
+    cmd = ["ostree", f"--repo={ostree_repo}", "refs"]
+    refs = run_command(cmd).split()
+
+    refs_by_commit: dict[str, list[str]] = {}
+    for ref in refs:
+        cmd = ["ostree", f"--repo={ostree_repo}", "rev-parse", ref]
+        commit = run_command(cmd).strip()
+
+        if commit not in refs_by_commit:
+            refs_by_commit[commit] = []
+
+        refs_by_commit[commit].append(ref)
+
+    return refs_by_commit
+
+
 def clean_ostree(ostree_repo: str) -> None:
     """
     Delete all commits in the ostree repo except for the latest one.
@@ -582,8 +609,17 @@ def clean_ostree(ostree_repo: str) -> None:
     commits = re.findall(pattern=r"^commit\s*([\w\d-]+)", string=repo_history,
                          flags=re.MULTILINE)
 
+    refs_by_commit = get_ostree_refs_by_commit(ostree_repo)
+    logger.debug(f"Original ostree refs: {refs_by_commit}")
+
     # Delete each commit except the latest one
     for commit in commits[1:]:
+
+        # Drop ostree refs to this commit
+        for ref in refs_by_commit.get(commit, []):
+            cmd = ["ostree", f"--repo={ostree_repo}", "refs", "--delete", ref]
+            run_command(cmd)
+
         cmd = f"ostree --repo={ostree_repo} prune --delete-commit={commit}"
         run_command(cmd.split())
 
