@@ -633,6 +633,41 @@ def post_process(deploy_dir: str, yaml_file: str, sign: bool)->None:
         sign_iso_dev(deploy_dir, iso_name_prefix)
 
 
+def clean_old_outputs(lat_root: str) -> None:
+    """Remove outputs left over from a previous build-image run.
+
+    A build-image run regenerates all of these, so removing them up front
+    guarantees a fresh start and avoids silently reusing an outdated output
+    (for example an initramfs that was not regenerated after its package
+    changed).
+
+    Removed:
+    - workdir/ and sub_workdir/: LAT's transient scratch directories.
+    - lat.yaml and lat-initramfs.yaml: the LAT config files that build-image
+      recreates from the base-*.yaml templates on every run.
+    - the contents of deploy/: the images produced by the previous run.
+
+    deploy/patch_output/ is preserved: it is owned by patch-builder, not
+    build-image, and is independent of the build-image lifecycle.
+    """
+    os.system('sudo rm -rf ' + lat_root + '/workdir')
+    os.system('sudo rm -rf ' + lat_root + '/sub_workdir')
+
+    for cached_yaml in ('lat.yaml', 'lat-initramfs.yaml'):
+        os.system('sudo rm -f ' + os.path.join(lat_root, cached_yaml))
+
+    deploy_dir = os.path.join(lat_root, 'deploy')
+    if not os.path.isdir(deploy_dir):
+        return
+
+    patch_output = os.path.abspath(os.path.join(deploy_dir, 'patch_output'))
+    for entry in os.listdir(deploy_dir):
+        full_path = os.path.join(deploy_dir, entry)
+        if os.path.abspath(full_path) == patch_output:
+            continue
+        os.system('sudo rm -rf ' + full_path)
+
+
 if __name__ == "__main__":
     distro = STX_DEFAULT_DISTRO
     distro_codename = STX_DEFAULT_DISTRO_CODENAME
@@ -654,8 +689,10 @@ if __name__ == "__main__":
                         default=STX_DEFAULT_DISTRO_CODENAME, required=False)
     parser.add_argument('-c', '--clean', help="(DEPRECATED) Start a fresh image build",
                         default=True, action='store_true')
-    parser.add_argument('-k', '--keep', help="Keep the current environment " +
-                        "(ostree, deploy), mainly used for patching",
+    parser.add_argument('-k', '--keep',
+                        help="(DEPRECATED) No longer has any effect; old "
+                             "outputs are always removed. Accepted for "
+                             "backwards compatibility.",
                         default=False, action='store_true')
     parser.add_argument('--no-sign', action='store_true',
                         default=False, help="Don't sign ISO at the end")
@@ -714,6 +751,11 @@ if __name__ == "__main__":
         kernel_type = 'std'
 
     user_register_signals()
+
+    # Remove outputs from a previous run before doing any work, so build-image
+    # always starts from a fresh state and never reuses a stale output such as
+    # an outdated initramfs. deploy/patch_output/ is preserved.
+    clean_old_outputs(LAT_ROOT)
 
     rmg_logger = logging.getLogger('repo_manager')
     utils.set_logger(rmg_logger)
@@ -811,11 +853,6 @@ if __name__ == "__main__":
     if not add_lat_packages(lat_yaml, img_pkgs, distro=distro, codename=distro_codename):
         logger.error("Failed to add packages into image YAML config")
         sys.exit(ret)
-
-    os.system('sudo rm -rf ' + LAT_ROOT + '/workdir')
-    os.system('sudo rm -rf ' + LAT_ROOT + '/sub_workdir')
-    if not args.keep:
-        os.system('sudo rm -rf ' + LAT_ROOT + '/deploy')
 
     # Prepare the boot cert
     os.system('sudo mkdir ' + LAT_ROOT + '/CERTS > /dev/null 2>&1')
