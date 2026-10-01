@@ -948,6 +948,7 @@ def main():
                     xml_root = ET.parse(f"{extract_folder}/metadata.xml").getroot()
                     sw_version = xml_root.find('sw_version').text
                     component = xml_root.find('component').text
+                    patch_id = xml_root.find('id').text
                     os.makedirs(f"{patch_tempdir}/{sw_version}/metadata")
                     metadata_path = (f"{patch_tempdir}/{sw_version}/metadata/{component}-{sw_version}"
                         "-metadata.xml")
@@ -982,6 +983,7 @@ def main():
                     # Now we save the information we extract for later use
                     patches_data.append({
                         "sw_version": sw_version,
+                        "id": patch_id,
                         "path": f"{patch_tempdir}/{sw_version}",
                         "packages": packages,
                         "metadata": metadata_path,
@@ -1050,6 +1052,16 @@ def main():
 
                 logger.debug('Running command: %s', cmd)
                 subprocess.check_call(cmd, shell=False)
+
+                # Create an ostree ref named after the patch id pointing to the
+                # commit that was just created on the 'starlingx' branch.
+                cmd = ["ostree", f"--repo={build_tempdir}/ostree_repo",
+                       "rev-parse", "starlingx"]
+                commit = run_command(cmd).strip()
+                logger.info(f"Creating ostree ref '{patch['id']}' -> {commit}")
+                cmd = ["ostree", f"--repo={build_tempdir}/ostree_repo",
+                       "refs", "--create", patch["id"], commit]
+                run_command(cmd)
 
             # Check if patch has precheck scripts, if yes move then to the upgrades folder
             if patch["precheck"]:
