@@ -667,10 +667,6 @@ def clean_old_outputs(lat_root: str) -> None:
             continue
         os.system('sudo rm -rf ' + full_path)
 
-    # Keep deploy/ group-writable so the LAT/latd grub-signing step (a 'mock'
-    # group member, not the owner) can create grub-iso.cfg.sig in it.
-    os.system('sudo chmod g+w ' + deploy_dir)
-
 
 if __name__ == "__main__":
     distro = STX_DEFAULT_DISTRO
