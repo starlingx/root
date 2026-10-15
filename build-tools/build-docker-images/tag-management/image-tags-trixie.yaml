@@ -43,10 +43,10 @@ images:
     # Tag based on latest kubectl package version used in image
     tag: stx.13.0-v1.35.5-trixie
   - name: docker.io/starlingx/stx-openbao-manager
-    src_build_tag: master-debian-trixie-amd64-stable-20260820T220100Z.0
-    src_ref: https://opendev.org/starlingx/utilities/commit/37bdaecb79deb2975a49e89a9e8bc7ee327f8275
+    src_build_tag: master-debian-trixie-amd64-stable-20261013T220100Z.0
+    src_ref: https://opendev.org/starlingx/utilities/commit/fdeb7ab06e60148d258bb3e9b9f130eb7313e830
     # Tag based on latest kubectl package version used in image
-    tag: stx.13.0-v1.32.10
+    tag: stx.13.0-v1.32.10-1
   - name: docker.io/starlingx/telegraf
     src_build_tag: master-debian-trixie-amd64-stable-20260713T220100Z.0
     src_ref: https://opendev.org/starlingx/app-power-metrics/commit/8a3b1bb1759f161f129832dcb17142ab9e9d64fa
