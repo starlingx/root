@@ -171,6 +171,7 @@ linux-sysctl-defaults
 locales-all
 logrotate
 lsb-base
+lshw
 lsof
 lvm2
 man-db
