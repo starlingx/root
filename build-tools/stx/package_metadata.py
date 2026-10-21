@@ -128,6 +128,63 @@ class PackageMetadata:
         return bool(self._raw.get('always_build', False))
 
     @property
+    def languages(self):
+        """List of programming languages used in this package.
+
+        Used by dependency analysis to determine if -dev package changes
+        affect binary output. Only packages with native languages (c, c++,
+        cgo, rust-ffi) are affected by -dev header/library changes.
+
+        Special values:
+            languages: none   — Package just installs files (no compilation).
+                                No dependency version can affect output.
+
+        Can be set explicitly in meta_data.yaml:
+            languages: [c, python]
+            languages: none
+        Or auto-detected at repack time from Build-Depends and source content.
+        """
+        val = self._raw.get('languages', [])
+        if isinstance(val, str):
+            return [val]
+        return val if val else []
+
+    @property
+    def content_depends(self):
+        """Explicit content-affecting dependency list from meta_data.yaml.
+
+        Returns the raw 'content_depends' list if set, or None.
+        When set, this overrides auto-derivation from Build-Depends.
+        """
+        return self._raw.get('content_depends')
+
+    @property
+    def run_tests(self):
+        """Whether this package should run tests (overrides global nocheck).
+
+        When True, the 'nocheck' profile is removed and DEB_BUILD_OPTIONS
+        will not include 'nocheck' for this package.
+
+        Can be set in meta_data.yaml:
+            run_tests: true
+        """
+        return bool(self._raw.get('run_tests', False))
+
+    @property
+    def skip_doc(self):
+        """Whether to skip documentation build for this package.
+
+        When True, the 'nodoc' profile is activated: doc build-deps
+        annotated with <!nodoc> are skipped, binary packages with
+        Build-Profiles: <!nodoc> are not built, and DEB_BUILD_OPTIONS
+        includes 'nodoc'.
+
+        Can be set in meta_data.yaml:
+            skip_doc: true
+        """
+        return bool(self._raw.get('skip-doc', self._raw.get('skip_doc', False)))
+
+    @property
     def serial(self):
         """Whether this package requires serial (non-parallel) build."""
         return bool(self._raw.get('serial'))
@@ -251,8 +308,32 @@ class PackageMetadata:
 
     @property
     def stx_patch(self):
-        """Manual revision offset (int), or 0."""
+        """Manual source revision offset (int), or 0. Legacy name for source_revision_increment."""
         v = self.revision.get('stx_patch', 0)
+        return v if isinstance(v, int) else 0
+
+    @property
+    def source_revision_increment(self):
+        """Manual source revision offset (int) added to X element, or 0.
+
+        Equivalent to stx_patch but with a clearer name. If both are set,
+        they are summed. Use this in meta_data.yaml to bump the source
+        revision without a git commit:
+            source_revision_increment: 1
+        """
+        v = self.revision.get('source_revision_increment', 0)
+        return (v if isinstance(v, int) else 0) + self.stx_patch
+
+    @property
+    def dependency_revision_increment(self):
+        """Manual dependency revision offset (int) added to Y element, or 0.
+
+        Use this in meta_data.yaml to force a rebuild when dependency
+        tracking alone wouldn't detect the need (e.g., toolchain change,
+        build flag change):
+            dependency_revision_increment: 1
+        """
+        v = self._raw.get('dependency_revision_increment', 0)
         return v if isinstance(v, int) else 0
 
     @property
