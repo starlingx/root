@@ -134,7 +134,7 @@ def run_shell_cmd_full(cmd, logger, error_level=logging.ERROR, cwd=None):
     else:
         raise Exception("Unrecognized 'cmd' type '%s'. Must be one of [str, list, tuple]." % (type(cmd)))
 
-    logger.info(f'[ Run - "{cmd}" ]')
+    logger.debug(f'[ Run - "{cmd}" ]')
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    universal_newlines=True, shell=shell, cwd=cwd)
