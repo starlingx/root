@@ -110,3 +110,7 @@ images:
     src_build_tag: master-debian-trixie-amd64-stable-20261123T230100Z.0
     src_ref: https://opendev.org/starlingx/app-rook-ceph/commit/ce763aa01ff3cb35e7ec8210f36dc8ed7db9d58f
     tag: stx.14.0-v3.10.0-trixie
+  - name: docker.io/starlingx/stx-storage-utils
+    src_build_tag: master-debian-trixie-amd64-stable-20261125T233815Z.0
+    src_ref: https://opendev.org/starlingx/app-rook-ceph/commit/225342c58c3844572b14725344c6e33ba21b1484
+    tag: stx.14.0-v1.0.0-trixie
